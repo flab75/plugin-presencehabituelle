@@ -40,6 +40,14 @@ $v = $A::volet($ev, $A::jours($t('2026-03-01 12:00'), $t('2026-03-09 08:00'), []
 $ok($v['matin']['S']['med'] == 450 && $v['matin']['S']['n'] == 4 && $v['soir']['S']['med'] == 1260 && $v['soir']['S']['ferme'] == 100, 'volet semaine : ' . json_encode($v));
 $ok($v['matin']['W']['med'] == 540 && $v['soir']['W']['n'] == 2 && $v['soir']['W']['med'] == 1360 && $v['soir']['W']['ferme'] == 100, 'volet week-end : ' . json_encode($v));
 
+// nuit pas finie : analyse le dim. 8 à 00:05, le samedi soir ne compte pas encore (ni fermeture, ni % fermé)
+$vf = $A::volet($ev, $A::jours($t('2026-03-01 12:00'), $t('2026-03-08 00:05'), []), $t('2026-03-08 00:05'));
+$ok($vf['soir']['W']['n'] == 1 && $vf['soir']['W']['ferme'] == 100 && $vf['soir']['S']['n'] == 4, 'volet nuit en cours : ' . json_encode($vf['soir']));
+
+// deux allumages dans la même minute : deux durées, passages ≤ 100 %
+$d2 = $A::durees([[$t('2026-03-02 19:00:05'), $t('2026-03-02 19:00:20'), true], [$t('2026-03-02 19:00:40'), $t('2026-03-02 19:00:50'), true]], $j);
+$ok($d2['n'] == 2 && $d2['passages'] == 100, 'durées même minute : ' . json_encode($d2));
+
 [$g, $x] = $A::longues([[0, 3600, true], [5000, 5000 + 20 * 3600, true]], 18 * 3600);
 $ok(count($g) == 1 && $g[0][1] == 3600 && $x == [[5000, 5000 + 20 * 3600]], 'longues');
 

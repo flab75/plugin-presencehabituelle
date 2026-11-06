@@ -7,11 +7,12 @@
 		"Les changements d'état plus anciens sont effacés chaque nuit : les habitudes suivent la saison. Par défaut 90, minimum 7.": "Older state changes are deleted every night: habits follow the season. Default 90, minimum 7.",
 		"Allumage le plus long": "Longest switch-on",
 		"heures": "hours",
-		"Un allumage plus long est pris pour une extinction manquée (box arrêtée, pont hors ligne) : il est écarté, et les jours qu'il touche ne sont pas comptés pour cette lampe. Par défaut 18.": "A longer switch-on is taken as a missed switch-off (box stopped, bridge offline): it is discarded, and the days it touches are not counted for this lamp. Default 18."
+		"Un allumage plus long est pris pour une extinction manquée (box arrêtée, pont hors ligne) : il est écarté, et les jours qu'il touche ne sont pas comptés pour son groupe. Par défaut 18.": "A longer switch-on is taken as a missed switch-off (box stopped, bridge offline): it is discarded, and the days it touches are not counted for its group. Default 18."
 	},
 	"plugins/presencehabituelle/core/class/presencehabituelle.class.php": {
 		"Période illisible (attendu AAAA-MM-JJ HH:MM → AAAA-MM-JJ HH:MM)": "Unreadable period (expected YYYY-MM-DD HH:MM → YYYY-MM-DD HH:MM)",
-		"Commande d'exclusion introuvable": "Exclusion command not found"
+		"Commande d'exclusion introuvable": "Exclusion command not found",
+		"La commande d'absence doit être binaire ou numérique (vraie pendant l'absence) : un mode en texte ne convient pas, passez par un virtuel binaire": "The absence command must be binary or numeric (true during the absence): a text mode will not do, use a binary virtual"
 	},
 	"plugins/presencehabituelle/core/ajax/presencehabituelle.ajax.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",
@@ -94,7 +95,7 @@
 		"Périodes à ne pas analyser": "Periods not to analyse",
 		"Vos absences (et toute période où une simulation tournait) faussent les tendances : ces jours-là ne sont pas comptés.": "Your absences (and any period when a simulation was running) distort the trends: those days are not counted.",
 		"Commande d'absence": "Absence command",
-		"Commande info vraie pendant une absence (ex. un mode « Absent » ou « Vacances ») : ses périodes actives sont exclues. Facultatif.": "Info command that is true during an absence (e.g. an “Away” or “Holiday” mode): its active periods are excluded. Optional.",
+		"Commande info binaire ou numérique, vraie pendant une absence (ex. un virtuel binaire « Absent » ou « Vacances » ; un mode en texte ne convient pas) : ses périodes actives sont exclues. Facultatif.": "Binary or numeric info command that is true during an absence (e.g. a binary virtual “Away” or “Holiday”; a text mode will not do): its active periods are excluded. Optional.",
 		"Périodes saisies": "Entered periods",
 		"Une par ligne : AAAA-MM-JJ HH:MM → AAAA-MM-JJ HH:MM (l'heure est facultative). Tout jour touché est exclu en entier.": "One per line: YYYY-MM-DD HH:MM → YYYY-MM-DD HH:MM (time is optional). Any day touched is excluded entirely.",
 		"Recalculer": "Recompute",

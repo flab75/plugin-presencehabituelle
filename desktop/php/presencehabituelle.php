@@ -27,7 +27,7 @@ sendVarToJS('eqType', $plugin->getId());
 			<legend style="margin-top:15px"><i class="fas fa-plane-departure"></i> {{Périodes à ne pas analyser}}</legend>
 			<p>{{Vos absences (et toute période où une simulation tournait) faussent les tendances : ces jours-là ne sont pas comptés.}}</p>
 			<div class="form-group">
-				<label>{{Commande d'absence}} <sup><i class="fas fa-question-circle tooltips" title="{{Commande info vraie pendant une absence (ex. un mode « Absent » ou « Vacances ») : ses périodes actives sont exclues. Facultatif.}}"></i></sup></label>
+				<label>{{Commande d'absence}} <sup><i class="fas fa-question-circle tooltips" title="{{Commande info binaire ou numérique, vraie pendant une absence (ex. un virtuel binaire « Absent » ou « Vacances » ; un mode en texte ne convient pas) : ses périodes actives sont exclues. Facultatif.}}"></i></sup></label>
 				<div class="input-group" style="max-width:600px">
 					<input class="form-control" id="ph_exclure" placeholder="#[Maison][Mode][Absent]#">
 					<span class="input-group-btn"><a class="btn btn-default" id="ph_choisir"><i class="fas fa-list-alt"></i></a></span>

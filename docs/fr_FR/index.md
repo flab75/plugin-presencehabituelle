@@ -18,7 +18,7 @@ Le plugin **n'agit encore sur rien** : il analyse vos historiques et montre ce q
 2. **Groupes** : une lampe est analysée seule ; donnez le même groupe à plusieurs lampes pour les analyser ensemble (une pièce), ou « Grouper par objet Jeedom ».
 3. **Historique** : à l'enregistrement, les changements d'état des 90 derniers jours sont repris de l'historique de Jeedom (si la commande est historisée). Une commande non historisée est relevée à partir de l'enregistrement. Après quelques heures (2 h par défaut, réglage « archivage »), Jeedom remplace les valeurs numériques par une moyenne par heure : on ne sait plus quand la lampe s'est allumée. Pour une telle commande (marquée « historique lissé »), seules les dernières heures sont reprises ; réglez son lissage sur « Aucun » (configuration de la commande, onglet Historique) pour que tout l'historique serve à l'avenir. Une commande binaire reste exacte.
    Une commande ajoutée plus tard est reprise de la même façon. Une seule commande d'état par équipement et par type est proposée cochée.
-4. **Absences** : une commande vraie pendant vos absences (un mode « Absent ») et des périodes saisies à la main. Les jours touchés ne sont pas comptés, sans quoi le plugin tirerait les tendances de la maison vide — ou une ancienne simulation.
+4. **Absences** : une commande binaire ou numérique vraie pendant vos absences (un mode « Absent » en texte ne convient pas : passez par un virtuel binaire) et des périodes saisies à la main. Les jours touchés ne sont pas comptés, sans quoi le plugin tirerait les tendances de la maison vide — ou une ancienne simulation. Son historique est repris en entier, même lissé. Les jours où le plugin était désactivé ne sont pas comptés non plus (rien n'a été relevé).
 
 L'onglet **Tendances** montre, pour chaque lampe ou groupe :
 - le pourcentage des jours où elle est allumée dans chaque heure, en semaine et le week-end ;
@@ -27,7 +27,7 @@ L'onglet **Tendances** montre, pour chaque lampe ou groupe :
 - la durée d'un allumage : moyenne, médiane, la moitié des allumages entre deux valeurs, la plus courte et la plus longue, la part des passages de moins de 3 minutes, et les durées inhabituelles ;
 - les lampes allumées ensemble.
 
-Un allumage de plus de 18 heures (réglable) est pris pour une extinction manquée (box arrêtée, pont hors ligne) : il est écarté, et les jours qu'il touche ne comptent pas pour cette lampe.
+Un allumage de plus de 18 heures (réglable) est pris pour une extinction manquée (box arrêtée, pont hors ligne) : il est écarté, et les jours qu'il touche ne comptent pas pour son groupe (ou la lampe seule).
 
 Pour chaque volet, en semaine et le week-end : l'heure d'ouverture du matin et de fermeture du soir (médiane, moyenne, au plus tôt, au plus tard), la part des nuits où il est fermé (« jamais » ou « toujours » le cas échéant) et les exceptions. Une exception est un jour loin de la moitié centrale des valeurs : de plus de 30 minutes, ou de plus d'une fois et demie l'étendue de cette moitié (règle de Tukey) ; il en faut au moins 4 pour en parler. Une tendance calculée sur moins de 10 jours est marquée « à confirmer ».
 

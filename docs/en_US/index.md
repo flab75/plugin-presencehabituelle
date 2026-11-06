@@ -18,7 +18,7 @@ The plugin **acts on nothing yet**: it analyses your history and shows what it d
 2. **Groups**: each lamp is analysed alone; give several lamps the same group to analyse them together (a room), or use "Group by Jeedom object".
 3. **History**: when saving, the state changes of the last 90 days are imported from the Jeedom history (if the command is historized). A command that is not historized is recorded from the time it is saved. After a few hours (2 h by default, "archiving" setting), Jeedom replaces numeric values with an hourly average: when the lamp went on is lost. For such a command (flagged "smoothed history"), only the last hours are imported; set its smoothing to "None" (command configuration, History tab) so that the whole history serves in future. A binary command stays exact.
    A command added later is imported the same way. Only one state command per device and per type is offered ticked.
-4. **Absences**: a command that is true while you are away (an "Away" mode) and periods entered by hand. Days touched are not counted, otherwise the plugin would draw the trends of the empty house — or an old simulation.
+4. **Absences**: a binary or numeric command that is true while you are away (a text "Away" mode will not do: use a binary virtual) and periods entered by hand. Days touched are not counted, otherwise the plugin would draw the trends of the empty house — or an old simulation. Its whole history is imported, even when smoothed. Days when the plugin was disabled are not counted either (nothing was recorded).
 
 The **Trends** tab shows, for each lamp or group:
 - the percentage of days it is on during each hour, on weekdays and at the weekend;
@@ -27,7 +27,7 @@ The **Trends** tab shows, for each lamp or group:
 - how long it stays on: average, median, half of the switch-ons between two values, shortest and longest, the share of passes shorter than 3 minutes, and unusual durations;
 - lamps switched on together.
 
-A switch-on longer than 18 hours (adjustable) is taken as a missed switch-off (box stopped, bridge offline): it is discarded, and the days it touches do not count for this lamp.
+A switch-on longer than 18 hours (adjustable) is taken as a missed switch-off (box stopped, bridge offline): it is discarded, and the days it touches do not count for its group (or the lamp alone).
 
 For each shutter, on weekdays and at the weekend: morning opening and evening closing time (median, average, earliest, latest), the share of nights it is closed ("never" or "always" when so) and exceptions. An exception is a day far from the middle half of the values: by more than 30 minutes, or by more than one and a half times the spread of that half (Tukey's rule); at least 4 values are needed. A trend computed on fewer than 10 days is marked "to be confirmed".
 

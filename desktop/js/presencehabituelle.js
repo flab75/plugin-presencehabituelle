@@ -13,7 +13,7 @@
       .catch(function (e) { alerte(e instanceof SyntaxError ? "{{Réponse illisible : session expirée ? Recharger la page.}}" : String(e)) })
   }
   var NOMS = { lumiere: '{{lumière}}', volet: '{{volet}}', prise: '{{prise}}', media: '{{média}}', autre: '{{autre}}' }
-  function jj(d) { return String(d).slice(8, 10) + '/' + String(d).slice(5, 7) + String(d).slice(10) } // AAAA-MM-JJ[ HH:MM] → JJ/MM[ HH:MM]
+  function jj(d) { return String(d).slice(8, 10) + '/' + String(d).slice(5, 7) + String(d).slice(10, 16) } // AAAA-MM-JJ[ HH:MM[:SS]] → JJ/MM[ HH:MM]
   function plages(hs) { // [3, 4, 5, 9] → « 03 h – 06 h, 09 h – 10 h »
     var r = [], a = null
     for (var h = 0; h <= 24; h++) {

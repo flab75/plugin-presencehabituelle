@@ -1,6 +1,6 @@
 <?php
 /* Calcul des habitudes : fonctions pures (aucun accès à Jeedom), testées par tests/selftest.php.
-   Évènement = [horodatage, valeur, exact] ; exact = 0 si la valeur vient d'un historique moyenné par heure. */
+   Évènement = [horodatage, valeur, exact] ; seuls des changements exacts sont relevés : exact = false seulement pour une session encore en cours (durée inconnue). */
 class presencehabituelle_analyse {
   const SCENE = 30;    // s : lampes allumées à moins de SCENE s du début de la session = même scène
   const PASSAGE = 180; // s : session plus courte = passage éclair
@@ -97,7 +97,8 @@ class presencehabituelle_analyse {
   public static function durees(array $sessions, array $jours) {
     $ok = []; foreach ($jours as $j) $ok[$j['d']] = true;
     $d = []; $pas = 0;
-    foreach ($sessions as [$a, $b, $x]) if ($x && isset($ok[date('Y-m-d', $a)])) { $d[date('Y-m-d H:i', $a)] = ($b - $a) / 60; if ($b - $a < self::PASSAGE) $pas++; }
+    foreach ($sessions as [$a, $b, $x]) if ($x && isset($ok[date('Y-m-d', $a)])) $d[date('Y-m-d H:i:s', $a)] = ($b - $a) / 60; // à la seconde : deux allumages dans la même minute restent deux
+    foreach ($d as $v) if ($v * 60 < self::PASSAGE) $pas++;
     return self::stats($d, 1) + ($d ? ['passages' => (int)round(100 * $pas / count($d))] : []);
   }
 
@@ -113,8 +114,9 @@ class presencehabituelle_analyse {
   /* Volet : journée de 04:00 à 04:00. Matin = 1re ouverture entre 04:00 et 16:00 ; soir = dernière fermeture entre 16:00 et 04:00.
      Fermé = position ≤ 1 % du maximum observé (une position partielle contre le soleil n'est pas une fermeture).
      Semaine / week-end : matins du sam. et dim., soirs du ven. et sam. (on se couche plus tard la veille d'un jour sans travail).
+     Une nuit pas encore finie à $fin (le calcul tourne vers minuit) ne compte pas pour le soir.
      → ['matin' => ['S' => stats, 'W' => stats], 'soir' => [...]] ; stats() en minutes depuis 00:00 (exceptions par date), ferme = % des nuits où il est fermé à 04:00 */
-  public static function volet(array $ev, array $jours) {
+  public static function volet(array $ev, array $jours, $fin = PHP_INT_MAX) {
     $max = 0; foreach ($ev as $e) $max = max($max, $e[1]);
     $seuil = $max * 0.01;
     $m = ['S' => [], 'W' => []]; $s = ['S' => [], 'W' => []]; $nsoir = ['S' => 0, 'W' => 0]; $fsoir = ['S' => 0, 'W' => 0];
@@ -133,6 +135,7 @@ class presencehabituelle_analyse {
       }
       $km = $j['n'] >= 6 ? 'W' : 'S'; $ks = in_array($j['n'], [5, 6]) ? 'W' : 'S';
       if ($mat !== null) $m[$km][$j['d']] = ($mat - $j['a']) / 60;
+      if ($b > $fin) continue; // nuit en cours
       if ($ferme !== null) { $nsoir[$ks]++; if ($ferme) $fsoir[$ks]++; } // fermé à 04:00, même resté fermé toute la journée
       if ($soir !== null) $s[$ks][$j['d']] = ($soir - $j['a']) / 60;
     }

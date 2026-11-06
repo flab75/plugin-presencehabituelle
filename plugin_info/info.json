@@ -1,7 +1,7 @@
 {
 	"id": "presencehabituelle",
 	"name": "Présence habituelle",
-	"pluginVersion": "0.2",
+	"pluginVersion": "0.3",
 	"description": {
 		"fr_FR": "Simulation de présence tirée de vos historiques (lumières, volets), calculée sur la box : rien n'est envoyé hors de Jeedom. Pour l'instant : tendances (au plus tôt, au plus tard, moyennes, volets fermés la nuit), exceptions et ce qui n'arrive jamais, sans action sur les équipements.",
 		"en_US": "Presence simulation drawn from your history (lights, shutters), computed on the box: nothing leaves Jeedom. For now: trends (earliest, latest, averages, shutters closed at night), exceptions and what never happens, no action on devices."
