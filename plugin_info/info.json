@@ -1,0 +1,35 @@
+{
+	"id": "presencehabituelle",
+	"name": "Présence habituelle",
+	"pluginVersion": "0.1",
+	"description": {
+		"fr_FR": "Simulation de présence apprise de vos habitudes (lumières, volets), calculée sur la box : rien n'est envoyé hors de Jeedom. Version 0.1 : apprentissage et tableau des habitudes, sans action sur les équipements.",
+		"en_US": "Presence simulation learnt from your habits (lights, shutters), computed on the box: nothing leaves Jeedom. Version 0.1: learning and habits table, no action on devices."
+	},
+	"licence": "MIT",
+	"author": "flab",
+	"require": "4.4",
+	"os": {
+		"min": 11,
+		"max": 12.99
+	},
+	"category": "security",
+	"hasDependency": false,
+	"hasOwnDeamon": false,
+	"changelog_beta": "https://github.com/flab75/plugin-presencehabituelle/blob/beta/docs/#language#/changelog.md",
+	"documentation_beta": "https://github.com/flab75/plugin-presencehabituelle/blob/beta/docs/#language#/index.md",
+	"changelog": "https://github.com/flab75/plugin-presencehabituelle/blob/master/docs/#language#/changelog.md",
+	"documentation": "https://github.com/flab75/plugin-presencehabituelle/blob/master/docs/#language#/index.md",
+	"language": [
+		"fr_FR",
+		"en_US"
+	],
+	"compatibility": [
+		"diy",
+		"docker",
+		"rpi",
+		"luna",
+		"atlas",
+		"smart"
+	]
+}
