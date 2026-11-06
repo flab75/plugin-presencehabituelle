@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4
+- Fixes after the 3rd review: shutter times off by one hour on clock-change days, shutter with no observed night shown as "never closed", "never on" hours derived from a rounded percentage, default command selection re-applied after an empty save, state before the period not imported (a lamp switched on the day before was missed), unreadable command choice saved as "nothing".
+- Hours when the box was stopped (over 3 h) are not counted; absences of the previous absence command are kept when it is changed; a smoothed numeric absence command is refused.
+
 ## 0.3
 - Fixes after the 2nd review: a shutter's last night counted before it ended (wrongly "never closed"), days with the plugin disabled counted as an empty house, text absence command refused (it excluded nothing) and absence history imported in full, two switch-ons in the same minute merged, exact-history window wrongly widened, group named "#12" mixed up with lamp #12.
 

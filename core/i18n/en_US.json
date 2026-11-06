@@ -12,12 +12,14 @@
 	"plugins/presencehabituelle/core/class/presencehabituelle.class.php": {
 		"Période illisible (attendu AAAA-MM-JJ HH:MM → AAAA-MM-JJ HH:MM)": "Unreadable period (expected YYYY-MM-DD HH:MM → YYYY-MM-DD HH:MM)",
 		"Commande d'exclusion introuvable": "Exclusion command not found",
-		"La commande d'absence doit être binaire ou numérique (vraie pendant l'absence) : un mode en texte ne convient pas, passez par un virtuel binaire": "The absence command must be binary or numeric (true during the absence): a text mode will not do, use a binary virtual"
+		"La commande d'absence doit être binaire ou numérique (vraie pendant l'absence) : un mode en texte ne convient pas, passez par un virtuel binaire": "The absence command must be binary or numeric (true during the absence): a text mode will not do, use a binary virtual",
+		"Commande d'absence numérique lissée : réglez son lissage sur « Aucun » (configuration de la commande, onglet Historique) ou passez par un virtuel binaire": "Smoothed numeric absence command: set its smoothing to \"None\" (command configuration, History tab) or use a binary virtual"
 	},
 	"plugins/presencehabituelle/core/ajax/presencehabituelle.ajax.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",
 		"Commande d'absence introuvable": "Absence command not found",
-		"Aucune méthode correspondante à": "No matching method for"
+		"Aucune méthode correspondante à": "No matching method for",
+		"Choix des commandes illisible : rien n'a été enregistré": "Unreadable command choice: nothing was saved"
 	},
 	"plugins/presencehabituelle/desktop/js/presencehabituelle.js": {
 		"Réponse illisible : session expirée ? Recharger la page.": "Unreadable answer: session expired? Reload the page.",

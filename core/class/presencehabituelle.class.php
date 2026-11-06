@@ -1,6 +1,6 @@
 <?php
 /* Présence habituelle : tire des historiques (lumières, volets) les tendances, les exceptions et ce qui n'arrive jamais, sans rien envoyer hors de la box.
-   0.2 : analyse seule (aucune action sur les équipements). */
+   0.4 : analyse seule (aucune action sur les équipements). */
 require_once __DIR__ . '/../../../../core/php/core.inc.php';
 require_once __DIR__ . '/presencehabituelle_analyse.class.php';
 
@@ -23,8 +23,9 @@ class presencehabituelle extends eqLogic {
     if (!self::suivi() && !(int)config::byKey('exclure_cmd', __CLASS__, 0)) self::effacer();
     else foreach (self::ids() as $id) self::noter($id); // état pendant la désactivation : une extinction manquée ne fait pas une session sans fin
     if ($a = (int)config::byKey('arret', __CLASS__, 0)) { // rien n'a été relevé pendant la désactivation : ces jours ne comptent pas
-      $p = self::arrets(); $p[] = [$a, time()]; config::save('arrets', json_encode($p), __CLASS__); config::remove('arret', __CLASS__);
+      self::exclure($a, time()); config::remove('arret', __CLASS__);
     }
+    config::save('vu', time(), __CLASS__);
     self::majListener();
   }
 
@@ -33,11 +34,16 @@ class presencehabituelle extends eqLogic {
     config::save('arret', time(), __CLASS__);
   }
 
-  // Périodes où le plugin était désactivé [[début, fin]] (config::byKey décode déjà le JSON)
+  /* Périodes exclues gardées [[début, fin]] : plugin désactivé, box arrêtée, absences d'une ancienne commande d'absence
+     (config::byKey décode déjà le JSON) */
   public static function arrets() {
     $p = config::byKey('arrets', __CLASS__, []);
     if (is_string($p)) $p = json_decode($p, true);
     return is_array($p) ? $p : [];
+  }
+
+  public static function exclure($a, $b) {
+    $p = self::arrets(); $p[] = [(int)$a, (int)$b]; config::save('arrets', json_encode($p), __CLASS__);
   }
 
   // Bouton « Tout effacer » : changements d'état et habitudes calculées (le choix des commandes reste)
@@ -74,8 +80,10 @@ class presencehabituelle extends eqLogic {
 
   // Listener synchrone
   public static function evenement($_options) {
-    $id = (int)($_options['event_id'] ?? 0); if (!$id) return;
-    self::ajouter($id, self::valeur($_options['value'] ?? 0), strtotime((string)($_options['datetime'] ?? '')) ?: time());
+    try { // synchrone : une erreur ici ne doit pas remonter au plugin qui a changé la valeur
+      $id = (int)($_options['event_id'] ?? 0); if (!$id) return;
+      self::ajouter($id, self::valeur($_options['value'] ?? 0), strtotime((string)($_options['datetime'] ?? '')) ?: time());
+    } catch (Throwable $e) { log::add(__CLASS__, 'error', 'evenement : ' . $e->getMessage()); }
   }
 
   // État courant noté maintenant : début d'observation d'une commande non historisée, reprise après une désactivation
@@ -101,15 +109,21 @@ class presencehabituelle extends eqLogic {
 
   /* Reprise d'une commande par son historique Jeedom : changements exacts seulement (binaire, mode « Aucun », ou point pas encore archivé).
      Une moyenne horaire n'est ni un allumage ni une fermeture : elle est ignorée. À appeler AVANT noter() : s'arrête à la 1re ligne connue.
-     $tout = commande d'absence : une moyenne horaire > 0 dit qu'on était absent pendant l'heure, assez pour exclure le jour entier. */
-  public static function amorcer($cmd, $jours, $tout = false) {
+     Historique exact : l'état au début de la fenêtre est repris aussi (absence ou allumage commencés avant). */
+  public static function amorcer($cmd, $jours) {
     DB::Prepare('DELETE FROM ' . self::TABLE . ' WHERE cmd_id = ? AND src > 0', [$cmd->getId()], DB::FETCH_TYPE_ROW);
     if (!$cmd->getIsHistorized() || $jours <= 0) return 0;
     $exact = time() - 3600 * max(0, (float)config::byKey('historyArchiveTime', 'core', 2)); // en heures (history::archive)
-    $debut = self::lisse($cmd) && !$tout ? max($exact, time() - 86400 * $jours) : time() - 86400 * $jours;
+    $debut = self::lisse($cmd) ? max($exact, time() - 86400 * $jours) : time() - 86400 * $jours;
     $prem = DB::Prepare('SELECT MIN(ts) t FROM ' . self::TABLE . ' WHERE cmd_id = ?', [$cmd->getId()], DB::FETCH_TYPE_ROW);
     $fin = ($prem['t'] ?? null) ? (int)$prem['t'] : null; // les lignes déjà notées priment sur l'historique
     $lignes = []; $der = null;
+    if (!self::lisse($cmd) && (!$fin || $fin > $debut)) { // dernier point avant la fenêtre, dans history puis historyArch
+      $d = date('Y-m-d H:i:s', $debut); $av = null;
+      foreach (['history', 'historyArch'] as $t)
+        if (!$av && is_array($r = DB::Prepare('SELECT value FROM ' . $t . ' WHERE cmd_id = ? AND datetime < ? ORDER BY datetime DESC LIMIT 1', [$cmd->getId(), $d], DB::FETCH_TYPE_ROW))) $av = $r;
+      if ($av) { $der = self::valeur($av['value']); $lignes[] = [$cmd->getId(), $debut, $der]; }
+    }
     foreach (history::all($cmd->getId(), date('Y-m-d H:i:s', $debut), $fin ? date('Y-m-d H:i:s', $fin - 1) : null) as $h) {
       $v = self::valeur($h->getValue());
       if ($v === $der) continue;
@@ -157,11 +171,15 @@ class presencehabituelle extends eqLogic {
     if ($exclure && (!is_object($c = cmd::byId($exclure)) || $c->getType() != 'info')) throw new Exception(__('Commande d\'exclusion introuvable', __FILE__));
     if ($exclure && $c->getSubType() == 'string') // « Absent » en texte n'est pas reconnu : rien ne serait exclu, sans le dire
       throw new Exception(__('La commande d\'absence doit être binaire ou numérique (vraie pendant l\'absence) : un mode en texte ne convient pas, passez par un virtuel binaire', __FILE__));
+    if ($exclure && self::lisse($c)) // une moyenne horaire (0,5 = absent une demi-heure) n'a ni début ni fin
+      throw new Exception(__('Commande d\'absence numérique lissée : réglez son lissage sur « Aucun » (configuration de la commande, onglet Historique) ou passez par un virtuel binaire', __FILE__));
+    if ($avantX && $avantX != $exclure) // commande d'absence changée ou retirée : ses absences restent exclues
+      foreach (presencehabituelle_analyse::intervalles(self::evs($avantX), time()) as $i) self::exclure($i[0], $i[1]);
     $gardes = array_keys($propre); if ($exclure) $gardes[] = $exclure;
     foreach (array_keys($avant + [$avantX => 1]) as $id) // retirée = ses évènements partent
       if ($id && !in_array((int)$id, $gardes, true)) DB::Prepare('DELETE FROM ' . self::TABLE . ' WHERE cmd_id = ?', [(int)$id], DB::FETCH_TYPE_ROW);
-    $jours = (int)config::byKey('amorcer', __CLASS__, 90);
-    foreach (array_unique($gardes) as $id) if (!isset($avant[$id]) && $id != $avantX) { $n += self::amorcer(cmd::byId($id), $jours, $id == $exclure); self::noter($id); }
+    $jours = self::jours('amorcer');
+    foreach (array_unique($gardes) as $id) if (!isset($avant[$id]) && $id != $avantX) { $n += self::amorcer(cmd::byId($id), $jours); self::noter($id); }
     config::save('suivi', json_encode($propre), __CLASS__);
     config::save('exclure_cmd', $exclure ?: '', __CLASS__);
     config::save('exclusions', (string)$exclusions, __CLASS__);
@@ -200,7 +218,7 @@ class presencehabituelle extends eqLogic {
     $groupes = []; $volets = [];
     foreach (self::suivi() as $id => $s) {
       if ($s['t'] == 'volet') { $volets[$id] = $s; continue; }
-      $groupes[$s['g'] !== '' ? $s['g'] : "\0" . $id][] = (int)$id; // \0 : une lampe seule, jamais confondue avec un groupe saisi « #12 »
+      $groupes[$s['g'] !== '' ? $s['g'] : "\0" . $id][] = (int)$id; // \0 : une lampe seule, jamais confondue avec un groupe saisi « #12 » ; un groupe « 12 » devient la clé entière 12 : (string) plus bas
     }
     $res = ['date' => date('Y-m-d H:i:s'), 'groupes' => [], 'volets' => []];
     foreach ($groupes as $g => $ids) {
@@ -214,12 +232,12 @@ class presencehabituelle extends eqLogic {
       }
       $dbl = array_count_values($noms); // deux lampes de même nom : l'id les distingue
       foreach ($noms as $id => $n) if ($dbl[$n] > 1) $noms[$id] = $n . ' #' . $id;
-      $nom = $g[0] === "\0" ? self::nom((int)substr($g, 1)) : $g;
+      $g = (string)$g; $nom = $g[0] === "\0" ? self::nom((int)substr($g, 1)) : $g;
       if (!$iv) { $res['groupes'][] = ['nom' => $nom, 'jours' => 0]; continue; }
       $parNom = []; foreach ($iv as $id => $i) $parNom[$noms[$id]] = $i;
       $j = $A::jours($debut, $fin, $exG); $se = $A::sessions($parNom); $p = $A::profil($se, $j);
       $res['groupes'][] = ['nom' => $nom, 'lampes' => array_values($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
-        'S' => $p['S'], 'W' => $p['W'], 'lS' => $A::lisser($p['S']), 'lW' => $A::lisser($p['W']),
+        'S' => $p['S'], 'W' => $p['W'], 'cS' => $p['cS'], 'cW' => $p['cW'], 'lS' => $A::lisser($p['S']), 'lW' => $A::lisser($p['W']),
         'ex' => $p['ex'], 'durees' => $A::durees($se, $j), 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmer' => count($j) < self::FIABLE];
     }
     foreach ($volets as $id => $s) {
@@ -246,9 +264,24 @@ class presencehabituelle extends eqLogic {
     if ($p != self::arrets()) config::save('arrets', json_encode($p), __CLASS__);
   }
 
+  // Jours en réglage : vide, nul ou illisible = 90 (« trois mois » ne doit pas purger à 7 jours)
+  public static function jours($cle) {
+    return ($j = (int)config::byKey($cle, __CLASS__, 90)) > 0 ? $j : 90;
+  }
+
+  /* Box ou Jeedom arrêté : rien n'est relevé, les lampes paraîtraient éteintes. Un trou de plus de 3 h entre deux passages est exclu.
+     ponytail: 3 h = deux cronHourly manqués ; un arrêt plus court n'est pas vu */
+  public static function cronHourly() {
+    try {
+      $vu = (int)config::byKey('vu', __CLASS__, 0);
+      if ($vu && time() - $vu > 3 * 3600) self::exclure($vu, time());
+      config::save('vu', time(), __CLASS__);
+    } catch (Throwable $e) { log::add(__CLASS__, 'error', 'cronHourly : ' . $e->getMessage()); }
+  }
+
   public static function cronDaily() {
     try {
-      self::purger(max(7, (int)config::byKey('conserver', __CLASS__, 90)));
+      self::purger(max(7, self::jours('conserver')));
       self::analyser();
     } catch (Throwable $e) { log::add(__CLASS__, 'error', 'cronDaily : ' . $e->getMessage()); }
   }

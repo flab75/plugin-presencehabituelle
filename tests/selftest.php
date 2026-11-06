@@ -44,6 +44,16 @@ $ok($v['matin']['W']['med'] == 540 && $v['soir']['W']['n'] == 2 && $v['soir']['W
 $vf = $A::volet($ev, $A::jours($t('2026-03-01 12:00'), $t('2026-03-08 00:05'), []), $t('2026-03-08 00:05'));
 $ok($vf['soir']['W']['n'] == 1 && $vf['soir']['W']['ferme'] == 100 && $vf['soir']['S']['n'] == 4, 'volet nuit en cours : ' . json_encode($vf['soir']));
 
+// passage à l'heure d'été (dim. 29 mars) : ouvert 07:30 = 450 min, fermé 00:30 = 1470 min (après minuit ; dim. soir = semaine)
+$ete = array_map(fn($e) => [$t($e[0]), $e[1], true], [['2026-03-28 22:00', 0], ['2026-03-29 07:30', 100], ['2026-03-30 00:30', 0]]);
+$ve = $A::volet($ete, $A::jours($t('2026-03-28 12:00'), $t('2026-03-30 08:00'), []));
+$ok($ve['matin']['W']['med'] == 450 && $ve['soir']['S']['med'] == 1470, 'volet heure d\'été : ' . json_encode($ve));
+$ok($A::minutes($t('2026-03-30 00:30'), '2026-03-29') == 1470 && $A::minutes($t('2026-03-29 07:30'), '2026-03-29') == 450, 'minutes');
+// aucune nuit de week-end observée : % fermé inconnu (null), pas « jamais fermé »
+$vs = $A::volet($ev, $A::jours($t('2026-03-01 12:00'), $t('2026-03-06 08:00'), [])); // lun.-jeu. (le soir du vendredi compte pour le week-end)
+$ok($vs['soir']['W']['ferme'] === null && $vs['soir']['S']['ferme'] == 100, 'volet sans nuit : ' . json_encode($vs['soir']));
+$ok($p['cS'][19] == 1 && $p['cS'][20] == 0, 'comptes bruts : ' . json_encode($p['cS']));
+
 // deux allumages dans la même minute : deux durées, passages ≤ 100 %
 $d2 = $A::durees([[$t('2026-03-02 19:00:05'), $t('2026-03-02 19:00:20'), true], [$t('2026-03-02 19:00:40'), $t('2026-03-02 19:00:50'), true]], $j);
 $ok($d2['n'] == 2 && $d2['passages'] == 100, 'durées même minute : ' . json_encode($d2));

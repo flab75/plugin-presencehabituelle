@@ -53,7 +53,7 @@
   function charger() {
     ajax('liste', {}, function (r) {
       D = r
-      if (!Object.keys(D.suivi).length) D.candidats.forEach(function (c) { if (c.coche && c.actif) D.suivi[c.id] = { g: '', t: c.type } }) // première fois : préconisation
+      if (r.jamais) D.candidats.forEach(function (c) { if (c.coche && c.actif) D.suivi[c.id] = { g: '', t: c.type } }) // première fois : préconisation
       $('#ph_exclure').val(r.exclure); $('#ph_exclusions').val(r.exclusions)
       liste()
     })
@@ -84,7 +84,7 @@
       for (var i = 0; i < 24; i++) h += '<th style="text-align:center;padding:2px">' + i + '</th>'
       h += '</tr>' + profil(g, 'S') + profil(g, 'W') + '</table>'
       var jamais = []
-      for (var i = 0; i < 24; i++) if ((!g.nS || !g.S[i]) && (!g.nW || !g.W[i])) jamais.push(i)
+      for (var i = 0; i < 24; i++) if (!(g.cS || g.S)[i] && !(g.cW || g.W)[i]) jamais.push(i) // comptes bruts (habitudes.json d’avant 0.4 : %) : un allumage sur 300 jours arrondit à 0 %
       h += '<p>' + (jamais.length ? '<b>{{Jamais allumée}}</b> : ' + esc(plages(jamais)) : '{{Allumée au moins une fois à chaque heure.}}') + '</p>'
       if ((g.ex || []).length) h += '<p><b>{{Exceptions}}</b> <small>({{heures où elle l’est au plus 10 % des jours}})</small> : '
         + g.ex.slice(-8).map(function (e) { return esc(jj(e[0])) + ' ' + esc(e[1]) + ' h' }).join(' ; ') + (g.ex.length > 8 ? ' …' : '') + '</p>'
@@ -100,7 +100,7 @@
       var ex = []
       r.volets.forEach(function (v) {
         function c(x, soir) {
-          var f = !soir || !x ? '' : '<br><small>' + (x.ferme >= 100 ? '{{toujours fermé la nuit}}' : x.ferme ? '{{fermé}} ' + esc(x.ferme) + ' % {{des nuits}}' : '{{jamais fermé la nuit}}') + '</small>'
+          var f = !soir || !x || x.ferme === null || x.ferme === undefined ? '' : '<br><small>' + (x.ferme >= 100 ? '{{toujours fermé la nuit}}' : x.ferme ? '{{fermé}} ' + esc(x.ferme) + ' % {{des nuits}}' : '{{jamais fermé la nuit}}') + '</small>'
           if (!x || !x.n) return '<td>–' + f + '</td>'
           return '<td>{{médiane}} ' + hm(x.med) + ', {{moyenne}} ' + hm(x.moy) + '<br><small>{{au plus tôt}} ' + hm(x.min) + ', {{au plus tard}} ' + hm(x.max) + ' (' + esc(x.n) + ' j)</small>' + f + '</td>'
         }
