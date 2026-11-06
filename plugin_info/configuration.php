@@ -20,5 +20,11 @@ if (!isConnect('admin')) {
       </label>
       <div class="col-md-2"><input class="configKey form-control" data-l1key="conserver" placeholder="90"></div>
     </div>
+    <div class="form-group">
+      <label class="col-md-4 control-label">{{Allumage le plus long}} ({{heures}})
+        <sup><i class="fas fa-question-circle tooltips" title="{{Un allumage plus long est pris pour une extinction manquée (box arrêtée, pont hors ligne) : il est écarté, et les jours qu'il touche ne sont pas comptés pour cette lampe. Par défaut 18.}}"></i></sup>
+      </label>
+      <div class="col-md-2"><input class="configKey form-control" data-l1key="session_max" placeholder="18"></div>
+    </div>
   </fieldset>
 </form>

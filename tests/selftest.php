@@ -26,8 +26,9 @@ $ok($p['nS'] == 4 && $p['nW'] == 0 && $p['S'][19] == 25 && $p['S'][22] == 25 && 
 $l = $A::lisser($p['S']);
 $ok($l[19] == 13 && $l[20] == 0 && $l[22] == 13, 'lissage : ' . json_encode($l));
 
+$ok($p['ex'] == [], 'aucune heure rare : ' . json_encode($p['ex'])); // 25 % > RARE
 $d = $A::durees($se, $j);
-$ok($d['n'] == 2 && $d['med'] == 30.5 && $d['passages'] == 50, 'durées : ' . json_encode($d));
+$ok($d['n'] == 2 && $d['med'] == 30.5 && $d['min'] == 1 && $d['max'] == 60 && $d['passages'] == 50, 'durées : ' . json_encode($d));
 $sc = $A::scenes($se, $j);
 $ok($sc == ['A + B' => 50, 'C' => 50], 'scènes : ' . json_encode($sc));
 
@@ -39,22 +40,39 @@ $v = $A::volet($ev, $A::jours($t('2026-03-01 12:00'), $t('2026-03-09 08:00'), []
 $ok($v['matin']['S']['med'] == 450 && $v['matin']['S']['n'] == 4 && $v['soir']['S']['med'] == 1260 && $v['soir']['S']['ferme'] == 100, 'volet semaine : ' . json_encode($v));
 $ok($v['matin']['W']['med'] == 540 && $v['soir']['W']['n'] == 2 && $v['soir']['W']['med'] == 1360 && $v['soir']['W']['ferme'] == 100, 'volet week-end : ' . json_encode($v));
 
+[$g, $x] = $A::longues([[0, 3600, true], [5000, 5000 + 20 * 3600, true]], 18 * 3600);
+$ok(count($g) == 1 && $g[0][1] == 3600 && $x == [[5000, 5000 + 20 * 3600]], 'longues');
+
+// heure rare : allumé à 03 h un seul jour de semaine sur 15 (7 %) = exception ; 19 h tous les jours = tendance
+$jr = $A::jours($t('2026-03-01 12:00'), $t('2026-03-22 08:00'), []); $ses = [];
+foreach ($jr as $x) $ses[] = [$x['a'] + 19 * 3600, $x['a'] + 20 * 3600];
+$ses[] = [$t('2026-03-04 03:10'), $t('2026-03-04 03:20')];
+$pr = $A::profil($ses, $jr);
+$ok($pr['nS'] == 15 && $pr['S'][19] == 100 && $pr['ex'] == [['2026-03-04', 3]], 'heure rare : ' . json_encode($pr['ex']));
+
+// stats : 9 matins vers 07:30, un à 05:00 = exception ; série trop courte = pas d'exception
+$st = $A::stats(['a' => 450, 'b' => 455, 'c' => 445, 'd' => 460, 'e' => 450, 'f' => 440, 'g' => 450, 'h' => 470, 'i' => 450, 'x' => 300]);
+$ok($st['min'] == 300 && $st['max'] == 470 && $st['med'] == 450 && $st['moy'] == 437 && $st['ex'] == ['x' => 300], 'stats : ' . json_encode($st));
+$ok($A::stats([1 => 450, 2 => 900])['ex'] == [] && $A::stats([]) == ['n' => 0], 'stats courtes');
+
 $ok($A::actif('On') && $A::actif(1) && !$A::actif('0') && !$A::actif('Absent ?') && !$A::actif(''), 'actif');
 $pe = $A::periodes("2026-10-15 15:27 → 2026-10-23 12:42\nn'importe quoi\n2026-11-01 - 2026-11-02");
 $ok(count($pe) == 2 && $pe[0][0] == $t('2026-10-15 15:27') && $pe[1][1] == $t('2026-11-02 23:59:59'), 'périodes : ' . json_encode($pe));
 echo "calcul OK\n";
 
 // confidentialité : aucun appel réseau dans le code du plugin
-$motifs = ['http' . '://', 'https' . '://', 'curl' . '_', 'fsock' . 'open', 'stream' . '_socket', 'com' . '_http', 'file_get_contents(\'h', 'fetch(\'h'];
+$motifs = ['http' . '://', 'https' . '://', 'curl' . '_', 'fsock' . 'open', 'stream' . '_socket', 'com' . '_http', 'file_get_contents(\'h', 'f' . 'open(', 'XMLHttp' . 'Request', '$.' . 'ajax', '$.' . 'get(', '$.' . 'post(', 'new ' . 'Image', 'Soap' . 'Client', 'sock' . 'et_', 'Web' . 'Socket', 'send' . 'Beacon'];
 $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(dirname(__DIR__), FilesystemIterator::SKIP_DOTS));
 foreach ($it as $f) {
-  if (!preg_match('/\.(php|js)$/', $f) || strpos($f, '/docs/') !== false) continue;
+  if (!preg_match('/\.(php|js)$/', $f) || preg_match('#/(docs|tests)/#', $f)) continue;
   $c = file_get_contents($f);
   foreach ($motifs as $m) $ok(strpos($c, $m) === false, "appel réseau possible ($m) dans " . basename($f));
+  preg_match_all('/fetch\(\s*([^,)]*)/', $c, $fm); // seul fetch permis : l'ajax du plugin
+  foreach ($fm[1] as $u) $ok(strpos($u, "'plugins/presencehabituelle/") === 0, "fetch hors du plugin dans " . basename($f) . ' : ' . $u);
 }
 echo "aucun appel réseau OK\n";
 
-if (is_file(__DIR__ . '/../../../core/php/core.inc.php')) { // sur la box : analyse réelle, rien n'est écrit sauf le résultat
+if (is_file(__DIR__ . '/../../../core/php/core.inc.php')) { // sur la box : analyse réelle, rien n'est écrit sauf data/habitudes.json
   require_once __DIR__ . '/../core/class/presencehabituelle.class.php';
   $r = presencehabituelle::analyser();
   echo 'analyse OK : ' . count($r['groupes']) . ' groupes, ' . count($r['volets']) . " volets\n";

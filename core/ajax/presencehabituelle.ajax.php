@@ -15,14 +15,17 @@ try {
   if (init('action') == 'enregistrer') {
     $s = json_decode((string)init('suivi'), true);
     $x = trim((string)init('exclure'));
-    $x = $x === '' ? 0 : (int)trim(cmd::humanReadableToCmd($x), '#');
+    if ($x !== '') { // un nom inconnu revient tel quel : ne pas le prendre pour « pas d'exclusion »
+      if (!preg_match('/^#(\d+)#$/', trim(cmd::humanReadableToCmd($x)), $m)) throw new Exception(__('Commande d\'absence introuvable', __FILE__) . ' : ' . $x);
+      $x = (int)$m[1];
+    } else $x = 0;
     ajax::success(['repris' => $P::enregistrer(is_array($s) ? $s : [], $x, (string)init('exclusions')), 'habitudes' => $P::analyser()]);
   }
   if (init('action') == 'habitudes') {
-    $h = json_decode((string)config::byKey('habitudes', $P, ''), true);
-    ajax::success(is_array($h) ? $h : $P::analyser());
+    ajax::success($P::habitudes());
   }
   if (init('action') == 'recalculer') ajax::success($P::analyser());
+  if (init('action') == 'effacer') { $P::effacer(); $P::demarrer(); ajax::success($P::analyser()); } // état courant noté à nouveau
 
   throw new Exception(__('Aucune méthode correspondante à', __FILE__) . ' : ' . init('action'));
 } catch (Throwable $e) {

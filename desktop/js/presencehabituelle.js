@@ -13,6 +13,15 @@
       .catch(function (e) { alerte(e instanceof SyntaxError ? "{{Réponse illisible : session expirée ? Recharger la page.}}" : String(e)) })
   }
   var NOMS = { lumiere: '{{lumière}}', volet: '{{volet}}', prise: '{{prise}}', media: '{{média}}', autre: '{{autre}}' }
+  function jj(d) { return String(d).slice(8, 10) + '/' + String(d).slice(5, 7) + String(d).slice(10) } // AAAA-MM-JJ[ HH:MM] → JJ/MM[ HH:MM]
+  function plages(hs) { // [3, 4, 5, 9] → « 03 h – 06 h, 09 h – 10 h »
+    var r = [], a = null
+    for (var h = 0; h <= 24; h++) {
+      if (hs.indexOf(h) >= 0) { if (a === null) a = h } else if (a !== null) { r.push(('0' + a).slice(-2) + ' h – ' + ('0' + h % 24).slice(-2) + ' h'); a = null }
+    }
+    return r.join(', ')
+  }
+  function exc(ex, f) { var k = Object.keys(ex || {}).sort(); return k.slice(-8).map(function (d) { return esc(jj(d)) + ' (' + f(ex[d]) + ')' }).join(' ; ') + (k.length > 8 ? ' …' : '') }
   function hm(m) { if (m === undefined) return '–'; m = Math.round(m) % 1440; return ('0' + Math.floor(m / 60)).slice(-2) + ':' + ('0' + m % 60).slice(-2) }
 
   function liste() {
@@ -31,12 +40,14 @@
           + '<td style="width:30px"><input type="checkbox" class="ph_coche"' + (s ? ' checked' : '') + '></td>'
           + '<td>' + esc(c.eq) + ' <small>' + esc(c.nom) + '</small></td>'
           + '<td style="width:110px">' + esc(NOMS[c.type]) + (c.type == 'autre' ? ' <i class="fas fa-exclamation-triangle text-warning" title="{{Déconseillé : pas un geste de présence}}"></i>' : '') + '</td>'
-          + '<td style="width:150px">' + (c.hist ? '<small>{{historisée}}</small>' : '<small class="text-warning" title="{{Rien à reprendre : apprentissage à partir de l\'enregistrement}}">{{non historisée}}</small>') + '</td>'
+          + '<td style="width:150px">' + (!c.hist ? '<small class="text-warning" title="{{Rien à reprendre : l’analyse part de l’enregistrement}}">{{non historisée}}</small>'
+            : c.lisse ? '<small class="text-warning" title="{{Jeedom remplace ses valeurs par une moyenne horaire après quelques heures : seules les dernières heures sont reprises. Réglez son lissage sur « Aucun » (configuration de la commande, onglet Historique).}}">{{historique lissé}}</small>'
+            : '<small>{{historisée}}</small>') + '</td>'
           + '<td style="width:220px"><input class="form-control input-sm ph_groupe" placeholder="{{lampe seule}}" value="' + esc(s ? s.g : '') + '"></td></tr>'
       })
       h += '</tbody></table>'
     })
-    $('#ph_liste').html(h || '<div class="alert alert-warning">{{Aucune lumière ni aucun volet trouvé : renseignez le type générique de leurs commandes d\'état, ou affichez les autres commandes.}}</div>')
+    $('#ph_liste').html(h || '<div class="alert alert-warning">{{Aucune lumière ni aucun volet trouvé : renseignez le type générique de leurs commandes d’état, ou affichez les autres commandes.}}</div>')
   }
 
   function charger() {
@@ -72,39 +83,55 @@
       h += '<table class="table table-condensed table-bordered" style="table-layout:fixed;font-size:.85em"><tr><th></th>'
       for (var i = 0; i < 24; i++) h += '<th style="text-align:center;padding:2px">' + i + '</th>'
       h += '</tr>' + profil(g, 'S') + profil(g, 'W') + '</table>'
+      var jamais = []
+      for (var i = 0; i < 24; i++) if ((!g.nS || !g.S[i]) && (!g.nW || !g.W[i])) jamais.push(i)
+      h += '<p>' + (jamais.length ? '<b>{{Jamais allumée}}</b> : ' + esc(plages(jamais)) : '{{Allumée au moins une fois à chaque heure.}}') + '</p>'
+      if ((g.ex || []).length) h += '<p><b>{{Exceptions}}</b> <small>({{heures où elle l’est au plus 10 % des jours}})</small> : '
+        + g.ex.slice(-8).map(function (e) { return esc(jj(e[0])) + ' ' + esc(e[1]) + ' h' }).join(' ; ') + (g.ex.length > 8 ? ' …' : '') + '</p>'
       var d = g.durees
-      h += '<p>' + (d.n ? '{{Durée allumée}} : {{médiane}} ' + esc(d.med) + ' min ({{la moitié entre}} ' + esc(d.q25) + ' {{et}} ' + esc(d.q75) + ' min), '
-        + esc(d.passages) + ' % {{de passages de moins de 3 min}} (' + esc(d.n) + ' {{allumages}})' : '{{Durées : pas d\'allumage daté à la seconde (historique moyenné seulement).}}') + '</p>'
+      h += '<p>' + (d.n ? '<b>{{Durée allumée}}</b> : {{moyenne}} ' + esc(d.moy) + ' min, {{médiane}} ' + esc(d.med) + ' min ({{la moitié entre}} ' + esc(d.q25) + ' {{et}} ' + esc(d.q75) + ' min), '
+        + '{{de}} ' + esc(d.min) + ' {{à}} ' + esc(d.max) + ' min ; ' + esc(d.passages) + ' % {{de passages de moins de 3 min}} (' + esc(d.n) + ' {{allumages}})' : '{{Durées : pas encore d’allumage terminé.}}') + '</p>'
+      if (d.n && Object.keys(d.ex || {}).length) h += '<p><b>{{Durées inhabituelles}}</b> : ' + exc(d.ex, function (v) { return esc(v) + ' min' }) + '</p>'
       var sc = Object.keys(g.scenes || {})
       if (sc.length) h += '<p>{{Allumées ensemble}} : ' + sc.slice(0, 5).map(function (k) { return esc(k) + ' (' + esc(g.scenes[k]) + ' %)' }).join(' ; ') + '</p>'
     })
     if ((r.volets || []).length) {
       h += '<legend style="font-size:1.1em">{{Volets}}</legend><table class="table table-condensed table-bordered"><tr><th>{{Volet}}</th><th>{{Ouverture semaine}}</th><th>{{Ouverture week-end}}</th><th>{{Fermeture semaine}}</th><th>{{Fermeture week-end}}</th></tr>'
+      var ex = []
       r.volets.forEach(function (v) {
         function c(x, soir) {
-          if (!x || !x.n) return '<td>–</td>'
-          return '<td>' + hm(x.med) + ' <small>(' + hm(x.q25) + '–' + hm(x.q75) + ', ' + esc(x.n) + ' j' + (soir ? ', {{fermé}} ' + esc(x.ferme) + ' % {{des soirs}}' : '') + ')</small></td>'
+          var f = !soir || !x ? '' : '<br><small>' + (x.ferme >= 100 ? '{{toujours fermé la nuit}}' : x.ferme ? '{{fermé}} ' + esc(x.ferme) + ' % {{des nuits}}' : '{{jamais fermé la nuit}}') + '</small>'
+          if (!x || !x.n) return '<td>–' + f + '</td>'
+          return '<td>{{médiane}} ' + hm(x.med) + ', {{moyenne}} ' + hm(x.moy) + '<br><small>{{au plus tôt}} ' + hm(x.min) + ', {{au plus tard}} ' + hm(x.max) + ' (' + esc(x.n) + ' j)</small>' + f + '</td>'
         }
+        ;[['matin', '{{ouverture}}'], ['soir', '{{fermeture}}']].forEach(function (m) {
+          ;['S', 'W'].forEach(function (k) { var x = v[m[0]] && v[m[0]][k]; if (x && Object.keys(x.ex || {}).length) ex.push(esc(v.nom) + ', ' + m[1] + ' : ' + exc(x.ex, hm)) })
+        })
         h += '<tr><td>' + esc(v.nom) + (v.confirmer ? ' <span class="label label-warning">{{à confirmer}}</span>' : '') + '</td>'
           + (v.jours ? c(v.matin.S) + c(v.matin.W) + c(v.soir.S, 1) + c(v.soir.W, 1) : '<td colspan="4">{{Pas encore assez de données.}}</td>') + '</tr>'
       })
-      h += '</table><p><small>{{Week-end : matins du samedi et du dimanche, soirs du vendredi et du samedi. Une fermeture partielle (contre le soleil) ne compte pas.}}</small></p>'
+      h += '</table>' + (ex.length ? '<p><b>{{Exceptions}}</b> :<br>' + ex.join('<br>') + '</p>' : '') + '<p><small>{{Exceptions : jours loin de la moitié centrale (plus de 30 min, ou 1,5 fois son étendue).}} {{Week-end : matins du samedi et du dimanche, soirs du vendredi et du samedi. Une fermeture partielle (contre le soleil) ne compte pas.}}</small></p>'
     }
     $('#ph_resultats').html(h || '<p>{{Aucune commande suivie.}}</p>')
   }
 
   $('#ph_autres').on('change', function () { lire(); liste() })
-  $('#ph_parObjet').on('click', function () { $('#ph_liste tr[data-id]').each(function () { if ($(this).find('.ph_coche').is(':checked')) $(this).find('.ph_groupe').val($(this).data('objet')) }) })
+  $('#ph_parObjet').on('click', function () { $('#ph_liste tr[data-id]').each(function () { if ($(this).find('.ph_coche').is(':checked')) $(this).find('.ph_groupe').val($(this).attr('data-objet')) }) })
   $('#ph_seules').on('click', function () { $('#ph_liste .ph_groupe').val('') })
   $('#ph_choisir').on('click', function () { jeedom.cmd.getSelectModal({ cmd: { type: 'info' } }, function (r) { $('#ph_exclure').val(r.human) }) })
   $('#ph_enregistrer').on('click', function () {
     lire()
     ajax('enregistrer', { suivi: JSON.stringify(D.suivi), exclure: $('#ph_exclure').val(), exclusions: $('#ph_exclusions').val() }, function (r) {
-      alerte('{{Enregistré}} : ' + r.repris + ' {{changements repris de l\'historique}}', 'success')
+      alerte('{{Enregistré}} : ' + r.repris + ' {{changements repris de l’historique}}', 'success')
       habitudes(r.habitudes)
     })
   })
   $('#ph_recalculer').on('click', function () { ajax('recalculer', {}, habitudes) })
+  $('#ph_effacer').on('click', function () {
+    bootbox.confirm('{{Effacer les changements d’état relevés et les tendances calculées ? Le choix des commandes est gardé ; l’historique de Jeedom n’est pas repris.}}', function (oui) {
+      if (oui) ajax('effacer', {}, function (r) { habitudes(r); alerte('{{Relevés effacés}}', 'success') })
+    })
+  })
   charger()
   ajax('habitudes', {}, habitudes)
 })()

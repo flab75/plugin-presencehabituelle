@@ -1,11 +1,11 @@
 <?php
-/* Présence habituelle : apprend les habitudes (lumières, volets) à partir des changements d'état, sans rien envoyer hors de la box.
-   0.1 : apprentissage seul (aucune action sur les équipements). */
+/* Présence habituelle : tire des historiques (lumières, volets) les tendances, les exceptions et ce qui n'arrive jamais, sans rien envoyer hors de la box.
+   0.2 : analyse seule (aucune action sur les équipements). */
 require_once __DIR__ . '/../../../../core/php/core.inc.php';
 require_once __DIR__ . '/presencehabituelle_analyse.class.php';
 
 class presencehabituelle extends eqLogic {
-  const TABLE = 'presencehabituelle_event';
+  const TABLE = 'presencehabituelle_event'; // src : 0 listener ou état noté, 1 repris de l'historique (points exacts seulement)
   const FIABLE = 10; // jours comptés sous lesquels une habitude est « à confirmer »
   // préconisation par type générique : [type, cochée d'office]
   const TYPES = ['LIGHT_STATE' => ['lumiere', 1], 'LIGHT_STATE_BOOL' => ['lumiere', 1], 'FLAP_STATE' => ['volet', 1], 'FLAP_BSO_STATE' => ['volet', 1],
@@ -16,15 +16,37 @@ class presencehabituelle extends eqLogic {
       ts INT UNSIGNED NOT NULL, valeur DOUBLE NOT NULL, src TINYINT NOT NULL DEFAULT 0, KEY cmd_ts (cmd_id, ts)) ENGINE=InnoDB', [], DB::FETCH_TYPE_ROW);
   }
 
-  public static function supprimerTout() {
-    if (is_object($l = listener::byClassAndFunction(__CLASS__, 'evenement'))) $l->remove();
-    DB::Prepare('DROP TABLE IF EXISTS ' . self::TABLE, [], DB::FETCH_TYPE_ROW);
+  /* Installation / réactivation. Jeedom appelle _remove aussi à la simple désactivation : la table y est gardée.
+     Une désinstallation efface la configuration (core) : une table restée sans configuration est d'une installation précédente → vidée. */
+  public static function demarrer() {
+    self::creerTable();
+    if (!self::suivi() && !(int)config::byKey('exclure_cmd', __CLASS__, 0)) self::effacer();
+    else foreach (self::ids() as $id) self::noter($id); // état pendant la désactivation : une extinction manquée ne fait pas une session sans fin
+    self::majListener();
   }
 
-  // {cmdId: {g: groupe, t: type}}
+  public static function arreter() {
+    if (is_object($l = listener::byClassAndFunction(__CLASS__, 'evenement'))) $l->remove();
+  }
+
+  // Bouton « Tout effacer » : changements d'état et habitudes calculées (le choix des commandes reste)
+  public static function effacer() {
+    DB::Prepare('DELETE FROM ' . self::TABLE, [], DB::FETCH_TYPE_ROW);
+    if (is_file($f = self::fichier())) unlink($f);
+  }
+
+  // {cmdId: {g: groupe, t: type}} ; config::byKey décode déjà le JSON (piège JD-54)
   public static function suivi() {
-    $s = json_decode((string)config::byKey('suivi', __CLASS__, '{}'), true);
+    $s = config::byKey('suivi', __CLASS__, []);
+    if (is_string($s)) $s = json_decode($s, true);
     return is_array($s) ? $s : [];
+  }
+
+  // Commandes lues : suivies + commande d'absence
+  private static function ids() {
+    $ids = array_map('intval', array_keys(self::suivi()));
+    if ($x = (int)config::byKey('exclure_cmd', __CLASS__, 0)) $ids[] = $x;
+    return array_values(array_unique($ids));
   }
 
   // Valeur d'état → nombre (> 0 = allumé / ouvert / actif)
@@ -32,61 +54,88 @@ class presencehabituelle extends eqLogic {
     return is_numeric($v) ? (float)$v : (presencehabituelle_analyse::actif($v) ? 1.0 : 0.0);
   }
 
-  // Listener synchrone : une ligne seulement si la valeur change
-  public static function evenement($_options) {
-    $id = (int)($_options['event_id'] ?? 0); if (!$id) return;
-    $v = self::valeur($_options['value'] ?? 0);
-    $ts = strtotime((string)($_options['datetime'] ?? '')) ?: time();
+  // Ajoute un changement (src 0) seulement si la valeur diffère de la dernière connue
+  private static function ajouter($id, $v, $ts) {
     $d = DB::Prepare('SELECT valeur FROM ' . self::TABLE . ' WHERE cmd_id = ? ORDER BY ts DESC, id DESC LIMIT 1', [$id], DB::FETCH_TYPE_ROW);
     if (is_array($d) && (float)$d['valeur'] == $v) return;
     DB::Prepare('INSERT INTO ' . self::TABLE . ' (cmd_id, ts, valeur, src) VALUES (?, ?, ?, 0)', [$id, $ts, $v], DB::FETCH_TYPE_ROW);
   }
 
+  // Listener synchrone
+  public static function evenement($_options) {
+    $id = (int)($_options['event_id'] ?? 0); if (!$id) return;
+    self::ajouter($id, self::valeur($_options['value'] ?? 0), strtotime((string)($_options['datetime'] ?? '')) ?: time());
+  }
+
+  // État courant noté maintenant : début d'observation d'une commande non historisée, reprise après une désactivation
+  public static function noter($id) {
+    if (is_object($c = cmd::byId($id))) self::ajouter($id, self::valeur($c->execCmd()), time());
+  }
+
   public static function majListener() {
-    $ids = array_keys(self::suivi());
-    if ($x = (int)config::byKey('exclure_cmd', __CLASS__, 0)) $ids[] = $x;
+    $ids = self::ids();
     $l = listener::byClassAndFunction(__CLASS__, 'evenement');
     if (!$ids) { if (is_object($l)) $l->remove(); return; }
     if (!is_object($l)) { $l = new listener(); $l->setClass(__CLASS__); $l->setFunction('evenement'); }
     $l->setOption('background', false); // ponytail: synchrone = 1 SELECT + 1 INSERT au plus par changement ; passer en background si une box lente le sent
     $l->emptyEvent();
-    foreach (array_unique($ids) as $id) $l->addEvent($id);
+    foreach ($ids as $id) $l->addEvent($id);
     $l->save();
   }
 
-  /* Amorçage d'une commande par son historique Jeedom : changements seulement.
-     Exact (src 1) : binaire (jamais lissé), historizeMode « none », ou point récent pas encore archivé ; sinon moyenne horaire (src 2). */
+  // Historique lissé : Jeedom remplace les valeurs numériques par une moyenne horaire après historyArchiveTime HEURES
+  public static function lisse($cmd) {
+    return $cmd->getIsHistorized() && $cmd->getSubType() != 'binary' && $cmd->getConfiguration('historizeMode', 'avg') != 'none';
+  }
+
+  /* Reprise d'une commande par son historique Jeedom : changements exacts seulement (binaire, mode « Aucun », ou point pas encore archivé).
+     Une moyenne horaire n'est ni un allumage ni une fermeture : elle est ignorée. À appeler AVANT noter() : s'arrête à la 1re ligne connue. */
   public static function amorcer($cmd, $jours) {
     DB::Prepare('DELETE FROM ' . self::TABLE . ' WHERE cmd_id = ? AND src > 0', [$cmd->getId()], DB::FETCH_TYPE_ROW);
     if (!$cmd->getIsHistorized() || $jours <= 0) return 0;
-    $brut = $cmd->getSubType() == 'binary' || $cmd->getConfiguration('historizeMode', 'avg') == 'none';
-    $recent = time() - 86400 * (float)config::byKey('historyArchiveTime', 'core', 2);
+    $exact = time() - 3600 * max(2, (float)config::byKey('historyArchiveTime', 'core', 2)); // en heures (history::archive)
+    $debut = self::lisse($cmd) ? max($exact, time() - 86400 * $jours) : time() - 86400 * $jours;
     $prem = DB::Prepare('SELECT MIN(ts) t FROM ' . self::TABLE . ' WHERE cmd_id = ?', [$cmd->getId()], DB::FETCH_TYPE_ROW);
-    $fin = ($prem['t'] ?? null) ? (int)$prem['t'] : null; // les lignes du listener priment sur l'historique
-    $n = 0; $der = null;
-    foreach (history::all($cmd->getId(), date('Y-m-d H:i:s', time() - 86400 * $jours), $fin ? date('Y-m-d H:i:s', $fin - 1) : null) as $h) {
-      $v = self::valeur($h->getValue()); $t = strtotime($h->getDatetime());
+    $fin = ($prem['t'] ?? null) ? (int)$prem['t'] : null; // les lignes déjà notées priment sur l'historique
+    $lignes = []; $der = null;
+    foreach (history::all($cmd->getId(), date('Y-m-d H:i:s', $debut), $fin ? date('Y-m-d H:i:s', $fin - 1) : null) as $h) {
+      $v = self::valeur($h->getValue());
       if ($v === $der) continue;
-      $der = $v; $n++;
-      DB::Prepare('INSERT INTO ' . self::TABLE . ' (cmd_id, ts, valeur, src) VALUES (?, ?, ?, ?)', [$cmd->getId(), $t, $v, ($brut || $t >= $recent) ? 1 : 2], DB::FETCH_TYPE_ROW);
+      $der = $v; $lignes[] = [$cmd->getId(), strtotime($h->getDatetime()), $v];
     }
-    return $n;
+    foreach (array_chunk($lignes, 500) as $paquet) // une requête par 500 lignes
+      DB::Prepare('INSERT INTO ' . self::TABLE . ' (cmd_id, ts, valeur, src) VALUES ' . implode(',', array_fill(0, count($paquet), '(?, ?, ?, 1)')),
+        array_merge(...$paquet), DB::FETCH_TYPE_ROW);
+    return count($lignes);
   }
 
-  // Commandes info proposées, avec la préconisation
+  // Commandes info proposées, avec la préconisation (une seule commande d'état cochée par équipement)
   public static function candidats() {
-    $r = [];
+    $eqs = []; foreach (eqLogic::all() as $e) $eqs[$e->getId()] = $e;
+    $objs = []; foreach (jeeObject::all() as $o) $objs[$o->getId()] = $o->getName();
+    $r = []; $choisi = [];
     foreach (cmd::byTypeSubType('info') as $c) {
-      if (!is_object($eq = $c->getEqLogic()) || $eq->getEqType_name() == __CLASS__) continue;
+      if (!($eq = $eqs[$c->getEqLogic_id()] ?? null) || $eq->getEqType_name() == __CLASS__) continue;
       [$t, $coche] = self::TYPES[$c->getGeneric_type()] ?? ['autre', 0];
-      $r[] = ['id' => $c->getId(), 'nom' => $c->getName(), 'eq' => $eq->getName(), 'objet' => is_object($o = $eq->getObject()) ? $o->getName() : '',
-        'type' => $t, 'coche' => $coche, 'gen' => (string)$c->getGeneric_type(), 'hist' => (int)$c->getIsHistorized(), 'actif' => (int)$eq->getIsEnable()];
+      // préférée : binaire ou LIGHT_STATE_BOOL (une luminosité peut ne pas retomber à 0 à l'extinction)
+      $rang = $coche ? ($c->getSubType() == 'binary' || $c->getGeneric_type() == 'LIGHT_STATE_BOOL' ? 2 : 1) : 0;
+      $r[] = ['id' => $c->getId(), 'nom' => $c->getName(), 'eq' => $eq->getName(), 'objet' => $objs[$eq->getObject_id()] ?? '',
+        'type' => $t, 'coche' => $coche, 'gen' => (string)$c->getGeneric_type(), 'hist' => (int)$c->getIsHistorized(), 'lisse' => (int)self::lisse($c),
+        'actif' => (int)$eq->getIsEnable()];
+      $k = $eq->getId() . '|' . $t;
+      if ($rang && (!isset($choisi[$k]) || $rang > $choisi[$k][0])) $choisi[$k] = [$rang, count($r) - 1];
     }
+    $garde = array_flip(array_column($choisi, 1));
+    foreach ($r as $i => $c) if ($c['coche'] && !isset($garde[$i])) $r[$i]['coche'] = 0;
     return $r;
   }
 
   /* Enregistre le choix de la page. $suivi = {cmdId: {g, t}} ; renvoie le nombre de changements repris de l'historique. */
   public static function enregistrer(array $suivi, $exclure, $exclusions) {
+    $A = 'presencehabituelle_analyse';
+    $mal = [];
+    foreach (preg_split('/\R/', (string)$exclusions) as $l) if (trim($l) !== '' && !$A::periodes($l)) $mal[] = trim($l);
+    if ($mal) throw new Exception(__('Période illisible (attendu AAAA-MM-JJ HH:MM → AAAA-MM-JJ HH:MM)', __FILE__) . ' : ' . implode(' ; ', $mal));
     $propre = []; $avant = self::suivi(); $n = 0; $avantX = (int)config::byKey('exclure_cmd', __CLASS__, 0);
     foreach ($suivi as $id => $s) {
       if (!is_object($c = cmd::byId((int)$id)) || $c->getType() != 'info') continue;
@@ -98,7 +147,7 @@ class presencehabituelle extends eqLogic {
     foreach (array_keys($avant + [$avantX => 1]) as $id) // retirée = ses évènements partent
       if ($id && !in_array((int)$id, $gardes, true)) DB::Prepare('DELETE FROM ' . self::TABLE . ' WHERE cmd_id = ?', [(int)$id], DB::FETCH_TYPE_ROW);
     $jours = (int)config::byKey('amorcer', __CLASS__, 90);
-    foreach ($gardes as $id) if (!isset($avant[$id]) && $id != $avantX) $n += self::amorcer(cmd::byId($id), $jours);
+    foreach (array_unique($gardes) as $id) if (!isset($avant[$id]) && $id != $avantX) { $n += self::amorcer(cmd::byId($id), $jours); self::noter($id); }
     config::save('suivi', json_encode($propre), __CLASS__);
     config::save('exclure_cmd', $exclure ?: '', __CLASS__);
     config::save('exclusions', (string)$exclusions, __CLASS__);
@@ -107,8 +156,8 @@ class presencehabituelle extends eqLogic {
   }
 
   private static function evs($id) {
-    return array_map(fn($d) => [(int)$d['ts'], (float)$d['valeur'], $d['src'] < 2],
-      DB::Prepare('SELECT ts, valeur, src FROM ' . self::TABLE . ' WHERE cmd_id = ? ORDER BY ts, id', [$id], DB::FETCH_TYPE_ALL) ?: []);
+    return array_map(fn($d) => [(int)$d['ts'], (float)$d['valeur'], true],
+      DB::Prepare('SELECT ts, valeur FROM ' . self::TABLE . ' WHERE cmd_id = ? ORDER BY ts, id', [$id], DB::FETCH_TYPE_ALL) ?: []);
   }
 
   private static function nom($id) {
@@ -124,41 +173,66 @@ class presencehabituelle extends eqLogic {
     return $p;
   }
 
+  // Habitudes calculées : fichier sous data/ (refusé au web par data/.htaccess), trop gros pour une clé de configuration
+  public static function fichier() { return __DIR__ . '/../../data/habitudes.json'; }
+  public static function habitudes() {
+    $h = is_file($f = self::fichier()) ? json_decode((string)file_get_contents($f), true) : null;
+    return is_array($h) ? $h : self::analyser();
+  }
+
   public static function analyser() {
     $A = 'presencehabituelle_analyse'; $fin = time(); $excl = self::exclusions();
+    $max = 3600 * max(1, (float)config::byKey('session_max', __CLASS__, 18));
     $groupes = []; $volets = [];
     foreach (self::suivi() as $id => $s) {
       if ($s['t'] == 'volet') { $volets[$id] = $s; continue; }
-      $groupes[$s['g'] !== '' ? $s['g'] : '#' . $id][$id] = true;
+      $groupes[$s['g'] !== '' ? $s['g'] : '#' . $id][] = (int)$id;
     }
     $res = ['date' => date('Y-m-d H:i:s'), 'groupes' => [], 'volets' => []];
     foreach ($groupes as $g => $ids) {
-      $iv = []; $debut = 0;
-      foreach (array_keys($ids) as $id) {
+      $iv = []; $debut = null; $exG = $excl; $noms = [];
+      foreach ($ids as $id) {
         if (!$ev = self::evs($id)) continue;
-        $debut = max($debut, $ev[0][0]); $iv[self::nom($id)] = $A::intervalles($ev, $fin);
+        $debut = min($debut ?? PHP_INT_MAX, $ev[0][0]); // ponytail: avant sa 1re ligne, une lampe ajoutée plus tard compte éteinte ; le groupe garde l'historique des autres
+        [$iv[$id], $x] = $A::longues($A::intervalles($ev, $fin), $max);
+        foreach ($x as $p) $exG[] = $p; // extinction manquée : jours touchés non comptés
+        $noms[$id] = self::nom($id);
       }
+      $dbl = array_count_values($noms); // deux lampes de même nom : l'id les distingue
+      foreach ($noms as $id => $n) if ($dbl[$n] > 1) $noms[$id] = $n . ' #' . $id;
       $nom = $g[0] == '#' ? self::nom((int)substr($g, 1)) : $g;
       if (!$iv) { $res['groupes'][] = ['nom' => $nom, 'jours' => 0]; continue; }
-      $j = $A::jours($debut, $fin, $excl); $se = $A::sessions($iv); $p = $A::profil($se, $j);
-      $res['groupes'][] = ['nom' => $nom, 'lampes' => array_keys($iv), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
+      $parNom = []; foreach ($iv as $id => $i) $parNom[$noms[$id]] = $i;
+      $j = $A::jours($debut, $fin, $exG); $se = $A::sessions($parNom); $p = $A::profil($se, $j);
+      $res['groupes'][] = ['nom' => $nom, 'lampes' => array_values($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
         'S' => $p['S'], 'W' => $p['W'], 'lS' => $A::lisser($p['S']), 'lW' => $A::lisser($p['W']),
-        'durees' => $A::durees($se, $j), 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmer' => count($j) < self::FIABLE];
+        'ex' => $p['ex'], 'durees' => $A::durees($se, $j), 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmer' => count($j) < self::FIABLE];
     }
     foreach ($volets as $id => $s) {
       $ev = self::evs($id); $nom = self::nom($id);
       if (!$ev) { $res['volets'][] = ['nom' => $nom, 'jours' => 0]; continue; }
-      $j = $A::jours($ev[0][0], $fin, $excl); // ponytail: positions moyennées (src 2) gardées : heures à l'heure près ; les séparer si un volet n'a qu'un historique lissé
+      $j = $A::jours($ev[0][0], $fin, $excl);
       $res['volets'][] = ['nom' => $nom, 'groupe' => $s['g'], 'jours' => count($j), 'confirmer' => count($j) < self::FIABLE] + $A::volet($ev, $j);
     }
-    config::save('habitudes', json_encode($res), __CLASS__);
+    file_put_contents(self::fichier(), json_encode($res));
     return $res;
+  }
+
+  /* Purge : au-delà de « conserver » jours, seul le dernier état connu reste, ramené à la limite
+     (sinon un « On » purgé laisserait un « Off » seul : absence ou allumage perdus). */
+  public static function purger($jours) {
+    $lim = time() - 86400 * $jours;
+    foreach (self::ids() as $id) {
+      $d = DB::Prepare('SELECT id FROM ' . self::TABLE . ' WHERE cmd_id = ? AND ts < ? ORDER BY ts DESC, id DESC LIMIT 1', [$id, $lim], DB::FETCH_TYPE_ROW);
+      if (!is_array($d)) continue;
+      DB::Prepare('DELETE FROM ' . self::TABLE . ' WHERE cmd_id = ? AND ts < ? AND id <> ?', [$id, $lim, $d['id']], DB::FETCH_TYPE_ROW);
+      DB::Prepare('UPDATE ' . self::TABLE . ' SET ts = ? WHERE id = ?', [$lim, $d['id']], DB::FETCH_TYPE_ROW);
+    }
   }
 
   public static function cronDaily() {
     try {
-      $j = max(7, (int)config::byKey('conserver', __CLASS__, 90));
-      DB::Prepare('DELETE FROM ' . self::TABLE . ' WHERE ts < ?', [time() - 86400 * $j], DB::FETCH_TYPE_ROW);
+      self::purger(max(7, (int)config::byKey('conserver', __CLASS__, 90)));
       self::analyser();
     } catch (Throwable $e) { log::add(__CLASS__, 'error', 'cronDaily : ' . $e->getMessage()); }
   }
