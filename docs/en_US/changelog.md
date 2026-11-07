@@ -6,6 +6,7 @@
 - Guide: **Presence sensors** (linked to Jeedom or not) and the lamps they switch on: no longer proposed as duplicates, marked "on sensor" in the Trends, kept to be simulated together; **＋ Jeedom sensor…** offers the Jeedom presence sensors (lamps of the same room pre-ticked); for a room on a sensor, "mostly on" is read against its most frequent hour (otherwise "at any hour").
 - Plan: presence sensors linked to Jeedom can be placed like lamps; a marker placed outside the room given by its Jeedom room or its name is flagged (allowed).
 - Fix: a virtual that copies a lamp stays its duplicate, even when both are on the same sensor (no longer pre-ticked among the sensor's lamps).
+- Guide: **Reset the Guide** button (answers, rules, sensors and shutter direction cleared, on confirmation; the choice of commands, the plan and the records are kept; "Back to the previous choice" brings them back).
 
 ## 0.11
 - **More readable trends**: a summary table (one row per room: hours when it is mostly on on weekdays and at weekends, hours when it never is, usual duration, quick switch-ons of a lamp on a sensor flagged), the hour-by-hour detail folded under each room (click its name), plain durations ("5 min", "1 h 57"), readable figures on dark cells, shutters: usual time in bold with the range, exceptions folded.

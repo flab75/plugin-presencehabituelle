@@ -28,7 +28,7 @@ sendVarToJS('eqType', $plugin->getId());
 		<div role="tabpanel" class="tab-pane active" id="ph_guide" style="padding-top:10px">
 			<p>{{Le plugin ne sait rien de votre maison : il lit vos équipements et leurs historiques, puis vous pose quatre questions. Vos réponses servent à la future simulation ; pour l'instant, rien n'est allumé ni fermé.}}</p>
 			<div id="ph_gcontenu"></div>
-			<p style="margin-top:10px"><a class="btn btn-sm btn-success" id="ph_genregistrer"><i class="fas fa-check-circle"></i> {{Enregistrer}}</a> <small class="text-muted">{{Les réponses, les règles, le choix des commandes (onglet suivant) et le plan sont enregistrés ensemble.}}</small></p>
+			<p style="margin-top:10px"><a class="btn btn-sm btn-success" id="ph_genregistrer"><i class="fas fa-check-circle"></i> {{Enregistrer}}</a> <a class="btn btn-sm btn-default" id="ph_graz" title="{{Efface les réponses, les règles et les détecteurs du Guide ; rien n’est enregistré tant que vous ne cliquez pas sur Enregistrer}}"><i class="fas fa-undo-alt"></i> {{Remettre le Guide à zéro}}</a> <small class="text-muted">{{Les réponses, les règles, le choix des commandes (onglet suivant) et le plan sont enregistrés ensemble.}}</small></p>
 		</div>
 		<div role="tabpanel" class="tab-pane" id="ph_suivi" style="padding-top:10px">
 			<p>{{Cochez les lumières et les volets à analyser. Les prises et les médias sont proposés décochés : une prise peut alimenter un frigo ou une box, ce n'est pas une présence. Les sondes ne servent pas : elles ne disent rien de vos gestes.}}</p>

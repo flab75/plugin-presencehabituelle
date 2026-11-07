@@ -383,7 +383,9 @@
 		"son nom dit": "its name says",
 		"Placé(e) hors de sa pièce": "Placed outside its room",
 		"Détecteur : aucune lampe choisie": "Sensor: no lamp chosen",
-		"Cette commande est déjà celle d’un autre détecteur.": "This command already belongs to another sensor."
+		"Cette commande est déjà celle d’un autre détecteur.": "This command already belongs to another sensor.",
+		"Effacer toutes les réponses du Guide (lampe ou volet, doublons, groupes, sens des volets), ses règles et ses détecteurs ? Le choix des commandes, le plan et les relevés sont gardés. Rien n’est enregistré tant que vous ne cliquez pas sur Enregistrer ; ensuite, « Revenir au choix d’avant » les rend.": "Clear all the Guide's answers (lamp or shutter, duplicates, groups, shutter direction), its rules and its sensors? The choice of commands, the plan and the records are kept. Nothing is saved until you click Save; afterwards, \"Back to the previous choice\" brings them back.",
+		"Guide remis à zéro : cliquez sur Enregistrer pour le garder.": "Guide reset: click Save to keep it."
 	},
 	"plugins/presencehabituelle/desktop/php/presencehabituelle.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",
@@ -451,6 +453,8 @@
 		"Visible": "Visible",
 		"Configuration avancée": "Advanced configuration",
 		"Les pièces allumées d'habitude à cette heure laissent deviner quand la maison est vide : tout utilisateur qui voit le widget (comptes limités, applis, API) les verrait.": "The rooms usually lit at this hour hint at when the house is empty: any user who sees the widget (limited accounts, apps, API) would see them.",
-		"Montrer les pièces allumées d'habitude": "Show the rooms usually lit"
+		"Montrer les pièces allumées d'habitude": "Show the rooms usually lit",
+		"Efface les réponses, les règles et les détecteurs du Guide ; rien n’est enregistré tant que vous ne cliquez pas sur Enregistrer": "Clears the Guide's answers, rules and sensors; nothing is saved until you click Save",
+		"Remettre le Guide à zéro": "Reset the Guide"
 	}
 }

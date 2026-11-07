@@ -876,6 +876,15 @@
       })
     })
   })
+  $('#ph_graz').on('click', function () {
+    if (!D) return
+    bootbox.confirm('{{Effacer toutes les réponses du Guide (lampe ou volet, doublons, groupes, sens des volets), ses règles et ses détecteurs ? Le choix des commandes, le plan et les relevés sont gardés. Rien n’est enregistré tant que vous ne cliquez pas sur Enregistrer ; ensuite, « Revenir au choix d’avant » les rend.}}', function (oui) {
+      if (!oui) return
+      lire(); DET.forEach(oublier); DET = []; REP = {}; REG = {}; NOTES = {}; SENS = {}; VU = []
+      Object.keys(D.suivi).forEach(function (id) { delete D.suivi[id].i })
+      changeGuide(); alerte('{{Guide remis à zéro : cliquez sur Enregistrer pour le garder.}}', 'info')
+    })
+  })
   $('#ph_recalculer').on('click', function () { ajax('recalculer', {}, habitudes) })
   $('#ph_effacer').on('click', function () {
     bootbox.confirm('{{Effacer les changements d’état relevés et les tendances calculées ? Le choix des commandes est gardé ; l’historique de Jeedom n’est pas repris.}}', function (oui) {
