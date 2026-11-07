@@ -81,6 +81,15 @@ class presencehabituelle extends eqLogic {
       $r[(int)$l['cmd_id']] = round((time() - (int)$l['d']) / 86400, 1);
     return $r;
   }
+  // Volets suivis restés sur une seule valeur après 3 jours de relevés : sans retour d'état (Somfy RTS, commande radio sans retour) ?
+  public static function figes() {
+    $v = array_map('intval', array_keys(array_filter(self::suivi(), fn($s) => ($s['t'] ?? '') == 'volet')));
+    if (!$v) return [];
+    $r = [];
+    foreach (DB::Prepare('SELECT cmd_id, MIN(ts) AS d, COUNT(DISTINCT valeur) AS n FROM ' . self::TABLE . ' WHERE cmd_id IN (' . implode(',', $v) . ') GROUP BY cmd_id', [], DB::FETCH_TYPE_ALL) ?: [] as $l)
+      if ((int)$l['n'] < 2 && time() - (int)$l['d'] > 3 * 86400) $r[] = (int)$l['cmd_id'];
+    return $r;
+  }
   public static function observes() {
     $o = config::byKey('observation', __CLASS__, []);
     if (is_string($o)) $o = json_decode($o, true);
@@ -125,13 +134,15 @@ class presencehabituelle extends eqLogic {
     self::majListener();
   }
 
-  // Valeur d'état → nombre (> 0 = allumé / ouvert / actif)
+  // Valeur d'état → nombre (> 0 = allumé / ouvert / actif) ; null : texte qui ne dit rien (stop, my…), ignoré
   public static function valeur($v) {
-    return is_numeric($v) ? (float)$v : (presencehabituelle_analyse::actif($v) ? 1.0 : 0.0);
+    $A = 'presencehabituelle_analyse';
+    return is_numeric($v) ? (float)$v : ($A::neutre($v) ? null : ($A::actif($v) ? 1.0 : 0.0));
   }
 
   // Ajoute un changement (src 0) seulement si la valeur diffère de la dernière connue
   private static function ajouter($id, $v, $ts) {
+    if ($v === null) return;
     $d = DB::Prepare('SELECT valeur FROM ' . self::TABLE . ' WHERE cmd_id = ? ORDER BY ts DESC, id DESC LIMIT 1', [$id], DB::FETCH_TYPE_ROW);
     if (is_array($d) && (float)$d['valeur'] == $v) return;
     DB::Prepare('INSERT INTO ' . self::TABLE . ' (cmd_id, ts, valeur, src) VALUES (?, ?, ?, 0)', [$id, $ts, $v], DB::FETCH_TYPE_ROW);
@@ -192,11 +203,11 @@ class presencehabituelle extends eqLogic {
       $d = date('Y-m-d H:i:s', $debut); $av = null;
       foreach (['history', 'historyArch'] as $t)
         if (!$av && is_array($x = DB::Prepare('SELECT value FROM ' . $t . ' WHERE cmd_id = ? AND datetime < ? ORDER BY datetime DESC LIMIT 1', [$cmd->getId(), $d], DB::FETCH_TYPE_ROW))) $av = $x;
-      if ($av) { $der = self::valeur($av['value']); $r[] = [$debut, $der, true]; }
+      if ($av && ($der = self::valeur($av['value'])) !== null) $r[] = [$debut, $der, true];
     }
     foreach (history::all($cmd->getId(), date('Y-m-d H:i:s', $debut), $jusqua ? date('Y-m-d H:i:s', $jusqua - 1) : null) as $h) {
       $v = self::valeur($h->getValue());
-      if ($v === $der) continue;
+      if ($v === null || $v === $der) continue;
       $der = $v; $r[] = [strtotime($h->getDatetime()), $v, true];
     }
     return $r;
@@ -233,7 +244,8 @@ class presencehabituelle extends eqLogic {
     $propre = []; $avant = self::suivi(); $n = 0; $avantX = (int)config::byKey('exclure_cmd', __CLASS__, 0);
     foreach ($suivi as $id => $s) {
       if (!is_object($c = cmd::byId((int)$id)) || $c->getType() != 'info') continue;
-      $propre[(int)$id] = ['g' => mb_substr(trim((string)($s['g'] ?? '')), 0, 60), 't' => in_array($s['t'] ?? '', ['lumiere', 'volet', 'prise', 'media', 'autre'], true) ? $s['t'] : 'autre'];
+      $t = in_array($s['t'] ?? '', ['lumiere', 'volet', 'prise', 'media', 'autre'], true) ? $s['t'] : 'autre';
+      $propre[(int)$id] = ['g' => mb_substr(trim((string)($s['g'] ?? '')), 0, 60), 't' => $t] + ($t == 'volet' && !empty($s['i']) ? ['i' => 1] : []); // i : ouvert = valeur basse
     }
     $exclure = (int)$exclure;
     if ($exclure && (!is_object($c = cmd::byId($exclure)) || $c->getType() != 'info')) throw new Exception(__('Commande d\'exclusion introuvable', __FILE__));
@@ -299,7 +311,7 @@ class presencehabituelle extends eqLogic {
 
   public static function decouverte() {
     $A = 'presencehabituelle_analyse'; $fin = time(); $debut = $fin - 86400 * self::DECOUVERTE;
-    $suivi = self::suivi(); $lampes = []; $eqNomme = []; $nommees = []; $absence = [];
+    $suivi = self::suivi(); $lampes = []; $eqNomme = []; $nommees = []; $absence = []; $volets = []; $eqVolet = [];
     $sansX = !(int)config::byKey('exclure_cmd', __CLASS__, 0);
     $cands = self::candidats(); $eqLampe = [];
     foreach ($cands as $c) if (in_array($c['gen'], ['LIGHT_STATE', 'LIGHT_STATE_BOOL'], true)) $eqLampe[$c['eqid']] = 1; // ses autres binaires sont annexes
@@ -310,6 +322,9 @@ class presencehabituelle extends eqLogic {
       if ($sansX && $c['sub'] != 'string' && !$c['lisse'] && ($c['gen'] == 'ALARM_ENABLE_STATE' || preg_match(self::ABSENCE, $txt)))
         $absence[] = ['h' => cmd::cmdToHumanReadable('#' . $c['id'] . '#'), 'nom' => self::nom($c['id'], true),
           'alarme' => $c['gen'] == 'ALARM_ENABLE_STATE'];
+      if ($c['type'] == 'autre' && !isset($suivi[$c['id']]) && in_array($c['gen'], ['', 'GENERIC_INFO'], true) && !isset($eqVolet[$c['eqid']]) && $A::voletNomme($c['nom'], $c['eq'])) {
+        $eqVolet[$c['eqid']] = 1; $volets[] = $c['id']; continue; // une par équipement ; position, binaire ou texte (open / closed)
+      }
       if ($c['type'] == 'autre' && in_array($c['gen'], ['', 'GENERIC_INFO'], true) && $c['sub'] == 'binary' && !isset($eqLampe[$c['eqid']])
         && $A::nommee($c['nom'], $c['eq'])) {
         if (isset($eqNomme[$c['eqid']])) continue; // une par équipement
@@ -384,6 +399,7 @@ class presencehabituelle extends eqLogic {
       'groupes' => array_map(function ($g, $m) use ($n, $groupe) { $m = array_values(array_diff($m, array_keys($groupe))) ?: $m;
         return ['id' => $g, 'nom' => $n($g), 'ids' => $m, 'membres' => array_map($n, $m)]; }, array_keys($groupe), $groupe),
       'nommees' => array_map(fn($id) => ['id' => $id, 'nom' => $n($id)], $nommees),
+      'volets' => array_map(fn($id) => ['id' => $id, 'nom' => $n($id)], $volets),
       'sans' => array_map(fn($id) => ['id' => $id, 'nom' => $n($id)], $sans),
       'lisses' => array_map(fn($id) => ['id' => $id, 'nom' => $n($id)], $lisses),
       'observation' => $observees ? self::finObservee() : 0,
@@ -540,6 +556,7 @@ class presencehabituelle extends eqLogic {
     }
     foreach ($volets as $id => $s) {
       $ev = self::evs($id); $nom = self::nom($id);
+      if (!empty($s['i'])) $ev = $A::inverser($ev);
       if (!$ev) { $res['volets'][] = ['nom' => $nom, 'id' => $id, 'jours' => 0]; continue; }
       $j = $A::jours($ev[0][0], $fin, $excl);
       $v = $A::volet($ev, $j, $fin, $excl);

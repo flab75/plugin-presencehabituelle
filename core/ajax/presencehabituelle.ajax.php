@@ -13,7 +13,7 @@ try {
       'exclusions' => config::byKey('exclusions', $P, ''),
       'jamais' => config::byKey('suivi', $P, '') === '', // jamais enregistré : la page préconise
       'precedent' => $P::precedent(), 'observation' => $P::observes() ? $P::finObservee() : 0,
-      'reponses' => (object)$P::cfg('reponses'), 'regles' => (object)$P::cfg('regles'), 'donnees' => (object)$P::donnees(), 'fiable' => $P::FIABLE]);
+      'reponses' => (object)$P::cfg('reponses'), 'regles' => (object)$P::cfg('regles'), 'donnees' => (object)$P::donnees(), 'figes' => $P::figes(), 'fiable' => $P::FIABLE]);
   }
   if (init('action') == 'decouverte') ajax::success($P::decouverte());
   if (init('action') == 'observer') {
@@ -29,7 +29,7 @@ try {
       $x = (int)$m[1];
     } else $x = 0;
     ajax::success(['repris' => $P::enregistrer($s, $x, (string)init('exclusions'), init('reponses') === '' ? null : json_decode((string)init('reponses'), true), init('regles') === '' ? null : json_decode((string)init('regles'), true)), 'habitudes' => $P::analyser(), 'precedent' => ($p = $P::precedent()) ? $p['date'] : null,
-      'reponses' => (object)$P::cfg('reponses'), 'regles' => (object)$P::cfg('regles'), 'donnees' => (object)$P::donnees()]); // ce que la box a retenu
+      'reponses' => (object)$P::cfg('reponses'), 'regles' => (object)$P::cfg('regles'), 'donnees' => (object)$P::donnees(), 'figes' => $P::figes()]); // ce que la box a retenu
   }
   if (init('action') == 'habitudes') {
     ajax::success($P::habitudes());

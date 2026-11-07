@@ -55,6 +55,9 @@ $ok($A::memes($X, $Y) == .75 && $A::memes($X, $Y, 5, 100, 1000) == .5, 'bornes :
 $ok($A::nommee('Lumière', 'PriseLumiereBoite') && $A::nommee('Etat', 'Ruban LED') && $A::nommee('Applique', 'Relais 2')
   && !$A::nommee('Etat LED', 'PriseSerre') && !$A::nommee('Luminosité basse', 'Détecteur') && !$A::nommee('Disponibilité', 'Lampe bureau')
   && !$A::nommee('Etat', 'Prise frigo') && !$A::nommee('Batterie faible', 'Lampe'), 'lumières d’après le nom');
+// volets sans type d'après le nom (0.9) ; pile, luminosité : non
+$ok($A::voletNomme('Volet', 'Module RTS') && $A::voletNomme('Position', 'Store Salon') && $A::voletNomme('Etat', 'Shutter kitchen') && $A::voletNomme('Rideau', 'Relais')
+  && !$A::voletNomme('Batterie', 'Volet Salon') && !$A::voletNomme('Luminosité', 'Store') && !$A::voletNomme('Position', 'Thermostat') && !$A::voletNomme('Restore', 'Box'), 'volets d’après le nom');
 echo "découverte OK\n";
 $rp = $A::reponses(['5' => ['r' => 'oui'], '6' => ['r' => 'doublon', 'de' => '5'], '7' => ['r' => 'doublon', 'de' => 7], '8' => ['r' => 'peut-être'], 'x' => ['r' => 'oui']]);
 $ok($rp == [5 => ['r' => 'oui'], 6 => ['r' => 'doublon', 'de' => 5], 7 => ['r' => 'doublon']], 'réponses : ' . json_encode($rp));
@@ -138,6 +141,9 @@ $ok($A::enchainements($pp, [7 => ['S', 'C']]) == [7 => ['S', 'C', 1, 0]], 'encha
 $ok($A::enchainements($pp, [['S', 'C']], [[$t('2026-03-02 00:00'), $t('2026-03-03 00:00')]])[0][2] == 0, 'enchaînements hors absences');
 
 $ok($A::actif('On') && $A::actif(1) && !$A::actif('0') && !$A::actif('Absent ?') && !$A::actif(''), 'actif');
+// états en texte (0.9) : ouvert / fermé reconnus, stop / my ignorés ; sens inversé (0 = ouvert)
+$ok($A::actif('Open') && $A::actif('ouvert') && $A::actif('UP') && !$A::actif('closed') && !$A::actif('fermé') && $A::neutre('Stop') && $A::neutre('my') && !$A::neutre('closed') && !$A::neutre(0), 'états en texte');
+$ok($A::inverser([[1, 0], [2, 100, true], [3, 40]]) == [[1, 100], [2, 0, true], [3, 60]] && $A::inverser([]) == [], 'sens inversé');
 $pe = $A::periodes("2026-10-15 15:27 → 2026-10-23 12:42\nn'importe quoi\n2026-11-01 - 2026-11-02");
 $ok(count($pe) == 2 && $pe[0][0] == $t('2026-10-15 15:27') && $pe[1][1] == $t('2026-11-02 23:59:59'), 'périodes : ' . json_encode($pe));
 echo "calcul OK\n";

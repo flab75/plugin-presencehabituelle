@@ -76,6 +76,8 @@
       r.groupes.map(function (g) { return cb('groupe', g.id, esc(g.nom) + ' — {{groupe de}} ' + esc(g.membres.join(', ')), true) }).join(''))
     h += bloc('{{Lumières sans type générique}}', '{{d’après leur nom : montrées dans la liste comme lumières, décochées}}',
       r.nommees.map(function (n) { return cb('lumiere', n.id, esc(n.nom) + ' — {{type générique à renseigner ?}}', true) }).join(''))
+    h += bloc('{{Volets sans type générique}}', '{{d’après leur nom : montrés dans la liste comme volets, décochés}}',
+      (r.volets || []).map(function (n) { return cb('volet', n.id, esc(n.nom) + ' — {{type générique à renseigner ?}}', true) }).join(''))
     h += bloc('{{Jours sans aucune lumière}}', '{{absences possibles (ou journées sans lumière, en été) : à cocher si vous étiez absent ; cochée = ajoutée aux périodes à ne pas analyser}}',
       r.absences.map(function (p) { return cb('absence', p, esc(p), false) }).join(''))
     h += bloc('{{Commande d’absence possible}}', '{{à cocher si elle est vraie pendant vos absences (une alarme activée l’est souvent aussi la nuit)}}',
@@ -105,6 +107,7 @@
       if (k == 'doublon') { var d = R.doublons.filter(function (x) { return x.id == v })[0]; if (repondre(v, 'doublon', String(d.de))) NOTES[v] = '{{doublon de}} ' + d.nomDe }
       if (k == 'groupe') { var g = R.groupes.filter(function (x) { return x.id == v })[0]; garder(g.ids, D.suivi[v]); g.ids.forEach(function (i) { if (D.suivi[i] && !REP[i]) REP[i] = { r: 'oui' } }); repondre(v, 'groupe'); NOTES[v] = '{{groupe de}} ' + g.membres.join(', ') }
       if (k == 'lumiere' && parId[v]) { parId[v].type = 'lumiere'; NOTES[v] = '{{type générique à renseigner ?}}' }
+      if (k == 'volet' && parId[v]) { parId[v].type = parId[v].type0 = 'volet'; NOTES[v] = '{{type générique à renseigner ?}}' } // type0 : reste un volet sur « Oui »
       if (k == 'absence' && exc.split('\n').map(function (l) { return l.trim() }).indexOf(v) < 0) exc = (exc.trim() ? exc.trim() + '\n' : '') + v
       if (k == 'exclure') $('#ph_exclure').val(v)
     })
@@ -119,7 +122,7 @@
   function lire() { // reporte les cases et les groupes de l'écran dans D.suivi
     $('#ph_liste tr[data-id]').each(function () {
       var id = $(this).data('id')
-      if ($(this).find('.ph_coche').is(':checked')) D.suivi[id] = { g: $(this).find('.ph_groupe').val().trim(), t: $(this).data('type') }
+      if ($(this).find('.ph_coche').is(':checked')) D.suivi[id] = { g: $(this).find('.ph_groupe').val().trim(), t: $(this).data('type'), i: (D.suivi[id] || {}).i } // i : sens du volet, réglé dans le Guide
       else delete D.suivi[id]
     })
   }
@@ -142,7 +145,7 @@
     if (r == 'doublon' && de && REP[de] && REP[de].r == 'doublon') { alerte(libelle(de) + ' {{est déjà un doublon : choisissez la commande gardée.}}', 'warning'); return false }
     REP[id] = r == 'doublon' && de ? { r: r, de: de } : { r: r }
     if (c) c.type = r == 'oui' && c.type0 != 'volet' ? 'lumiere' : c.type0
-    if (r == 'oui') D.suivi[id] = { g: s ? s.g : '', t: c ? c.type : 'lumiere' }
+    if (r == 'oui') D.suivi[id] = { g: s ? s.g : '', t: c ? c.type : 'lumiere', i: s && s.i }
     else {
       delete D.suivi[id]
       Object.keys(REP).forEach(function (y) { // ses doublons : vers la commande gardée à sa place, sinon à revoir
@@ -162,12 +165,14 @@
     var g = REG[id] || {}, n = jours(id), f = D.fiable || 10
     if (g.jamais) return ['{{jamais simulée}}', false]
     if (!REP[id]) return ['{{à confirmer (question 1)}}', true]
+    if ((D.figes || []).indexOf(+id) >= 0 && !marche(id)) return ['{{aucun changement relevé : volet sans retour d’état (Somfy RTS…) ? Ses habitudes ne peuvent pas être tirées : donnez-lui une plage « peut s’ouvrir » (question 3)}}', true]
     if (n >= f) return ['{{habitudes}} (' + Math.floor(n) + ' {{j de relevés}})', false]
     if (marche(id)) return ['{{plages données}}', false]
     return ['{{en observation}} (' + Math.floor(n) + ' / ' + f + ' {{j}}) : {{attendez, ou donnez une plage « peut s’allumer »}}', true]
   }
   function plageH(id, i, p) {
-    return '<div class="form-inline ph_plage" style="margin:2px 0"><select class="form-control input-sm ph_pk"><option value="marche">{{peut s’allumer}}</option><option value="exclue">{{jamais allumée}}</option></select> '
+    var v = (D.suivi[id] || {}).t == 'volet'
+    return '<div class="form-inline ph_plage" style="margin:2px 0"><select class="form-control input-sm ph_pk"><option value="marche">' + (v ? '{{peut s’ouvrir}}' : '{{peut s’allumer}}') + '</option><option value="exclue">' + (v ? '{{jamais ouvert}}' : '{{jamais allumée}}') + '</option></select> '
       + '<select class="form-control input-sm ph_pj">' + Object.keys(JOURS).map(function (k) { return '<option value="' + k + '">' + JOURS[k] + '</option>' }).join('') + '</select> '
       + '{{de}} <input type="time" class="form-control input-sm ph_pde" value="' + esc(p.de) + '"> {{à}} <input type="time" class="form-control input-sm ph_pa" value="' + esc(p.a) + '"> '
       + '<a class="btn btn-xs btn-default ph_pmoins" title="{{Retirer}}"><i class="fas fa-times"></i></a></div>'
@@ -178,15 +183,16 @@
     var opts = function (id) { return l.filter(function (c) { return c.id != id }).map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(libelle(c.id)) + '</option>' }).join('') }
     h += '<legend style="font-size:1.1em">1. {{Est-ce une lampe ou un volet de la maison ?}}</legend>'
       + '<p><small>{{Doublon : la même lampe vue par une autre commande (gardez l’autre). Groupe : une commande qui allume plusieurs lampes déjà listées. Non : une prise de frigo, une LED d’état…}}</small></p>'
-      + '<p><a class="btn btn-sm btn-default" id="ph_ecoute"><i class="fas fa-' + (ECOUTE ? 'stop' : 'hand-pointer') + '"></i> ' + (ECOUTE ? '{{Arrêter}}' : '{{Identifier en allumant}}') + '</a> '
-      + '<small class="text-muted">{{allumez ou éteignez une lampe de la maison : ce qui change s’affiche ici}}</small></p><div id="ph_vus"></div>'
+      + '<p><a class="btn btn-sm btn-default" id="ph_ecoute"><i class="fas fa-' + (ECOUTE ? 'stop' : 'hand-pointer') + '"></i> ' + (ECOUTE ? '{{Arrêter}}' : '{{Identifier en allumant ou en ouvrant}}') + '</a> '
+      + '<small class="text-muted">{{allumez ou éteignez une lampe, ouvrez ou fermez un volet : ce qui change s’affiche ici, avec sa valeur}}</small></p><div id="ph_vus"></div>'
       + '<table class="table table-condensed"><tbody>'
     l.forEach(function (c) {
       var r = REP[c.id] || {}, note = NOTES[c.id] || (D.suivi[c.id] ? '{{suivie}}' : c.coche ? '{{proposée}}' : '')
       h += '<tr data-id="' + esc(c.id) + '"' + (c.actif ? '' : ' style="opacity:.5"') + '><td>' + esc(libelle(c.id)) + ' <small class="text-muted">' + esc(c.objet) + ' · ' + esc(NOMS[c.type]) + '</small>'
         + (note ? ' <span class="label label-info">' + esc(note) + '</span>' : '') + '</td><td style="width:340px" class="form-inline"><select class="form-control input-sm ph_grep">'
         + [['', '{{— à répondre —}}'], ['oui', '{{Oui, à suivre}}'], ['non', '{{Non}}'], ['doublon', '{{Doublon de…}}'], ['groupe', '{{Groupe de lampes}}']].map(function (o) { return '<option value="' + o[0] + '"' + ((r.r || '') == o[0] ? ' selected' : '') + '>' + o[1] + '</option>' }).join('')
-        + '</select>' + (r.r == 'doublon' ? ' <select class="form-control input-sm ph_gde"><option value="">{{de…}}</option>' + opts(c.id) + '</select>' : '') + '</td></tr>'
+        + '</select>' + (r.r == 'doublon' ? ' <select class="form-control input-sm ph_gde"><option value="">{{de…}}</option>' + opts(c.id) + '</select>' : '')
+        + (c.type == 'volet' && D.suivi[c.id] ? ' <select class="form-control input-sm ph_ginv" title="{{Ouvrez le volet en identifiant : la valeur affichée est celle de l’ouvert}}"><option value="">{{ouvert = valeur haute}}</option><option value="1"' + (D.suivi[c.id].i ? ' selected' : '') + '>{{ouvert = 0 (valeur basse)}}</option></select>' : '') + '</td></tr>'
     })
     h += '</tbody></table>'
     var hors = PL ? suivis.filter(function (id) { return !PL.marqueurs[id] }) : []
@@ -263,6 +269,7 @@
   }
   function changeGuide() { liste(); dessiner(); guide() }
   $('#ph_gcontenu').on('change', '.ph_grep', function () { lire(); var id = $(this).closest('tr').attr('data-id'); repondre(id, $(this).val()); changeGuide() })
+  $('#ph_gcontenu').on('change', '.ph_ginv', function () { lire(); var id = $(this).closest('tr').attr('data-id'); if (D.suivi[id]) D.suivi[id].i = $(this).val() ? 1 : undefined; changeGuide() })
   $('#ph_gcontenu').on('change', '.ph_gde', function () { lire(); var id = $(this).closest('tr').attr('data-id'); repondre(id, 'doublon', $(this).val()); changeGuide() })
   $('#ph_gcontenu').on('click', '#ph_ecoute', function () { VU = []; ecouter(!ECOUTE) })
   $('#ph_gcontenu').on('click', '.ph_garder', function () {
@@ -566,7 +573,7 @@
     ajax('enregistrer', { suivi: JSON.stringify(D.suivi), exclure: $('#ph_exclure').val(), exclusions: $('#ph_exclusions').val(), reponses: JSON.stringify(REP), regles: JSON.stringify(REG) }, function (r) {
       alerte('{{Enregistré}} : ' + r.repris + ' {{changements repris de l’historique}}', 'success')
       $('#ph_precedent').toggle(!!r.precedent).attr('data-date', r.precedent || '')
-      SAUVE = $.extend({}, D.suivi); REP = $.extend({}, r.reponses); REG = $.extend(true, {}, r.regles); D.donnees = r.donnees // ce que la box a retenu
+      SAUVE = $.extend({}, D.suivi); REP = $.extend({}, r.reponses); REG = $.extend(true, {}, r.regles); D.donnees = r.donnees; D.figes = r.figes // ce que la box a retenu
       habitudes(r.habitudes); guide()
       if (ok) ok()
     })

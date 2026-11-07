@@ -206,8 +206,20 @@ class presencehabituelle_analyse {
   }
 
   // Valeur « active » d'une commande d'exclusion (On, 1, true, oui…)
+  // Aussi les états en texte d'un volet ou d'une lampe (open, ouvert, up, allumé…) ; tout autre texte = inactif
   public static function actif($v) {
-    return is_numeric($v) ? $v > 0 : in_array(mb_strtolower(trim((string)$v)), ['on', 'true', 'oui', 'yes', 'actif', 'active'], true);
+    return is_numeric($v) ? $v > 0 : in_array(mb_strtolower(trim((string)$v)), ['on', 'true', 'oui', 'yes', 'actif', 'active',
+      'open', 'opened', 'ouvert', 'ouverte', 'up', 'haut', 'allumé', 'allumée', 'allume'], true);
+  }
+  // État en texte qui ne dit ni ouvert ni fermé (arrêté en route, position « my », en mouvement) : ignoré, pas pris pour fermé
+  public static function neutre($v) {
+    return !is_numeric($v) && in_array(mb_strtolower(trim((string)$v)), ['stop', 'stopped', 'my', 'moving', 'opening', 'closing', 'unknown', 'inconnu',
+      'en mouvement', 'partial', 'partiel', 'intermédiaire', 'intermediate'], true);
+  }
+  // Volet suivi « ouvert = valeur basse » (0 = ouvert) : remis dans le sens habituel, par rapport à la plus haute valeur relevée
+  public static function inverser(array $ev) {
+    $mx = $ev ? max(array_column($ev, 1)) : 0;
+    return array_map(fn($e) => [$e[0], $mx - $e[1]] + $e, $ev);
   }
 
   // Périodes d'exclusion saisies : une par ligne, « AAAA-MM-JJ HH:MM → AAAA-MM-JJ HH:MM » (ou « - », « > », « ; » entre les deux)
@@ -252,6 +264,12 @@ class presencehabituelle_analyse {
   // Lumière sans type générique, d'après son nom ; commande annexe d'un équipement (voyant, disponibilité, pile, capteur de lumière…) : jamais une lampe
   const ANNEXE = '/(dispo|availab|online|reachab|batter|(?<![\p{L}\d])piles?(?![\p{L}\d])|update|mise [àa] jour|lumin|indicat|voyant|(?<![\p{L}\d])leds?(?![\p{L}\d]))/iu';
   const ETAT = '/^\s*(etat|état|state|statut|status|on|marche)\s*$/iu';
+  // Volet sans type générique, d'après son nom (commande, ou équipement si la commande s'appelle Etat / Position…)
+  const VOLET = '/(?<![\p{L}\d])(volets?|stores?|shutters?|rollers?|persiennes?|bso|jalousies?|blinds?|rideaux?|covers?|brise-soleil)(?![\p{L}\d])/iu';
+  const POSITION = '/^\s*(etat|état|state|statut|status|position|niveau|level|ouverture)\s*$/iu';
+  public static function voletNomme($cmd, $eq) {
+    return !preg_match(self::ANNEXE, $cmd) && (preg_match(self::VOLET, $cmd) || (preg_match(self::POSITION, $cmd) && preg_match(self::VOLET, $eq)));
+  }
   public static function nommee($cmd, $eq) {
     return !preg_match(self::ANNEXE, $cmd) && (preg_match(self::LAMPE, $cmd) || (preg_match(self::ETAT, $cmd) && preg_match(self::LAMPE, $eq)));
   }
