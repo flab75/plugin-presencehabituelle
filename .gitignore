@@ -4,3 +4,4 @@ data/habitudes.json
 data/plan.json
 data/plan_*.jpg
 data/*.tmp
+data/historiser*

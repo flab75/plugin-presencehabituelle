@@ -55,7 +55,7 @@
 
   function charger() {
     ajax('liste', {}, function (r) {
-      D = r; HIST = null; SAUVE = $.extend({}, r.suivi); REP = $.extend({}, r.reponses); REG = $.extend(true, {}, r.regles)
+      D = r; HIST = null; SAUVE = $.extend({}, r.suivi); REP = $.extend({}, r.reponses); REG = $.extend(true, {}, r.regles); DET = $.extend(true, [], r.detecteurs); if (H) habitudes(H) // tendances arrivées avant : étiquettes « sur détecteur »
       D.candidats.forEach(function (c) { c.type0 = c.type == 'volet' ? 'volet' : c.tg }); SENS = {} // rendu sur « Non » après un « Oui » (une prise prise pour une lampe redevient prise)
       if (r.jamais) D.candidats.forEach(function (c) { if (c.coche && c.actif) D.suivi[c.id] = { g: '', t: c.type } }) // première fois : préconisation
       $('#ph_exclure').val(r.exclure); $('#ph_exclusions').val(r.exclusions)
@@ -128,7 +128,7 @@
   }
 
   /* ---- Guide : quatre questions, les réponses remplissent le suivi ---- */
-  var REP = {}, REG = {}, VU = [], SENS = {}, FT = '', FS = '', FH = '', HIST = null // réponses {id: {r, de, m}} (m : lampes d'un groupe), filtres type et provenance, règles {id: {jamais, plages}}, changements vus en écoutant
+  var DET = [], REP = {}, REG = {}, VU = [], SENS = {}, FT = '', FS = '', FH = '', HIST = null // réponses {id: {r, de, m}} (m : lampes d'un groupe), filtres type et provenance, règles {id: {jamais, plages}}, changements vus en écoutant
   var JOURS = { tous: '{{tous les jours}}', S: '{{en semaine}}', W: '{{le week-end}}' }
   function aDemander() { // lumières, volets, une prise binaire par équipement, et ce qui est déjà suivi, répondu ou signalé
     var prises = {}
@@ -139,9 +139,11 @@
       return (c.type == 'lumiere' || c.type == 'volet') && c.coche
     })
   }
+  function memeDet(a, b) { return DET.some(function (d) { return d.m.indexOf(+a) >= 0 && d.m.indexOf(+b) >= 0 }) } // comme memeDetecteur côté box
   function repondre(id, r, de) { // false : refusée (doublon d'un doublon)
     var c = cand(id), s = D.suivi[id]
     if (!r) { delete REP[id]; return true }
+    if (r == 'doublon' && de && memeDet(id, de)) { alerte(libelle(id) + ' {{et}} ' + libelle(de) + ' {{sont sur le même détecteur : deux lampes, pas un doublon.}}', 'warning'); return false }
     if (r == 'doublon' && de && REP[de] && REP[de].r == 'doublon') { alerte(libelle(de) + ' {{est déjà un doublon : choisissez la commande gardée.}}', 'warning'); return false }
     if (r == 'doublon' && de && REP[de] && REP[de].r == 'groupe') { alerte(libelle(de) + ' {{est un groupe de lampes : un doublon recopie une seule lampe.}}', 'warning'); return false }
     REP[id] = r == 'doublon' && de ? { r: r, de: de } : { r: r }
@@ -185,7 +187,7 @@
     var neuf = l.filter(function (c) { return !HIST.vu[c.id] }).map(function (c) { return c.id }).slice(0, 2000) // la box n'en lit pas plus à la fois
     if (neuf.length && !HIST.attente) {
       HIST.attente = 1
-      ajax('historiques', { ids: JSON.stringify(neuf) }, function (r) { var rh = (r && r.h) || {}, rs = (r && r.s) || {}; neuf.forEach(function (id) { HIST.vu[id] = 1; if (rh[id]) HIST[id] = rh[id]; if (rs[id]) HIST.sc[id] = rs[id] }); HIST.attente = 0; lireRegles(); guide() },
+      ajax('historiques', { ids: JSON.stringify(neuf) }, function (r) { var rh = (r && r.h) || {}, rs = (r && r.s) || {}; neuf.forEach(function (id) { HIST.vu[id] = 1; if (rh[id]) HIST[id] = rh[id]; if (rs[id]) HIST.sc[id] = rs[id] }); HIST.attente = 0; lireDet(); lireRegles(); guide() },
         function () { neuf.forEach(function (id) { HIST.vu[id] = 1 }); HIST.attente = 0 }) // échec : pas de nouvel essai à chaque clic (rechargez la page)
     }
     var riche = function (c) { var x = HIST[c.id]; return !c.lisse && x && x.n >= 30 && x.j >= 30 } // ponytail: seuils fixes (30 points sur 30 j au moins) ; un historique lissé n'est pas riche
@@ -239,12 +241,19 @@
         + g.plages.map(function (p, i) { return plageH(id, i, p) }).join('') + '<a class="btn btn-xs btn-default ph_pplus"><i class="fas fa-plus"></i> {{plage}}</a></td></tr>'
     })
     h += '</tbody></table>'
-    h += '<legend style="font-size:1.1em">4. {{Pas encore assez de données}}</legend><div id="ph_gq4"></div>'
+    h += '<legend style="font-size:1.1em">{{Détecteurs de présence}} <small>({{facultatif}})</small></legend><p><small>{{Un détecteur qui allume des lampes (relié à Jeedom ou non) : elles s’allument ensemble, brièvement. Déclaré, elles ne sont plus proposées comme doublons ; la liste est gardée pour les simuler ensemble dans une prochaine version.}}</small></p>'
+      + '<table class="table table-condensed"><tbody>' + DET.map(function (d, i) {
+        return '<tr class="ph_det" data-i="' + i + '"><td style="width:30%"><input class="form-control input-sm ph_dnom" maxlength="60" placeholder="{{nom}}" value="' + esc(d.nom) + '"></td><td>'
+          + '<a class="btn btn-xs btn-default ph_dcmd" title="{{Commande Jeedom du détecteur (facultatif)}}"><i class="fas fa-list-alt"></i> ' + (d.cmd ? esc(d.h || '#' + d.cmd) : '{{non relié à Jeedom}}') + '</a>' + (d.perdu ? ' <span class="text-warning">{{sa commande a été supprimée de Jeedom}}</span>' : '') + (d.cmd ? ' <a class="btn btn-xs btn-default ph_dsans" title="{{Délier}}">×</a>' : '')
+          + ' <a class="btn btn-xs btn-default ph_dlampes"><i class="fas fa-lightbulb"></i> {{Lampes…}}</a> <small>' + (d.m.length ? esc(d.m.map(libelle).join(', ')) : '<span class="text-warning">{{choisissez les lampes qu’il allume}}</span>') + '</small>'
+          + ' <a class="btn btn-xs btn-danger ph_dmoins" title="{{Supprimer}}"><i class="fas fa-trash"></i></a></td></tr>'
+      }).join('') + '</tbody></table>' + (DET.length < 30 ? '<p><a class="btn btn-xs btn-default ph_dplus"><i class="fas fa-plus"></i> {{détecteur}}</a></p>' : '')
+    h += '<legend style="font-size:1.1em">4. {{Pas encore assez de données}}</legend><div id="ph_gq4"></div><div id="ph_ghisto"></div>'
     h += '<legend style="font-size:1.1em">{{Bilan}}</legend><div id="ph_gbilan"></div>'
     $('#ph_gcontenu').html(h); $('#ph_gft').val(FT); $('#ph_gfs').val(FS); $('#ph_gfh').val(FH)
     $('#ph_gcontenu tr[data-id]').each(function () { var r = REP[$(this).attr('data-id')]; if (r && r.de) $(this).find('.ph_gde').val(r.de) })
     $('#ph_gcontenu .ph_plage').each(function () { var id = $(this).closest('tr').attr('data-id'), p = REG[id].plages[$(this).index('#ph_gcontenu tr[data-id="' + id + '"] .ph_plage')]; $(this).find('.ph_pk').val(p.k); $(this).find('.ph_pj').val(p.j) })
-    vus(); bilan()
+    vus(); bilan(); histoAff()
   }
   function q4() { // comme etat() : ni « jamais », ni plage « peut s'allumer »
     var peu = Object.keys(D.suivi).filter(function (id) { return jours(id) < (D.fiable || 10) && !(REG[id] || {}).jamais && !marche(id) })
@@ -277,9 +286,11 @@
   function vus() {
     if (!VU.length) return $('#ph_vus').html(ECOUTE ? '<p class="text-info"><i class="fas fa-spinner fa-spin"></i> {{En attente d’un changement…}}</p>' : '')
     var ens = [], t0 = VU[0].t
-    VU.forEach(function (v) { if (t0 - v.t <= 5000 && ens.indexOf(v.id) < 0) ens.push(v.id) }) // ponytail: 5 s comme les doublons de la découverte
+    VU.forEach(function (v) { if (t0 - v.t <= 5000 && ens.indexOf(v.id) < 0 && !DET.some(function (d) { return d.cmd == v.id })) ens.push(v.id) }) // ponytail: 5 s comme les doublons de la découverte ; la commande d'un détecteur n'est pas une lampe
     var h = '<ul class="list-unstyled">' + VU.slice(0, 8).map(function (v) { return '<li><small>' + esc(new Date(v.t).toLocaleTimeString()) + '</small> ' + esc(libelle(v.id)) + ' → ' + esc(v.v) + '</li>' }).join('') + '</ul>'
-    if (ens.length > 1) h += '<p>' + ens.length + ' {{commandes ont changé ensemble : une seule lampe ? Gardez celle qui la représente, les autres deviennent ses doublons.}}</p><p>'
+    var dd = ens.length > 1 && DET.filter(function (d) { return ens.every(function (id) { return d.m.indexOf(+id) >= 0 }) })[0]
+    if (dd) h += '<p>{{Ces lampes sont sur le même détecteur}} « ' + esc(dd.nom) + ' » : {{elles s’allument ensemble, rien à garder.}}</p>'
+    else if (ens.length > 1) h += '<p>' + ens.length + ' {{commandes ont changé ensemble : une seule lampe ? Gardez celle qui la représente, les autres deviennent ses doublons.}}</p><p>'
       + ens.map(function (id) { return '<a class="btn btn-xs btn-primary ph_garder" data-id="' + esc(id) + '" data-ens="' + esc(ens.join(',')) + '" style="margin:0 3px 3px 0">{{garder}} ' + esc(libelle(id)) + '</a>' }).join('') + '</p>'
     $('#ph_vus').html('<div class="well well-sm">' + h + '</div>')
   }
@@ -289,7 +300,7 @@
       var l = [].concat(d !== undefined ? d : (e.originalEvent && e.originalEvent.detail) || []), ids = {}, n = 0
       D.candidats.forEach(function (c) { if (c.sub == 'binary' || c.type != 'autre') ids[c.id] = 1 }) // aussi les virtuels et 2es commandes : les doublons cherchés
       l.forEach(function (o) { if (o && ids[o.cmd_id]) { VU.unshift({ id: String(o.cmd_id), v: o.value, t: Date.now() }); n++ } })
-      if (n) { VU = VU.slice(0, 30); lireRegles(); guide() } // les nouvelles venues deviennent répondables ; plages en cours de saisie gardées
+      if (n) { VU = VU.slice(0, 30); lireDet(); lireRegles(); guide() } // les nouvelles venues deviennent répondables ; plages en cours de saisie gardées
     })
     guide()
   }
@@ -313,22 +324,38 @@
   })
   $('#ph_gcontenu').on('change', '#ph_gft, #ph_gfs, #ph_gfh', function () { FT = $('#ph_gft').val(); FS = $('#ph_gfs').val(); FH = $('#ph_gfh').val(); lireRegles(); guide() })
   $('#ph_gcontenu').on('click', '.ph_gcopie', function () { lire(); var id = $(this).closest('tr').attr('data-id'); repondre(id, 'doublon', String(cand(id).copie)); changeGuide() })
-  $('#ph_gcontenu').on('click', '.ph_gm', function () { // lampes allumées par un groupe : cochées comme le « de… » d'un doublon
-    lire(); var id = $(this).closest('tr').attr('data-id'), m = (REP[id] || {}).m || []
-    var l = D.candidats.filter(function (c) { return c.id != id && c.type == 'lumiere' && (!REP[c.id] || REP[c.id].r == 'oui') && (c.actif || D.suivi[c.id] || m.indexOf(+c.id) >= 0) })
-    bootbox.dialog({ title: '{{Lampes allumées par}} ' + esc(libelle(id)), message: '<div style="max-height:60vh;overflow:auto">' + l.map(function (c) {
+  function lampes(titre, id, m, ok, dbl) { // lampes à cocher (groupe, détecteur) : ni « Non » ni doublon (dbl : doublons aussi, pour un détecteur)
+    var l = D.candidats.filter(function (c) { return c.id != id && (c.type == 'lumiere' || (dbl && REP[c.id] && REP[c.id].r == 'doublon')) && (!REP[c.id] || REP[c.id].r == 'oui' || (dbl && REP[c.id].r == 'doublon')) && (c.actif || D.suivi[c.id] || m.indexOf(+c.id) >= 0) })
+    bootbox.dialog({ title: esc(titre), message: '<div style="max-height:60vh;overflow:auto">' + l.map(function (c) {
       return '<div class="checkbox"><label><input type="checkbox" class="ph_gmc" value="' + esc(c.id) + '"' + (m.indexOf(+c.id) >= 0 ? ' checked' : '') + '> ' + esc(libelle(c.id)) + ' <small class="text-muted">' + esc(c.objet) + '</small></label></div>'
     }).join('') + '</div>', buttons: { annuler: { label: '{{Annuler}}', className: 'btn-default' }, ok: { label: '{{Valider}}', className: 'btn-success', callback: function () {
-      var v = $('.ph_gmc:checked').map(function () { return +this.value }).get().slice(0, 100)
+      ok($('.ph_gmc:checked').map(function () { return +this.value }).get().slice(0, 100))
+    } } } })
+  }
+  $('#ph_gcontenu').on('click', '.ph_gm', function () { // lampes allumées par un groupe : cochées comme le « de… » d'un doublon
+    lire(); var id = $(this).closest('tr').attr('data-id')
+    lampes('{{Lampes allumées par}} ' + libelle(id), id, (REP[id] || {}).m || [], function (v) {
       if (!REP[id] || REP[id].r != 'groupe') return
       REP[id].m = v; garder(v.map(String), D.suivi[id]); v.forEach(function (x) { if (D.suivi[x] && !REP[x]) REP[x] = { r: 'oui' } })
       changeGuide()
-    } } } })
+    })
   })
+  function lireDet() { $('#ph_gcontenu tr.ph_det').each(function () { var d = DET[$(this).attr('data-i')]; if (d) d.nom = $(this).find('.ph_dnom').val() }) }
+  function det(e) { lireDet(); lireRegles(); return DET[$(e).closest('tr').attr('data-i')] }
+  $('#ph_gcontenu').on('change', '.ph_dnom', lireDet)
+  $('#ph_gcontenu').on('click', '.ph_dplus', function () { lireDet(); lireRegles(); if (DET.length < 30) DET.push({ nom: '{{Détecteur}} ' + (DET.length + 1), cmd: 0, h: '', m: [] }); guide() })
+  $('#ph_gcontenu').on('click', '.ph_dmoins', function () { var d = det(this); DET.splice(DET.indexOf(d), 1); guide() })
+  $('#ph_gcontenu').on('click', '.ph_dsans', function () { var d = det(this); d.cmd = 0; d.h = ''; guide() })
+  $('#ph_gcontenu').on('click', '.ph_dcmd', function () { var d = det(this); jeedom.cmd.getSelectModal({ cmd: { type: 'info' } }, function (r) { d.cmd = +r.cmd.id; d.h = r.human; d.perdu = 0; guide() }) })
+  $('#ph_gcontenu').on('click', '.ph_dlampes', function () { var d = det(this); lampes('{{Lampes allumées par}} ' + d.nom, 0, d.m, function (v) {
+    lire(); d.m = v; v.forEach(function (x) { var de = REP[x] && REP[x].r == 'doublon' && REP[x].de; if (de === false || de === undefined) return
+      repondre(String(x), 'oui'); delete NOTES[x]; if (D.suivi[x]) D.suivi[x].g = (D.suivi[de] || {}).g || '' }) // une lampe du détecteur n'est le doublon de personne ; elle reprend le groupe de sa jumelle
+    changeGuide()
+  }, 1) })
   $('#ph_gcontenu').on('click', '#ph_ecoute', function () { VU = []; ecouter(!ECOUTE) })
   $('#ph_gcontenu').on('click', '.ph_garder', function () {
     lire(); var id = $(this).attr('data-id')
-    $(this).attr('data-ens').split(',').forEach(function (o) { if (o != id) repondre(o, 'doublon', id) })
+    $(this).attr('data-ens').split(',').forEach(function (o) { if (o != id && !memeDet(o, id)) repondre(o, 'doublon', id) })
     repondre(id, 'oui'); VU = []; changeGuide()
   })
   $('#ph_gcontenu').on('click', '.ph_gplacer', function () {
@@ -370,7 +397,9 @@
       for (var i = 0; i < 24; i++) if (!(g.cS || g.S)[i] && !(g.cW || g.W)[i]) jamais.push(i) // comptes bruts (habitudes.json d’avant 0.4 : %) : un allumage sur 300 jours arrondit à 0 %
       var rq = []
       if (g.confirmer || g.confirmerS || g.confirmerW) rq.push('<span class="label label-warning">{{à confirmer}}</span>')
-      if (d.n && d.passages >= 90) rq.push('<span title="{{Presque tous les allumages durent moins de 3 min : sans doute une lampe sur détecteur de mouvement}}">{{allumages éclair (détecteur ?)}}</span>')
+      var sur = DET.filter(function (x) { return x.m.some(function (id) { return (g.ids || []).map(Number).indexOf(+id) >= 0 }) }).map(function (x) { return x.nom })
+      if (sur.length) rq.push('<span class="label label-default">{{sur détecteur}} « ' + esc(sur.join(' », « ')) + ' »</span>')
+      else if (d.n && d.passages >= 90) rq.push('<span title="{{Presque tous les allumages durent moins de 3 min : sans doute une lampe sur détecteur de mouvement. Déclarez-le dans le Guide (Détecteurs de présence).}}">{{allumages éclair (détecteur ? déclarez-le dans le Guide)}}</span>')
       res += '<tr><td><a href="#' + ancre + '" class="ph_ouvrir">' + esc(g.nom) + '</a></td><td>' + esc(surtout(g.lS)) + '</td><td>' + esc(surtout(g.lW)) + '</td><td>'
         + (jamais.length ? esc(plages(jamais)) : '–') + '</td><td>' + (d.n ? esc(duree(d.med)) : '–') + '</td><td>' + rq.join(' ') + '</td></tr>'
       h += '<details id="' + ancre + '" style="margin-bottom:6px"><summary style="cursor:pointer;font-size:1.1em">' + esc(g.nom) + '</summary>'
@@ -769,7 +798,9 @@
   $('#ph_choisir').on('click', function () { jeedom.cmd.getSelectModal({ cmd: { type: 'info' } }, function (r) { $('#ph_exclure').val(r.human) }) })
   $('#ph_enregistrer').on('click', function () { sauver() })
   function sauver(ok) {
-    lire()
+    lire(); lireDet()
+    var vide = DET.filter(function (d) { return !d.m.length || !$.trim(d.nom) }).map(function (d) { return d.nom || '?' })
+    if (vide.length) return alerte('{{Détecteur sans nom ou sans lampe}} : ' + vide.join(', '), 'warning')
     if (!D) return // liste pas encore chargée (ou en erreur) : rien à enregistrer
     var mal = Object.keys(REG).filter(function (id) { return REG[id].plages.some(function (p) { return !plageOk(p) }) })
     if (mal.length) return alerte('{{Plage sans heure de début ou de fin (question 3)}} : ' + mal.map(libelle).join(', '), 'warning')
@@ -778,11 +809,13 @@
     bootbox.confirm(esc(partent.length) + ' {{commande(s) retirée(s) du suivi}} : ' + esc(partent.map(libelle).join(', ')) + '. {{Leurs relevés seront effacés : si vous les cochez à nouveau, seul l’historique de Jeedom est repris (90 jours, quelques heures pour un historique lissé). Continuer ?}}', function (oui) { if (oui) enregistrer(ok) })
   }
   function enregistrer(ok) {
-    ajax('enregistrer', { suivi: JSON.stringify(D.suivi), exclure: $('#ph_exclure').val(), exclusions: $('#ph_exclusions').val(), reponses: JSON.stringify(REP), regles: JSON.stringify(REG) }, function (r) {
+    ajax('enregistrer', { suivi: JSON.stringify(D.suivi), exclure: $('#ph_exclure').val(), exclusions: $('#ph_exclusions').val(), reponses: JSON.stringify(REP), regles: JSON.stringify(REG), detecteurs: JSON.stringify(DET) }, function (r) {
       alerte('{{Enregistré}} : ' + r.repris + ' {{changements repris de l’historique}}', 'success')
       $('#ph_precedent').toggle(!!r.precedent).attr('data-date', r.precedent || '')
-      SAUVE = $.extend({}, D.suivi); REP = $.extend({}, r.reponses); REG = $.extend(true, {}, r.regles); D.donnees = r.donnees; D.figes = r.figes // ce que la box a retenu
-      habitudes(r.habitudes); guide()
+      var partis = DET.filter(function (d) { return !r.detecteurs.some(function (e) { return e.nom == $.trim(d.nom) }) }).map(function (d) { return d.nom })
+      if (partis.length) alerte('{{Détecteur(s) retiré(s) : leurs lampes n’existent plus dans Jeedom}} : ' + partis.join(', '), 'warning')
+      SAUVE = $.extend({}, D.suivi); REP = $.extend({}, r.reponses); REG = $.extend(true, {}, r.regles); DET = $.extend(true, [], r.detecteurs); D.donnees = r.donnees; D.figes = r.figes // ce que la box a retenu
+      habitudes(r.habitudes); guide(); histo()
       if (ok) ok()
     })
   }
@@ -790,7 +823,7 @@
     var b = $(this)
     if (b.hasClass('disabled')) return // une découverte à la fois
     b.addClass('disabled'); $('#ph_decouverte').html('<p><i class="fas fa-spinner fa-spin"></i> {{Lecture des historiques…}}</p>')
-    ajax('decouverte', {}, function (r) { b.removeClass('disabled'); decouverte(r) }, function () { b.removeClass('disabled'); $('#ph_decouverte').empty() })
+    lireDet(); ajax('decouverte', { detecteurs: JSON.stringify(DET) }, function (r) { b.removeClass('disabled'); decouverte(r) }, function () { b.removeClass('disabled'); $('#ph_decouverte').empty() })
   })
   $('#ph_decouverte').on('click', '#ph_appliquer', appliquer)
   $('#ph_decouverte').on('click', '#ph_dec_fermer', function () { $('#ph_decouverte').empty() })
@@ -804,9 +837,9 @@
         if (!r.precedent) return
         D = r; D.suivi = $.extend({}, r.precedent.suivi); NOTES = {}; SENS = {}
         D.candidats.forEach(function (c) { var s = D.suivi[c.id]; c.type = s && s.t ? s.t : c.tg; c.type0 = c.type == 'volet' ? 'volet' : c.tg }) // type du choix d'avant ; absente de ce choix : type d'après le type générique
-        REP = $.extend({}, r.precedent.reponses || r.reponses); REG = $.extend(true, {}, r.precedent.regles || r.regles) // choix d'avant la 0.8 : réponses actuelles gardées
+        REP = $.extend({}, r.precedent.reponses || r.reponses); REG = $.extend(true, {}, r.precedent.regles || r.regles); DET = $.extend(true, [], r.precedent.detecteurs || r.detecteurs) // choix d'avant la 0.8 : réponses actuelles gardées
         $('#ph_exclure').val(r.precedent.exclure); $('#ph_exclusions').val(r.precedent.exclusions)
-        liste(); dessiner()
+        liste(); dessiner(); if (H) habitudes(H) // étiquettes « sur détecteur » du choix d'avant
         alerte('{{Choix d’avant rechargé : cliquez sur Enregistrer pour y revenir.}}', 'info')
       })
     })
@@ -817,6 +850,68 @@
       if (oui) ajax('effacer', {}, function (r) { habitudes(r); alerte('{{Relevés effacés}}', 'success') })
     })
   })
+  /* ---- Historique Jeedom des commandes suivies : proposé, jamais fait sans confirmation ; état d'avant gardé sur la box ---- */
+  var HISTO = null
+  function histo() { ajax('historiques_manquants', {}, function (r) { HISTO = r; histoAff() }) }
+  function histoAff() {
+    if (!HISTO || !$('#ph_ghisto').length) return
+    var l = HISTO.liste, h = ''
+    if (l.length) h += '<div class="well well-sm"><p><b>' + l.length + ' {{commande(s) suivie(s) sans historique utilisable dans Jeedom}}</b> : '
+      + l.map(function (x) { return esc(x.nom) + ' <small>(' + (x.hist ? '{{lissé}}' : '{{non historisée}}') + ')</small>' }).join(', ') + '</p>'
+      + '<p><small>{{Le plugin relève déjà leurs changements depuis leur enregistrement. L’historique de Jeedom permet en plus de les voir dans Jeedom et de les reprendre après « Tout effacer » ou une réinstallation.}}</small></p>'
+      + '<p><a class="btn btn-sm btn-warning" id="ph_historiser"><i class="fas fa-history"></i> {{Activer leur historique…}}</a></p>'
+      + '<details><summary style="cursor:pointer">{{Ou le faire à la main}}</summary><ol><li>{{Ouvrez l’équipement (Plugins, puis son plugin), onglet Commandes, roue dentée de la commande.}}</li>'
+      + '<li>{{Onglet Configuration, partie Historique : cochez « Historiser ».}}</li>'
+      + '<li>{{Mode de lissage : « Aucun » (sinon Jeedom remplace les valeurs par une moyenne horaire après quelques heures ; inutile pour une commande binaire).}}</li>'
+      + '<li>{{Enregistrez. Pour plusieurs commandes à la fois : Analyse, Résumé domotique, case « Historiser » de chaque commande.}}</li></ol></details></div>'
+    if (HISTO.avant) h += '<p><a class="btn btn-xs btn-default" id="ph_remettre"><i class="fas fa-undo"></i> {{Remettre l’historique comme avant}}</a> <small>(' + HISTO.avant + ' {{commande(s) changée(s) par le plugin}})</small></p>'
+    $('#ph_ghisto').html(h)
+  }
+  $('#ph_gcontenu').on('click', '#ph_historiser', function () {
+    var l = HISTO.liste
+    bootbox.confirm('{{Le plugin va modifier ces commandes (et seulement celles-ci)}} : <ul>' + l.map(function (x) { return '<li>' + esc(x.nom) + '</li>' }).join('') + '</ul>'
+      + '{{« Historiser » coché, lissage « Aucun » pour une commande non binaire. Leur réglage actuel est gardé sur la box : « Remettre l’historique comme avant » le rétablit. L’historique ne commence qu’à partir de maintenant. Continuer ?}}', function (oui) {
+      if (!oui) return
+      var b = $('#ph_historiser').addClass('disabled') // un seul envoi
+      ajax('historiser', { ids: JSON.stringify(l.map(function (x) { return x.id })) }, function (r) {
+        alerte('{{Historique activé}} : ' + l.filter(function (x) { return r[x.id] }).map(function (x) { return x.nom }).join(', '), 'success'); etatsHisto(r)
+      }, function () { b.removeClass('disabled') })
+    })
+  })
+  $('#ph_gcontenu').on('click', '#ph_remettre', function () {
+    bootbox.confirm('{{Remettre le réglage d’historique d’avant le plugin sur les commandes qu’il a changées ? Une commande remise « non historisée » garde l’historique déjà enregistré tant que Jeedom ne le purge pas.}}', function (oui) {
+      if (!oui) return
+      $('#ph_remettre').addClass('disabled')
+      ajax('remettre', {}, function (r) {
+        alerte('{{Remis comme avant}} : ' + r.remis.join(', ') + (r.laisses.length ? ' ; {{laissées, réglées autrement depuis}} : ' + r.laisses.join(', ') : ''), r.laisses.length ? 'warning' : 'success'); etatsHisto(r.etats)
+      }, function () { $('#ph_remettre').removeClass('disabled') })
+    })
+  })
+  // Après historiser / remettre : état affiché des commandes changées, sans recharger la liste (les réponses pas encore enregistrées restent)
+  function etatsHisto(e) {
+    Object.keys(e || {}).forEach(function (id) { var c = cand(id); if (c) { c.hist = e[id].hist; c.lisse = e[id].lisse } })
+    HISTO = null; liste(); guide(); histo() // HISTO vidé : pas d'ancien bouton « Activer » en attendant la réponse
+  }
+  /* ---- Widget : l'équipement du plugin ---- */
+  var WID = null
+  $('#ph_widget_ouvrir').on('click', function () {
+    if ($('#ph_widget').is(':visible')) return $('#ph_widget').hide()
+    ajax('widget', {}, function (r) {
+      WID = r.id
+      $('#ph_wobjet').html('<option value="0">{{Aucun}}</option>' + r.objets.map(function (o) { return '<option value="' + esc(o.id) + '">' + esc(o.nom) + '</option>' }).join('')).val(r.objet || 0)
+      $('#ph_wvisible').prop('checked', !!r.visible); $('#ph_wpieces').prop('checked', !!r.pieces); $('#ph_widget').show()
+    })
+  })
+  $('#ph_wenregistrer').on('click', function () {
+    ajax('widget', { enregistrer: 1, objet: $('#ph_wobjet').val(), visible: $('#ph_wvisible').is(':checked') ? 1 : 0, pieces: $('#ph_wpieces').is(':checked') ? 1 : 0 }, function () { alerte('{{Widget enregistré}}', 'success') })
+  })
+  $('#ph_wavance').on('click', function () {
+    if (!WID) return
+    var u = 'index.php?v=d&modal=eqLogic.configure&eqLogic_id=' + WID
+    if (window.jeeDialog) jeeDialog.dialog({ id: 'jee_modal', title: '{{Configuration du widget}}', contentUrl: u })
+    else $('#md_modal').dialog({ title: '{{Configuration du widget}}' }).load(u).dialog('open')
+  })
   charger()
+  histo()
   ajax('habitudes', {}, habitudes)
 })()

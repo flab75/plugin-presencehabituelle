@@ -62,6 +62,9 @@ $ok($A::suspect('Démon Volet proportionel', 'Jeedom interne') && $A::voletNomme
 echo "découverte OK\n";
 $rp = $A::reponses(['5' => ['r' => 'oui'], '6' => ['r' => 'doublon', 'de' => '5'], '7' => ['r' => 'doublon', 'de' => 7], '8' => ['r' => 'peut-être'], 'x' => ['r' => 'oui'], '9' => ['r' => 'groupe', 'm' => ['5', 6, 9, 6, 'z']], '10' => ['r' => 'groupe', 'm' => 'x']]);
 $ok($rp == [5 => ['r' => 'oui'], 6 => ['r' => 'doublon', 'de' => 5], 7 => ['r' => 'doublon'], 9 => ['r' => 'groupe', 'm' => [5, 6]], 10 => ['r' => 'groupe']], 'réponses : ' . json_encode($rp));
+$dt = $A::detecteurs([['nom' => ' RDJ ', 'cmd' => '12', 'm' => ['5', 6, 6, 0, 'x']], ['nom' => '', 'm' => [5]], ['nom' => 'Vide', 'm' => []], 'x', ['nom' => 'Libre', 'cmd' => -3, 'm' => [7]]]);
+$ok($dt == [['nom' => 'RDJ', 'cmd' => 12, 'm' => [5, 6]], ['nom' => 'Libre', 'cmd' => 0, 'm' => [7]]], 'détecteurs : nom, commande facultative, lampes');
+$ok($A::memeDetecteur($dt, 6, 5) && !$A::memeDetecteur($dt, 5, 7) && count($A::detecteurs(array_fill(0, 40, ['nom' => 'a', 'm' => [1]]))) == 30, 'détecteurs : même détecteur, 30 au plus');
 $rg = $A::regles(['5' => ['jamais' => 1], '6' => ['plages' => [['k' => 'exclue', 'j' => 'tous', 'de' => '23:00', 'a' => '07:00'], ['k' => 'marche', 'j' => 'S', 'de' => '24:00', 'a' => '07:00'], ['k' => 'x', 'j' => 'S', 'de' => '01:00', 'a' => '02:00']]], '7' => ['plages' => []]]);
 $ok($rg == [5 => ['jamais' => 1, 'plages' => []], 6 => ['jamais' => 0, 'plages' => [['k' => 'exclue', 'j' => 'tous', 'de' => '23:00', 'a' => '07:00']]]], 'règles : ' . json_encode($rg));
 echo "mode guidé OK\n";
@@ -182,18 +185,29 @@ foreach ($it as $f) {
   if (!preg_match('/\.php$/', $f) || preg_match('#/(docs|tests)/#', $f)) continue;
   foreach (file($f) as $i => $l) {
     $o = basename($f) . ':' . ($i + 1);
+    if (basename($f) != 'presencehabituelle_analyse.class.php' && preg_match_all('/\$(w|wc)\s*=(?!=)\s*([^;]+)/', $l, $af, PREG_SET_ORDER)) foreach ($af as $x) // $w / $wc = l'équipement du plugin ou ses commandes, rien d'autre
+      $ok(preg_match('/^(\$P::equipement\(|self::equipement\(|eqLogic::byLogicalId\(\'widget\', __CLASS__\)|new self\(\)|new presencehabituelleCmd\(\)|\$w->getCmd\(null, \'maintenant\'\))/', trim($x[2])), "\$$x[1] n'est pas l'équipement du plugin ($o)");
+    if (preg_match('#// ph:(propre|historiser)$#', rtrim($l), $mq)) { // écritures permises : le widget du plugin ($w, $wc) ; l'historique à la demande (bouton + sauvegarde)
+      $ok(in_array(basename($f), $mq[1] == 'propre' ? ['presencehabituelle.class.php', 'presencehabituelle.ajax.php'] : ['presencehabituelle.class.php']), "marque $mq[1] hors de sa place ($o)");
+      $marques[$mq[1]] = ($marques[$mq[1]] ?? 0) + 1;
+      // seul l'appel permis est ôté ; le reste de la ligne passe les mêmes contrôles
+      $l = $mq[1] == 'propre' ? preg_replace('/\$wc?->\w+\(/', '(', $l) : preg_replace('/\$c->(setIsHistorized|setConfiguration\(\'historizeMode\'|save)\(?/', '(', $l);
+    }
     $l = preg_replace('#^\s*(/?\*).*$|\s//.*$#', '', $l); // commentaires ôtés : « history::archive » cité n'est pas un appel
-    $ok(!preg_match('/->(save|remove)\(/', $l) || preg_match('/\$l->(save|remove)\(\)/', $l), "enregistrement ou suppression d'un objet de la box ($o)");
-    $ok(!preg_match('/->(set(Configuration|IsEnable|IsVisible|Name|Value|Display|Order|Object_id|EqLogic_id|Logical_id)|event|checkAndUpdateCmd|addHistoryValue)\(/', $l), "modification d'un objet de la box ($o)");
+    if (basename($f) != 'presencehabituelle_analyse.class.php') $ok(!preg_match('/\bas\s+(\$\w+\s*=>\s*)?\$wc?\b|\[[^\]]*\$wc?\b[^\]]*\]\s*=(?!=)/', $l), "\$w / \$wc affecté par une boucle ou une déstructuration ($o)");
+    $ok(!preg_match('/->(save|remove)\(/', preg_replace('/\$l->(save|remove)\(\)/', '', $l)), "enregistrement ou suppression d'un objet de la box ($o)");
+    $ok(!preg_match('/->(set[A-Z]\w*|event|checkAndUpdateCmd|addHistoryValue)\(/', preg_replace('/\$l->set(Class|Function|Option)\(/', '(', $l)), "modification d'un objet de la box ($o)"); // tout setter, sauf ceux de l'écouteur du plugin ($l)
     $ok(!preg_match('/(history|scenario|eqLogic|cmd|object|jeeObject|plan|planHeader|interactDef|cron|message|log)::(remove|save|archive|removes|clean|set)/i', $l), "écriture par le core ($o)");
     $ok(!preg_match('/->execCmd\(/', $l) || strpos($l, "getType() == 'info'") !== false, "commande exécutée sans être une info ($o)");
     $ok(!preg_match('/config::(save|remove)\(/', $l) || preg_match('/__CLASS__\)|, \$P\)/', $l), "configuration hors du plugin ($o)");
     $ok(!preg_match('/[\'"]\s*(DELETE|UPDATE|INSERT|DROP|ALTER|TRUNCATE|REPLACE|CREATE)\b/i', $l) || strpos($l, 'self::TABLE') !== false, "écriture SQL hors de la table du plugin ($o)");
   }
 }
-echo "aucune modification des objets de la box OK\n";
+$ok(($marques['historiser'] ?? 0) == 6, 'écritures « historiser » : 6 attendues (historiser, remettre)');
+$ok(($marques['propre'] ?? 0) == 11, 'écritures « propre » : 11 attendues (equipement, majWidget, ajax widget) : ' . ($marques['propre'] ?? 0));
+echo 'aucune modification des objets de la box OK (sauf widget du plugin : ' . ($marques['propre'] ?? 0) . ' lignes ; historique à la demande : ' . ($marques['historiser'] ?? 0) . " lignes)\n";
 
-if (is_file(__DIR__ . '/../../../core/php/core.inc.php')) { // sur la box : analyse réelle, rien n'est écrit sauf data/habitudes.json
+if (is_file(__DIR__ . '/../../../core/php/core.inc.php')) { // sur la box : analyse réelle, rien n'est écrit sauf data/habitudes.json et les valeurs du widget du plugin
   require_once __DIR__ . '/../core/class/presencehabituelle.class.php';
   $r = presencehabituelle::analyser();
   echo 'analyse OK : ' . count($r['groupes']) . ' groupes, ' . count($r['volets']) . " volets\n";

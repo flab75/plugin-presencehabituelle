@@ -40,6 +40,20 @@ class presencehabituelle_analyse {
     }
     return $r;
   }
+  /* Détecteurs de présence : [{nom, cmd (0 = non connecté à Jeedom), m: [cmdId des lampes qu'il allume]}], 30 au plus ; sans nom ni lampe = écarté */
+  public static function detecteurs($x) {
+    $r = [];
+    foreach (array_slice(is_array($x) ? array_values($x) : [], 0, 30) as $v) {
+      if (!is_array($v) || ($nom = mb_substr(trim((string)($v['nom'] ?? '')), 0, 60)) === '') continue;
+      $m = array_slice(array_values(array_unique(array_filter(array_map('intval', (array)($v['m'] ?? [])), fn($y) => $y > 0))), 0, 100);
+      if ($m) $r[] = ['nom' => $nom, 'cmd' => max(0, (int)($v['cmd'] ?? 0)), 'm' => $m];
+    }
+    return $r;
+  }
+  public static function memeDetecteur(array $det, $a, $b) { // deux lampes allumées par un même détecteur : pas des doublons
+    foreach ($det as $d) if (in_array((int)$a, $d['m'], true) && in_array((int)$b, $d['m'], true)) return true;
+    return false;
+  }
   public static function regles($x) {
     $r = []; $h = '/^([01]\d|2[0-3]):[0-5]\d$/';
     foreach (is_array($x) ? $x : [] as $id => $v) {

@@ -70,6 +70,10 @@ class presencehabituelle extends eqLogic {
 
   /* Observation (découverte) : commandes sans historique relevées quelques jours, pour les comparer aux autres.
      config 'observation' = {fin, ids} ; → ids observés tant que la fin n'est pas passée */
+  public static function detecteursLus($l = null) { // avec le nom lisible de la commande (h), pour la page
+    return array_map(fn($d) => ($d['cmd'] && !is_object(cmd::byId($d['cmd'])) ? ['cmd' => 0, 'h' => '', 'perdu' => 1] : ['h' => $d['cmd'] ? cmd::cmdToHumanReadable('#' . $d['cmd'] . '#') : '']) + $d, // perdu : commande supprimée de Jeedom
+      presencehabituelle_analyse::detecteurs($l ?? self::cfg('detecteurs')));
+  }
   public static function cfg($cle) { // config JSON (réponses, règles du mode guidé) ; config::byKey décode déjà le JSON
     $v = config::byKey($cle, __CLASS__, []);
     if (is_string($v)) $v = json_decode($v, true);
@@ -229,7 +233,7 @@ class presencehabituelle extends eqLogic {
 
   // Historique lissé : Jeedom remplace les valeurs numériques par une moyenne horaire après historyArchiveTime HEURES
   public static function lisse($cmd) {
-    return $cmd->getIsHistorized() && $cmd->getSubType() != 'binary' && $cmd->getConfiguration('historizeMode', 'avg') != 'none';
+    return $cmd->getIsHistorized() && $cmd->getSubType() == 'numeric' && $cmd->getConfiguration('historizeMode', 'avg') != 'none'; // un texte n'est jamais moyenné
   }
 
   /* Reprise d'une commande par son historique Jeedom : changements exacts seulement (binaire, mode « Aucun », ou point pas encore archivé).
@@ -303,7 +307,7 @@ class presencehabituelle extends eqLogic {
   }
 
   /* Enregistre le choix de la page. $suivi = {cmdId: {g, t}} ; renvoie le nombre de changements repris de l'historique. */
-  public static function enregistrer(array $suivi, $exclure, $exclusions, $reponses = null, $regles = null) {
+  public static function enregistrer(array $suivi, $exclure, $exclusions, $reponses = null, $regles = null, $detecteurs = null) {
     $A = 'presencehabituelle_analyse';
     $mal = [];
     foreach (preg_split('/\R/', (string)$exclusions) as $l) if (trim($l) !== '' && !$A::periodes($l)) $mal[] = trim($l);
@@ -330,15 +334,19 @@ class presencehabituelle extends eqLogic {
     foreach (array_unique($gardes) as $id) if (!isset($avant[$id]) && $id != $avantX) { $n += self::amorcer(cmd::byId($id), $jours); self::noter($id); }
     $reponses = $reponses === null ? self::cfg('reponses') : $A::reponses($reponses); // null : page d'avant 0.8, réponses gardées
     $regles = $regles === null ? self::cfg('regles') : $A::regles($regles);
-    $vieux = ['suivi' => $avant, 'exclure' => $avantX, 'exclusions' => (string)config::byKey('exclusions', __CLASS__, ''), 'reponses' => self::cfg('reponses'), 'regles' => self::cfg('regles')];
+    $info = fn($id) => is_object($c = cmd::byId($id)) && $c->getType() == 'info';
+    $detecteurs = $detecteurs === null ? self::cfg('detecteurs') : array_values(array_filter(array_map(fn($d) => ['cmd' => $info($d['cmd']) ? $d['cmd'] : 0, 'm' => array_values(array_filter($d['m'], $info))] + $d,
+      $A::detecteurs($detecteurs)), fn($d) => $d['m'])); // commande supprimée : détecteur gardé, non relié ; lampes inconnues ôtées
+    $vieux = ['suivi' => $avant, 'exclure' => $avantX, 'exclusions' => (string)config::byKey('exclusions', __CLASS__, ''), 'reponses' => self::cfg('reponses'), 'regles' => self::cfg('regles'), 'detecteurs' => self::cfg('detecteurs')];
     $sansD = fn($x) => array_map(fn($e) => array_diff_key($e, ['d' => 0]), $x); // d (suivie depuis) n'est pas un choix : sans lui, un suivi d'avant 0.9 serait vu changé
-    if (config::byKey('suivi', __CLASS__, '') !== '' && ['suivi' => $sansD($avant)] + $vieux != ['suivi' => $sansD($propre), 'exclure' => $exclure, 'exclusions' => (string)$exclusions, 'reponses' => $reponses, 'regles' => $regles]) // « Revenir au choix d'avant »
+    if (config::byKey('suivi', __CLASS__, '') !== '' && ['suivi' => $sansD($avant)] + $vieux != ['suivi' => $sansD($propre), 'exclure' => $exclure, 'exclusions' => (string)$exclusions, 'reponses' => $reponses, 'regles' => $regles, 'detecteurs' => $detecteurs]) // « Revenir au choix d'avant »
       config::save('precedent', json_encode($vieux + ['date' => date('Y-m-d H:i')]), __CLASS__);
     config::save('suivi', json_encode($propre), __CLASS__);
     config::save('exclure_cmd', $exclure ?: '', __CLASS__);
     config::save('exclusions', (string)$exclusions, __CLASS__);
     config::save('reponses', json_encode((object)$reponses), __CLASS__);
     config::save('regles', json_encode((object)$regles), __CLASS__);
+    config::save('detecteurs', json_encode($detecteurs), __CLASS__);
     self::majListener();
     return $n;
   }
@@ -349,7 +357,7 @@ class presencehabituelle extends eqLogic {
     if (is_string($p)) $p = json_decode($p, true);
     if (!is_array($p) || !isset($p['suivi'])) return null;
     $p['exclure'] = (int)($p['exclure'] ?? 0) ? cmd::cmdToHumanReadable('#' . (int)$p['exclure'] . '#') : '';
-    $p['suivi'] = (object)$p['suivi']; $p['reponses'] = isset($p['reponses']) ? (object)$p['reponses'] : null; $p['regles'] = isset($p['regles']) ? (object)$p['regles'] : null; // null : choix d'avant la 0.8, la page garde les réponses actuelles
+    $p['suivi'] = (object)$p['suivi']; $p['reponses'] = isset($p['reponses']) ? (object)$p['reponses'] : null; $p['regles'] = isset($p['regles']) ? (object)$p['regles'] : null; $p['detecteurs'] = isset($p['detecteurs']) ? self::detecteursLus($p['detecteurs']) : null; // null : choix d'avant la 0.8, la page garde les réponses actuelles
     return $p;
   }
 
@@ -378,7 +386,7 @@ class presencehabituelle extends eqLogic {
   const ABSENCE = '/(absen|vacanc|simulation|away|holiday|d[ée]part)/iu';
   const DECOUVERTE = 30; // jours lus
 
-  public static function decouverte() {
+  public static function decouverte($det = null) { // $det : détecteurs de la page (pas encore enregistrés), sinon ceux enregistrés
     $A = 'presencehabituelle_analyse'; $fin = time(); $debut = $fin - 86400 * self::DECOUVERTE;
     $suivi = self::suivi(); $lampes = []; $eqNomme = []; $nommees = []; $absence = []; $volets = []; $eqVolet = [];
     $sansX = !(int)config::byKey('exclure_cmd', __CLASS__, 0);
@@ -426,9 +434,9 @@ class presencehabituelle extends eqLogic {
 
     // 1. Doublons : mêmes bascules à 5 s près, 90 % des fois dans les deux sens ; on garde l'historisée exacte
     $rang = fn($id) => [isset($suivi[$id]), $lampes[$id]['hist'] && !$lampes[$id]['lisse'], (bool)$lampes[$id]['hist'], $lampes[$id]['sub'] == 'binary', count($iv[$id]), -$id];
-    $doublon = [];
+    $doublon = []; $det = $A::detecteurs($det ?? self::cfg('detecteurs'));
     foreach ($ids as $i => $a) foreach (array_slice($ids, $i + 1) as $b) {
-      if (isset($doublon[$a]) || isset($doublon[$b]) || $fin - ($s = $commun($a, $b)) < 86400) continue;
+      if (isset($doublon[$a]) || isset($doublon[$b]) || $A::memeDetecteur($det, $a, $b) || $fin - ($s = $commun($a, $b)) < 86400) continue; // même détecteur : deux lampes qui s'allument ensemble, pas une seule
       $x = $A::coupe($iv[$a], $s, $fin); $y = $A::coupe($iv[$b], $s, $fin);
       if (count($x) < 2 || count($y) < 2 || $A::memes($x, $y, 5, $s, $fin) < .9 || $A::memes($y, $x, 5, $s, $fin) < .9) continue;
       [$g, $p] = $rang($a) >= $rang($b) ? [$a, $b] : [$b, $a];
@@ -440,6 +448,10 @@ class presencehabituelle extends eqLogic {
       for ($n = 0; isset($doublon[$g]) && $n < 50; $n++) $g = $doublon[$g];
       $doublon[$p] = $g;
     }
+    foreach ($doublon as $p => $g) { // par une 3e commande (relais, virtuel) : deux lampes d'un même détecteur jamais fusionnées
+      if ($A::memeDetecteur($det, $p, $g)) { unset($doublon[$p]); continue; }
+      foreach ($doublon as $q => $h) if ($q != $p && $h == $g && isset($doublon[$p]) && $A::memeDetecteur($det, $p, $q)) unset($doublon[$q]);
+    }
     $canon = array_values(array_diff($ids, array_keys($doublon)));
 
     // 2. Groupes : allumée seulement quand d'autres le sont, et ses bascules sont celles de leur réunion (2 lampes au moins)
@@ -447,7 +459,7 @@ class presencehabituelle extends eqLogic {
     foreach ($canon as $g) {
       $m = [];
       foreach ($canon as $l) {
-        if ($l == $g || $fin - ($s = $commun($g, $l)) < 86400) continue;
+        if ($l == $g || $A::memeDetecteur($det, $g, $l) || $fin - ($s = $commun($g, $l)) < 86400) continue; // même détecteur : allumées ensemble, pas l'une le groupe de l'autre
         $x = $A::coupe($iv[$l], $s, $fin);
         if (($d = $A::duree($x)) > 0 && $A::inter($x, $A::coupe($iv[$g], $s, $fin)) >= .9 * $d) $m[] = $l;
       }
@@ -603,8 +615,7 @@ class presencehabituelle extends eqLogic {
 
   public static function analyser() {
     $A = 'presencehabituelle_analyse'; $fin = time(); $excl = self::exclusions();
-    $c = fn($k, $d) => config::byKey($k, __CLASS__, $d) ?: $d;
-    $A::weekEnd($c('we_jour_debut', 5), $c('we_heure_debut', '16:00'), $c('we_jour_fin', 1), $c('we_heure_fin', '04:00'));
+    self::semaine();
     $max = 3600 * (($h = (float)config::byKey('session_max', __CLASS__, 18)) > 0 ? max(1, $h) : 18); // 0 ou illisible : 18 h, comme jours()
     $groupes = []; $volets = []; $plan = self::plan(); $lieux = self::lieux($plan); $piece = [];
     foreach (self::suivi() as $id => $s) {
@@ -662,7 +673,124 @@ class presencehabituelle extends eqLogic {
       }
     }
     self::ecrire(self::fichier(), json_encode($res));
+    try { self::majWidget($res); } catch (Throwable $e) { log::add(__CLASS__, 'error', 'widget : ' . $e->getMessage()); } // les tendances sont enregistrées quoi qu'il arrive
     return $res;
+  }
+
+  // Week-end de la configuration → presencehabituelle_analyse::$WE
+  public static function semaine() {
+    $c = fn($k, $d) => config::byKey($k, __CLASS__, $d) ?: $d;
+    presencehabituelle_analyse::weekEnd($c('we_jour_debut', 5), $c('we_heure_debut', '16:00'), $c('we_jour_fin', 1), $c('we_heure_fin', '04:00'));
+  }
+
+  /* Le widget : un équipement du plugin à lui (logicalId « widget »), créé au 1er clic sur « Widget » (supprimé, il ne revient pas seul).
+     Ses commandes seules sont écrites ($w, $wc) ; marque « ph:propre » = écriture sur cet équipement-là (vérifiée par le selftest).
+     « Allumé d'habitude maintenant » dit quand la maison est vide : rempli seulement si l'option widget_pieces est cochée. */
+  const CMDS = ['etat' => ['État', 'info', 'string'], 'maintenant' => ['Allumé d\'habitude maintenant', 'info', 'string'],
+    'calcul' => ['Tendances du', 'info', 'string'], 'suivies' => ['Commandes suivies', 'info', 'numeric'], 'recalculer' => ['Recalculer', 'action', 'other']];
+  public static function equipement($creer = true) {
+    $w = eqLogic::byLogicalId('widget', __CLASS__);
+    if (!is_object($w)) {
+      if (!$creer) return null;
+      $w = new self(); $w->setName(__('Présence habituelle', __FILE__)); // ph:propre
+      $w->setEqType_name(__CLASS__); $w->setLogicalId('widget'); $w->setIsEnable(1); $w->setIsVisible(1); // ph:propre
+      try { $w->save(); } catch (Exception $e) { $w->setName(__('Présence habituelle (plugin)', __FILE__)); $w->save(); } /* nom déjà pris par un équipement sans objet */ // ph:propre
+    }
+    $o = 0;
+    foreach (self::CMDS as $k => [$nom, $type, $sous]) {
+      $o++;
+      if (is_object($w->getCmd(null, $k))) continue;
+      $wc = new presencehabituelleCmd(); $wc->setEqLogic_id($w->getId()); $wc->setLogicalId($k); $wc->setName(__($nom, __FILE__)); // ph:propre
+      $wc->setType($type); $wc->setSubType($sous); $wc->setOrder($o); if ($k == 'maintenant') $wc->setIsVisible(0); $wc->save(); // ph:propre
+    }
+    return $w;
+  }
+  // Valeurs du widget : à chaque calcul et chaque heure. « Allumé d'habitude » = pièces allumées au moins un jour sur deux à cette heure (profil lissé).
+  public static function majWidget($h = null) {
+    if (!is_object($w = self::equipement(false)) || !$w->getIsEnable()) return;
+    if ($h === null) $h = is_file($f = self::fichier()) ? json_decode((string)file_get_contents($f), true) : null;
+    if (!is_array($h)) return;
+    self::semaine();
+    $t = time(); $hr = (int)date('G', $t);
+    $k = presencehabituelle_analyse::cle((int)date('N', $t), $hr); // jour civil et heure pleine, comme profil() des lumières
+    $n = []; foreach ($h['groupes'] ?? [] as $g) if (empty($g['confirmer' . $k]) && ($g['l' . $k][$hr] ?? 0) >= 50) $n[] = $g['nom']; // « à confirmer » : pas assez de jours
+    $m = !(int)config::byKey('widget_pieces', __CLASS__, 0) ? '' : ($n ? mb_substr(implode(', ', $n), 0, 250) : __('rien', __FILE__));
+    $w->checkAndUpdateCmd('etat', __('Analyse seule : rien n\'est allumé ni fermé', __FILE__)); // ph:propre
+    $w->checkAndUpdateCmd('maintenant', $m); // ph:propre
+    $w->checkAndUpdateCmd('calcul', isset($h['date']) ? date('d/m H:i', strtotime($h['date'])) : ''); // ph:propre
+    $w->checkAndUpdateCmd('suivies', count(self::suivi())); // ph:propre
+  }
+
+  /* Historique Jeedom des commandes suivies : seule écriture du plugin sur des commandes d'autres équipements, à la demande
+     (bouton + confirmation), état d'avant gardé dans data/ pour « Remettre comme avant ». Marque « ph:historiser » (selftest).
+     Lissage « Aucun » : sinon Jeedom remplace les valeurs par une moyenne horaire après quelques heures. */
+  public static function aHistoriser() {
+    $r = [];
+    foreach (self::suivi() as $id => $s) {
+      if (!is_object($c = cmd::byId($id)) || $c->getType() != 'info') continue;
+      if (!$c->getIsHistorized() || self::lisse($c)) $r[] = ['id' => (int)$id, 'nom' => self::nom($id, true), 'hist' => (int)$c->getIsHistorized(), 'lisse' => (int)self::lisse($c)];
+    }
+    return $r;
+  }
+  public static function historiserFichier() { return __DIR__ . '/../../data/historiser_avant.json'; }
+  public static function historiserAvant() {
+    $a = is_file($f = self::historiserFichier()) ? json_decode((string)file_get_contents($f), true) : [];
+    return is_array($a) ? $a : [];
+  }
+  // État d'historique d'une commande, tel que l'affiche le Guide
+  public static function etatHisto($c) { return ['hist' => (int)$c->getIsHistorized(), 'lisse' => (int)self::lisse($c)]; }
+  // Un appel à la fois (double clic, deux onglets) : le 2e attend la fin du 1er et lit l'état à jour
+  public static function verrou(callable $f) {
+    $v = new SplFileObject(__DIR__ . '/../../data/historiser.lock', 'c'); // fichier local (pas fopen : le selftest le refuse, appel réseau possible)
+    $v->flock(LOCK_EX);
+    try { return $f(); } finally { $v->flock(LOCK_UN); }
+  }
+  /* avant[id] = {h, m} : 1er état d'avant le plugin (jamais écrasé) ; apres = état posé par le plugin (« Remettre » ne touche pas
+     une commande réglée autrement depuis). Renvoie [id => état affiché]. */
+  public static function historiser(array $ids) {
+    return self::verrou(function () use ($ids) {
+      $ids = array_flip(array_map('intval', $ids)); $faits = [];
+      $avant = self::historiserAvant();
+      foreach (self::aHistoriser() as $x) {
+        if (!isset($ids[$x['id']]) || !is_object($c = cmd::byId($x['id']))) continue;
+        if (!isset($avant[$x['id']])) $avant[$x['id']] = ['h' => (int)$c->getIsHistorized(), 'm' => $c->getConfiguration('historizeMode', null)];
+        unset($avant[$x['id']]['apres']); // posé seulement une fois l'enregistrement réussi
+        $faits[] = [$c, $x];
+      }
+      if (!$faits) return [];
+      self::ecrire(self::historiserFichier(), json_encode($avant)); // sauvegarde AVANT toute écriture
+      $r = []; $noms = [];
+      foreach ($faits as [$c, $x]) {
+        $c->setIsHistorized(1); // ph:historiser
+        if ($c->getSubType() != 'binary') $c->setConfiguration('historizeMode', 'none'); // ph:historiser
+        $c->save(); // ph:historiser
+        $avant[$x['id']]['apres'] = [1, $c->getConfiguration('historizeMode', null)]; self::ecrire(self::historiserFichier(), json_encode($avant));
+        $r[$x['id']] = self::etatHisto($c); $noms[] = $x['nom'];
+      }
+      log::add(__CLASS__, 'info', 'Historique activé : ' . implode(', ', $noms));
+      return $r;
+    });
+  }
+  // Renvoie remis (noms), laisses (noms : réglés autrement depuis, pas touchés), etats [id => état affiché]
+  public static function remettre() {
+    return self::verrou(function () {
+      $r = ['remis' => [], 'laisses' => [], 'etats' => []]; $reste = self::historiserAvant();
+      foreach ($reste as $id => $a) {
+        if (is_object($c = cmd::byId($id))) {
+          if (isset($a['apres']) && [(int)$c->getIsHistorized(), $c->getConfiguration('historizeMode', null)] != $a['apres']) $r['laisses'][] = self::nom($id, true);
+          else {
+            $c->setIsHistorized((int)$a['h']); // ph:historiser
+            $c->setConfiguration('historizeMode', $a['m'] ?? null); // ph:historiser
+            $c->save(); // ph:historiser
+            $r['remis'][] = self::nom($id, true); $r['etats'][$id] = self::etatHisto($c);
+          }
+        }
+        unset($reste[$id]); self::ecrire(self::historiserFichier(), json_encode((object)$reste)); // une erreur plus loin : celles-ci ne sont pas retentées
+      }
+      if (is_file($f = self::historiserFichier())) unlink($f);
+      log::add(__CLASS__, 'info', 'Historique remis comme avant : ' . implode(', ', $r['remis']) . ($r['laisses'] ? ' ; laissées (changées depuis) : ' . implode(', ', $r['laisses']) : ''));
+      return $r;
+    });
   }
 
   /* Purge : au-delà de « conserver » jours, seul le dernier état connu reste, ramené à la limite
@@ -692,6 +820,7 @@ class presencehabituelle extends eqLogic {
       $vu = (int)config::byKey('vu', __CLASS__, 0);
       if ($vu && time() - $vu > 3 * 3600) self::exclure($vu, time());
       config::save('vu', time(), __CLASS__);
+      self::majWidget();
     } catch (Throwable $e) { log::add(__CLASS__, 'error', 'cronHourly : ' . $e->getMessage()); }
   }
 
@@ -705,5 +834,12 @@ class presencehabituelle extends eqLogic {
 
 class presencehabituelleCmd extends cmd {
   public function execute($_options = []) {
+    if ($this->getLogicalId() != 'recalculer') return;
+    // administrateur, ou scénario / cron (sans session) ; pas un compte limité ni l'API (habitudes = heures où la maison est vide)
+    if (php_sapi_name() != 'cli' && !isConnect('admin')) throw new Exception(__('Recalculer : réservé aux administrateurs', __FILE__));
+    $f = presencehabituelle::fichier(); clearstatcache(true, $f);
+    if (is_file($f) && time() - filemtime($f) < 60) // ponytail: une minute entre deux calculs, contre les clics répétés ; verrou si ça ne suffit pas
+      throw new Exception(__('Tendances déjà calculées il y a moins d\'une minute', __FILE__));
+    presencehabituelle::analyser(); // met aussi le widget à jour
   }
 }

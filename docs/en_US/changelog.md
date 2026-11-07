@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12
+- **Configuration** (plugin configuration) and **Widget** buttons at the top of the page: a "Usual presence" device (state, rooms usually on now, date of the trends, followed commands, Recompute), object and visibility adjustable; the rooms usually lit only if you tick the option (they hint at when the house is empty).
+- Guide: **Enable their history…** for followed commands not historized or smoothed, on confirmation, previous setting kept and **Put the history back as before**; or the steps to do it by hand.
+- Guide: **Presence sensors** (linked to Jeedom or not) and the lamps they switch on: no longer proposed as duplicates, marked "on sensor" in the Trends, kept to be simulated together.
+
 ## 0.11
 - **More readable trends**: a summary table (one row per room: hours when it is mostly on on weekdays and at weekends, hours when it never is, usual duration, quick switch-ons of a lamp on a sensor flagged), the hour-by-hour detail folded under each room (click its name), plain durations ("5 min", "1 h 57"), readable figures on dark cells, shutters: usual time in bold with the range, exceptions folded.
 
