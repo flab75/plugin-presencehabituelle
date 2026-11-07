@@ -247,7 +247,7 @@
           + '<a class="btn btn-xs btn-default ph_dcmd" title="{{Commande Jeedom du détecteur (facultatif)}}"><i class="fas fa-list-alt"></i> ' + (d.cmd ? esc(d.h || '#' + d.cmd) : '{{non relié à Jeedom}}') + '</a>' + (d.perdu ? ' <span class="text-warning">{{sa commande a été supprimée de Jeedom}}</span>' : '') + (d.cmd ? ' <a class="btn btn-xs btn-default ph_dsans" title="{{Délier}}">×</a>' : '')
           + ' <a class="btn btn-xs btn-default ph_dlampes"><i class="fas fa-lightbulb"></i> {{Lampes…}}</a> <small>' + (d.m.length ? esc(d.m.map(libelle).join(', ')) : '<span class="text-warning">{{choisissez les lampes qu’il allume}}</span>') + '</small>'
           + ' <a class="btn btn-xs btn-danger ph_dmoins" title="{{Supprimer}}"><i class="fas fa-trash"></i></a></td></tr>'
-      }).join('') + '</tbody></table>' + (DET.length < 30 ? '<p><a class="btn btn-xs btn-default ph_dplus"><i class="fas fa-plus"></i> {{détecteur}}</a></p>' : '')
+      }).join('') + '</tbody></table>' + (DET.length < 30 ? '<p><a class="btn btn-xs btn-default ph_dplus"><i class="fas fa-plus"></i> {{détecteur}}</a> ' + detJeedom() + '</p>' : '')
     h += '<legend style="font-size:1.1em">4. {{Pas encore assez de données}}</legend><div id="ph_gq4"></div><div id="ph_ghisto"></div>'
     h += '<legend style="font-size:1.1em">{{Bilan}}</legend><div id="ph_gbilan"></div>'
     $('#ph_gcontenu').html(h); $('#ph_gft').val(FT); $('#ph_gfs').val(FS); $('#ph_gfh').val(FH)
@@ -344,6 +344,17 @@
   function det(e) { lireDet(); lireRegles(); return DET[$(e).closest('tr').attr('data-i')] }
   $('#ph_gcontenu').on('change', '.ph_dnom', lireDet)
   $('#ph_gcontenu').on('click', '.ph_dplus', function () { lireDet(); lireRegles(); if (DET.length < 30) DET.push({ nom: '{{Détecteur}} ' + (DET.length + 1), cmd: 0, h: '', m: [] }); guide() })
+  function presence(c) { return c.sub == 'binary' && (c.gen == 'PRESENCE' || /pr[ée]sence|presence|mouvement|motion|occupancy|occupation/i.test(c.nom)) && !/interval|sensib|timeout|d[ée]lai|tamper|sabotage|enable|activ/i.test(c.nom) }
+  function detJeedom() { // détecteurs de présence de Jeedom pas encore déclarés, par pièce Jeedom
+    var l = D.candidats.filter(function (c) { return presence(c) && !DET.some(function (d) { return d.cmd == c.id }) })
+    return l.length ? '<select class="form-control input-sm ph_djeedom" style="display:inline-block;width:auto"><option value="">{{＋ détecteur de Jeedom…}}</option>'
+      + l.map(function (c) { return '<option value="' + c.id + '">' + esc((c.objet ? '[' + c.objet + '] ' : '') + c.eq + ' ' + c.nom) + (c.actif ? '' : ' ({{désactivé}})') + '</option>' }).join('') + '</select>' : ''
+  }
+  $('#ph_gcontenu').on('change', '.ph_djeedom', function () { // lampes suivies de la même pièce Jeedom pré-cochées, à vérifier avec « Lampes… »
+    var c = D.candidats.find(function (x) { return x.id == this.value }, this); if (!c) return; lireDet(); lireRegles(); if (DET.length >= 30) return
+    DET.push({ nom: c.eq, cmd: +c.id, h: '#[' + c.objet + '][' + c.eq + '][' + c.nom + ']#', m: Object.keys(D.suivi).filter(function (id) { var l = D.candidats.find(function (x) { return x.id == id }); return D.suivi[id].t == 'lumiere' && l && l.objid && l.objid == c.objid && !(REP[id] && REP[id].r != 'oui') }).map(Number) })
+    guide()
+  })
   $('#ph_gcontenu').on('click', '.ph_dmoins', function () { var d = det(this); DET.splice(DET.indexOf(d), 1); guide() })
   $('#ph_gcontenu').on('click', '.ph_dsans', function () { var d = det(this); d.cmd = 0; d.h = ''; guide() })
   $('#ph_gcontenu').on('click', '.ph_dcmd', function () { var d = det(this); jeedom.cmd.getSelectModal({ cmd: { type: 'info' } }, function (r) { d.cmd = +r.cmd.id; d.h = r.human; d.perdu = 0; guide() }) })
