@@ -26,5 +26,17 @@ if (!isConnect('admin')) {
       </label>
       <div class="col-md-2"><input class="configKey form-control" data-l1key="session_max" placeholder="18"></div>
     </div>
+    <div class="form-group">
+      <label class="col-md-4 control-label">{{Le week-end commence}}
+        <sup><i class="fas fa-question-circle tooltips" title="{{Habitudes et règles « en semaine » / « le week-end » : par défaut du vendredi 16:00 au lundi 04:00 (soirs du vendredi au dimanche, matins du samedi et du dimanche). Adaptez-le à votre rythme (travail le samedi, retour le dimanche midi…), puis Recalculer les tendances.}}"></i></sup>
+      </label>
+      <div class="col-md-2"><select class="configKey form-control" data-l1key="we_jour_debut"><option value="">{{vendredi (défaut)}}</option><option value="1">{{lundi}}</option><option value="2">{{mardi}}</option><option value="3">{{mercredi}}</option><option value="4">{{jeudi}}</option><option value="5">{{vendredi}}</option><option value="6">{{samedi}}</option><option value="7">{{dimanche}}</option></select></div>
+      <div class="col-md-2"><input type="time" class="configKey form-control" data-l1key="we_heure_debut" placeholder="16:00"></div>
+    </div>
+    <div class="form-group">
+      <label class="col-md-4 control-label">{{Le week-end finit}}</label>
+      <div class="col-md-2"><select class="configKey form-control" data-l1key="we_jour_fin"><option value="">{{lundi (défaut)}}</option><option value="1">{{lundi}}</option><option value="2">{{mardi}}</option><option value="3">{{mercredi}}</option><option value="4">{{jeudi}}</option><option value="5">{{vendredi}}</option><option value="6">{{samedi}}</option><option value="7">{{dimanche}}</option></select></div>
+      <div class="col-md-2"><input type="time" class="configKey form-control" data-l1key="we_heure_fin" placeholder="04:00"></div>
+    </div>
   </fieldset>
 </form>

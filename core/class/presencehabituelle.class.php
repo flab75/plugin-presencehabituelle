@@ -147,7 +147,7 @@ class presencehabituelle extends eqLogic {
 
   // État courant noté maintenant : début d'observation d'une commande non historisée, reprise après une désactivation
   public static function noter($id) {
-    if (is_object($c = cmd::byId($id))) self::ajouter($id, self::valeur($c->execCmd()), time());
+    if (is_object($c = cmd::byId($id)) && $c->getType() == 'info') self::ajouter($id, self::valeur($c->execCmd()), time()); // une info seulement : execCmd d'une action agirait
   }
 
   public static function majListener() {
@@ -268,7 +268,7 @@ class presencehabituelle extends eqLogic {
     if (is_string($p)) $p = json_decode($p, true);
     if (!is_array($p) || !isset($p['suivi'])) return null;
     $p['exclure'] = (int)($p['exclure'] ?? 0) ? cmd::cmdToHumanReadable('#' . (int)$p['exclure'] . '#') : '';
-    $p['suivi'] = (object)$p['suivi']; $p['reponses'] = (object)($p['reponses'] ?? []); $p['regles'] = (object)($p['regles'] ?? []);
+    $p['suivi'] = (object)$p['suivi']; $p['reponses'] = isset($p['reponses']) ? (object)$p['reponses'] : null; $p['regles'] = isset($p['regles']) ? (object)$p['regles'] : null; // null : choix d'avant la 0.8, la page garde les réponses actuelles
     return $p;
   }
 
@@ -504,6 +504,8 @@ class presencehabituelle extends eqLogic {
 
   public static function analyser() {
     $A = 'presencehabituelle_analyse'; $fin = time(); $excl = self::exclusions();
+    $c = fn($k, $d) => config::byKey($k, __CLASS__, $d) ?: $d;
+    $A::weekEnd($c('we_jour_debut', 5), $c('we_heure_debut', '16:00'), $c('we_jour_fin', 1), $c('we_heure_fin', '04:00'));
     $max = 3600 * (($h = (float)config::byKey('session_max', __CLASS__, 18)) > 0 ? max(1, $h) : 18); // 0 ou illisible : 18 h, comme jours()
     $groupes = []; $volets = []; $plan = self::plan(); $lieux = self::lieux($plan); $piece = [];
     foreach (self::suivi() as $id => $s) {

@@ -7,7 +7,19 @@
 		"Les changements d'état plus anciens sont effacés chaque nuit : les habitudes suivent la saison. Par défaut 90, minimum 7.": "Older state changes are deleted every night: habits follow the season. Default 90, minimum 7.",
 		"Allumage le plus long": "Longest switch-on",
 		"heures": "hours",
-		"Un allumage plus long est pris pour une extinction manquée (box arrêtée, pont hors ligne) : il est écarté, et les jours qu'il touche ne sont pas comptés pour son groupe. Par défaut 18.": "A longer switch-on is taken as a missed switch-off (box stopped, bridge offline): it is discarded, and the days it touches are not counted for its group. Default 18."
+		"Un allumage plus long est pris pour une extinction manquée (box arrêtée, pont hors ligne) : il est écarté, et les jours qu'il touche ne sont pas comptés pour son groupe. Par défaut 18.": "A longer switch-on is taken as a missed switch-off (box stopped, bridge offline): it is discarded, and the days it touches are not counted for its group. Default 18.",
+		"lundi": "Monday",
+		"mardi": "Tuesday",
+		"mercredi": "Wednesday",
+		"jeudi": "Thursday",
+		"vendredi": "Friday",
+		"samedi": "Saturday",
+		"dimanche": "Sunday",
+		"vendredi (défaut)": "Friday (default)",
+		"lundi (défaut)": "Monday (default)",
+		"Le week-end commence": "Weekend starts",
+		"Le week-end finit": "Weekend ends",
+		"Habitudes et règles « en semaine » / « le week-end » : par défaut du vendredi 16:00 au lundi 04:00 (soirs du vendredi au dimanche, matins du samedi et du dimanche). Adaptez-le à votre rythme (travail le samedi, retour le dimanche midi…), puis Recalculer les tendances.": "Habits and rules \"on weekdays\" / \"at the weekend\": by default from Friday 16:00 to Monday 04:00 (Friday to Sunday evenings, Saturday and Sunday mornings). Adapt it to your rhythm (work on Saturday, back on Sunday noon…), then Recompute the trends."
 	},
 	"plugins/presencehabituelle/core/class/presencehabituelle.class.php": {
 		"Période illisible (attendu AAAA-MM-JJ HH:MM → AAAA-MM-JJ HH:MM)": "Unreadable period (expected YYYY-MM-DD HH:MM → YYYY-MM-DD HH:MM)",
@@ -140,7 +152,6 @@
 		"porte": "door",
 		"une pièce d’un autre étage pour un escalier": "a room on another floor for a staircase",
 		"à cocher si elle est vraie pendant vos absences (une alarme activée l’est souvent aussi la nuit)": "tick it if it is true while you are away (an armed alarm often is at night too)",
-		"absences possibles : cochée = ajoutée aux périodes à ne pas analyser": "possible absences: ticked = added to the periods not to analyse",
 		"alarme activée": "alarm armed",
 		"allumé seulement quand ses lampes le sont : cochée = décochée de la liste": "on only when its lamps are: ticked = unticked in the list",
 		"Appliquer à la liste": "Apply to the list",
@@ -164,7 +175,6 @@
 		"Observer 3 jours": "Watch for 3 days",
 		"Propositions reportées dans la liste : vérifiez, puis cliquez sur Enregistrer.": "Proposals carried into the list: check them, then click Save.",
 		"Recharger dans la liste le choix d’avant le dernier enregistrement": "Reload into the list the choice from before the last save",
-		"relancez la découverte ensuite.": "run the discovery again afterwards.",
 		"rien à comparer : le plugin peut relever leurs changements quelques jours, puis relancez la découverte": "nothing to compare: the plugin can record their changes for a few days, then run the discovery again",
 		"Rien à signaler.": "Nothing to report.",
 		"Rien n’est enregistré tant que vous ne cliquez pas sur Enregistrer.": "Nothing is saved until you click Save.",
@@ -224,10 +234,16 @@
 		"proposée": "proposed",
 		"suivie": "followed",
 		"tous les jours": "every day",
-		"« Peut s’allumer » : seulement dans ces plages ; « jamais allumée » : jamais dans celles-ci. De 23:00 à 07:00 passe minuit ; de 00:00 à 00:00 = toute la journée. Semaine = du lundi au vendredi.": "\"May switch on\": only within these ranges; \"never on\": never within these. From 23:00 to 07:00 crosses midnight; from 00:00 to 00:00 = the whole day. Weekdays = Monday to Friday.",
 		"à compléter avant de proposer une simulation.": "to complete before a simulation can be proposed.",
 		"à confirmer (question 1)": "to confirm (question 1)",
-		"— à répondre —": "— to answer —"
+		"— à répondre —": "— to answer —",
+		"historique lissé : seules les dernières heures sont reprises à l’enregistrement": "smoothed history: only the last hours are taken back when saving",
+		"historisée : son historique est repris à l’enregistrement": "historised: its history is taken back when saving",
+		"« Peut s’allumer » : seulement dans ces plages ; « jamais allumée » : jamais dans celles-ci. De 23:00 à 07:00 passe minuit ; de 00:00 à 00:00 = toute la journée. Semaine et week-end : comme dans la configuration du plugin (par défaut, le week-end va du vendredi 16:00 au lundi 04:00).": "\"May switch on\": only within these ranges; \"never on\": never within these. From 23:00 to 07:00 crosses midnight; from 00:00 to 00:00 = the whole day. Weekdays and weekend: as in the plugin configuration (by default the weekend runs from Friday 16:00 to Monday 04:00).",
+		"Plan pas encore chargé.": "Plan not loaded yet.",
+		"est déjà un doublon : choisissez la commande gardée.": "is already a duplicate: choose the kept command.",
+		"à revoir : la commande gardée n’est plus suivie": "to review: the kept command is no longer followed",
+		"Plage sans heure de début ou de fin (question 3)": "Range without a start or end time (question 3)"
 	},
 	"plugins/presencehabituelle/desktop/php/presencehabituelle.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",
@@ -276,6 +292,6 @@
 		"Revenir au choix d'avant": "Back to the previous choice",
 		"Guide": "Guide",
 		"Le plugin ne sait rien de votre maison : il lit vos équipements et leurs historiques, puis vous pose quatre questions. Vos réponses servent à la future simulation ; pour l'instant, rien n'est allumé ni fermé.": "The plugin knows nothing about your house: it reads your devices and their history, then asks you four questions. Your answers are for the future simulation; for now, nothing is switched on or closed.",
-		"Les réponses, les règles et le choix des commandes (onglet suivant) sont enregistrés ensemble.": "The answers, the rules and the choice of commands (next tab) are saved together."
+		"Les réponses, les règles, le choix des commandes (onglet suivant) et le plan sont enregistrés ensemble.": "The answers, the rules, the choice of commands (next tab) and the plan are saved together."
 	}
 }

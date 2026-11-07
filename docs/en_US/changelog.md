@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+- Guide: the × of a range removes the right one; duplicate of a duplicate refused; duplicates follow the kept command when its answer changes; "Save" also keeps the plan; the page reloads what the box kept; range without a time refused; the discovery fills in the answers; "No" gives a plug its type back; question 4 aligned with the summary; "Identify by switching on" sees every binary or typed command.
+- **Adjustable weekend** (configuration: start and end day and time), by default from Friday 16:00 to Monday 04:00: Sunday evening now counts as weekend.
+- Going back to a choice from before 0.8 keeps the current answers and rules.
+- Check added to the selftest: the plugin changes no device, command, scenario or history of the box.
+
 ## 0.8
 - **Guide**: four questions (lamp or shutter of the house, duplicate or group; place on the plan; rules: never simulated, ranges when it may or must not switch on; commands without enough data), "Identify by switching on", and a summary that says when a simulation can be proposed. Nothing is started yet.
 

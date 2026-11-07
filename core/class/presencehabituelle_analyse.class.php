@@ -79,11 +79,19 @@ class presencehabituelle_analyse {
     return $r;
   }
 
-  /* Semaine S ou week-end W de l'heure $h d'un jour ISO $n, comme pour les volets : journée de 04:00 à 04:00,
-     matin (04 h-16 h) du sam. et du dim., soir (16 h-04 h) du ven. et du sam. ; 0 h-3 h = fin du soir de la veille */
-  public static function cle($n, $h) {
-    if ($h < 4) $n = $n == 1 ? 7 : $n - 1;
-    return $h >= 4 && $h < 16 ? ($n >= 6 ? 'W' : 'S') : (in_array($n, [5, 6]) ? 'W' : 'S');
+  /* Semaine S ou week-end W de l'heure $h (et minute $mn) d'un jour ISO $n. Week-end = de [jour ISO, minutes] à [jour ISO, minutes],
+     réglable (configuration du plugin) ; par défaut du vendredi 16:00 au lundi 04:00 : soirs du ven. au dim., matins du sam. et du dim. */
+  public static $WE = [5, 960, 1, 240];
+  public static function cle($n, $h, $mn = 0) {
+    [$jd, $md, $jf, $mf] = self::$WE;
+    $m = ($n - 1) * 1440 + $h * 60 + $mn; $d = ($jd - 1) * 1440 + $md; $f = ($jf - 1) * 1440 + $mf;
+    return ($d <= $f ? $m >= $d && $m < $f : $m >= $d || $m < $f) ? 'W' : 'S'; // d = f : pas de week-end
+  }
+  // [jour, 'HH:MM', jour, 'HH:MM'] lus de la configuration → $WE ; illisible = défaut
+  public static function weekEnd($jd, $hd, $jf, $hf) {
+    $x = '/^([01]?\d|2[0-3]):([0-5]\d)$/'; $ok = fn($j) => (int)$j >= 1 && (int)$j <= 7;
+    if (!$ok($jd) || !$ok($jf) || !preg_match($x, (string)$hd, $a) || !preg_match($x, (string)$hf, $b)) return self::$WE = [5, 960, 1, 240];
+    return self::$WE = [(int)$jd, 60 * $a[1] + $a[2], (int)$jf, 60 * $b[1] + $b[2]];
   }
 
   // % de $a sur $b, jamais arrondi à 0 ou 100 quand ce n'est ni jamais ni toujours

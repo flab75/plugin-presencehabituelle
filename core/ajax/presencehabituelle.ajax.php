@@ -28,7 +28,8 @@ try {
       if (!preg_match('/^#(\d+)#$/', trim(cmd::humanReadableToCmd($x)), $m)) throw new Exception(__('Commande d\'absence introuvable', __FILE__) . ' : ' . $x);
       $x = (int)$m[1];
     } else $x = 0;
-    ajax::success(['repris' => $P::enregistrer($s, $x, (string)init('exclusions'), init('reponses') === '' ? null : json_decode((string)init('reponses'), true), init('regles') === '' ? null : json_decode((string)init('regles'), true)), 'habitudes' => $P::analyser(), 'precedent' => ($p = $P::precedent()) ? $p['date'] : null]);
+    ajax::success(['repris' => $P::enregistrer($s, $x, (string)init('exclusions'), init('reponses') === '' ? null : json_decode((string)init('reponses'), true), init('regles') === '' ? null : json_decode((string)init('regles'), true)), 'habitudes' => $P::analyser(), 'precedent' => ($p = $P::precedent()) ? $p['date'] : null,
+      'reponses' => (object)$P::cfg('reponses'), 'regles' => (object)$P::cfg('regles'), 'donnees' => (object)$P::donnees()]); // ce que la box a retenu
   }
   if (init('action') == 'habitudes') {
     ajax::success($P::habitudes());

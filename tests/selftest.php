@@ -6,6 +6,7 @@ $ok = function ($v, $m) { if (!$v) { echo "ECHEC : $m\n"; exit(1); } }; // asser
 $A = 'presencehabituelle_analyse';
 date_default_timezone_set('Europe/Paris');
 $t = fn($s) => strtotime($s);
+$A::weekEnd(5, '16:00', 7, '16:00'); // contrôles écrits avec ce week-end (du ven. 16:00 au dim. 16:00 : dim. soir = semaine) ; le défaut est testé plus bas
 
 // lampe : 2 sessions, la dernière encore allumée
 $iv = $A::intervalles([[$t('2026-03-02 19:00'), 1, 1], [$t('2026-03-02 19:30'), 0, 1], [$t('2026-03-03 07:00'), 40, 0], [$t('2026-03-03 07:02'), 0, 1], [$t('2026-03-03 20:00'), 1, 1]], $t('2026-03-03 21:00'));
@@ -61,8 +62,13 @@ $rg = $A::regles(['5' => ['jamais' => 1], '6' => ['plages' => [['k' => 'exclue',
 $ok($rg == [5 => ['jamais' => 1, 'plages' => []], 6 => ['jamais' => 0, 'plages' => [['k' => 'exclue', 'j' => 'tous', 'de' => '23:00', 'a' => '07:00']]]], 'règles : ' . json_encode($rg));
 echo "mode guidé OK\n";
 
-// journée 04:00 → 04:00 : dim. 22 h = semaine, sam. 01 h = soir du vendredi = week-end, lun. 01 h = soir du dimanche = semaine
-$ok($A::cle(7, 22) == 'S' && $A::cle(6, 1) == 'W' && $A::cle(1, 1) == 'S' && $A::cle(5, 22) == 'W' && $A::cle(5, 10) == 'S' && $A::cle(7, 10) == 'W', 'journée 04:00');
+$A::weekEnd(5, '16:00', 1, '04:00');
+// week-end par défaut du ven. 16:00 au lun. 04:00 : dim. 22 h et lun. 01 h = week-end, lun. 10 h et ven. 10 h = semaine
+$ok($A::cle(7, 22) == 'W' && $A::cle(6, 1) == 'W' && $A::cle(1, 1) == 'W' && $A::cle(1, 4) == 'S' && $A::cle(5, 22) == 'W' && $A::cle(5, 10) == 'S' && $A::cle(7, 10) == 'W' && $A::cle(5, 15, 59) == 'S', 'week-end par défaut');
+$A::weekEnd(6, '8:00', 7, '20:00'); // réglé : du sam. 08:00 au dim. 20:00 (sans passer par lundi)
+$ok($A::cle(6, 7) == 'S' && $A::cle(6, 8) == 'W' && $A::cle(7, 19) == 'W' && $A::cle(7, 20) == 'S' && $A::cle(5, 22) == 'S', 'week-end réglé');
+$ok($A::weekEnd(9, '16:00', 1, '04:00') == [5, 960, 1, 240] && $A::weekEnd(5, '25:00', 1, '04:00') == [5, 960, 1, 240], 'week-end illisible = défaut');
+$A::weekEnd(5, '16:00', 7, '16:00');
 $ok($A::pc(299, 300) == 99 && $A::pc(1, 300) == 1 && $A::pc(300, 300) == 100 && $A::pc(0, 300) == 0 && $A::pc(0, 0) == 0, 'pourcentage borné');
 $d = $A::durees($se, $j);
 $ok($d['n'] == 2 && $d['med'] == 30.5 && $d['min'] == 1 && $d['max'] == 60 && $d['passages'] == 50, 'durées : ' . json_encode($d));
@@ -147,6 +153,22 @@ foreach ($it as $f) {
   foreach ($fm[1] as $u) $ok(strpos($u, "'plugins/presencehabituelle/") === 0, "fetch hors du plugin dans " . basename($f) . ' : ' . $u);
 }
 echo "aucun appel réseau OK\n";
+
+// garantie : le plugin n'écrit que chez lui (sa table, sa configuration, son écouteur, ses fichiers) ; il ne modifie aucun équipement, commande, scénario ni historique
+foreach ($it as $f) {
+  if (!preg_match('/\.php$/', $f) || preg_match('#/(docs|tests)/#', $f)) continue;
+  foreach (file($f) as $i => $l) {
+    $o = basename($f) . ':' . ($i + 1);
+    $l = preg_replace('#^\s*(/?\*).*$|\s//.*$#', '', $l); // commentaires ôtés : « history::archive » cité n'est pas un appel
+    $ok(!preg_match('/->(save|remove)\(/', $l) || preg_match('/\$l->(save|remove)\(\)/', $l), "enregistrement ou suppression d'un objet de la box ($o)");
+    $ok(!preg_match('/->(set(Configuration|IsEnable|IsVisible|Name|Value|Display|Order|Object_id|EqLogic_id|Logical_id)|event|checkAndUpdateCmd|addHistoryValue)\(/', $l), "modification d'un objet de la box ($o)");
+    $ok(!preg_match('/(history|scenario|eqLogic|cmd|object|jeeObject|plan|planHeader|interactDef|cron|message|log)::(remove|save|archive|removes|clean|set)/i', $l), "écriture par le core ($o)");
+    $ok(!preg_match('/->execCmd\(/', $l) || strpos($l, "getType() == 'info'") !== false, "commande exécutée sans être une info ($o)");
+    $ok(!preg_match('/config::(save|remove)\(/', $l) || preg_match('/__CLASS__\)|, \$P\)/', $l), "configuration hors du plugin ($o)");
+    $ok(!preg_match('/[\'"]\s*(DELETE|UPDATE|INSERT|DROP|ALTER|TRUNCATE|REPLACE|CREATE)\b/i', $l) || strpos($l, 'self::TABLE') !== false, "écriture SQL hors de la table du plugin ($o)");
+  }
+}
+echo "aucune modification des objets de la box OK\n";
 
 if (is_file(__DIR__ . '/../../../core/php/core.inc.php')) { // sur la box : analyse réelle, rien n'est écrit sauf data/habitudes.json
   require_once __DIR__ . '/../core/class/presencehabituelle.class.php';

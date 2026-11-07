@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+- Guide : le × d'une plage retire la bonne ; doublon d'un doublon refusé ; les doublons suivent la commande gardée quand sa réponse change ; « Enregistrer » garde aussi le plan ; la page reprend ce que la box a retenu ; plage sans heure refusée ; la découverte remplit les réponses ; « Non » rend son type à une prise ; question 4 alignée sur le bilan ; « Identifier en allumant » voit toutes les commandes binaires ou typées.
+- **Week-end réglable** (configuration : jour et heure de début et de fin), par défaut du vendredi 16:00 au lundi 04:00 : le dimanche soir compte désormais pour le week-end.
+- Revenir à un choix d'avant la 0.8 garde les réponses et les règles actuelles.
+- Contrôle ajouté au selftest : le plugin ne modifie aucun équipement, commande, scénario ni historique de la box.
+
 ## 0.8
 - **Guide** : quatre questions (lampe ou volet de la maison, doublon ou groupe ; place sur le plan ; règles : jamais simulée, plages où elle peut ou ne doit pas s'allumer ; commandes sans assez de données), « Identifier en allumant », et un bilan qui dit quand une simulation est proposable. Rien n'est encore lancé.
 

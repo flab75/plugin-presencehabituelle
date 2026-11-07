@@ -56,6 +56,7 @@
   function charger() {
     ajax('liste', {}, function (r) {
       D = r; SAUVE = $.extend({}, r.suivi); REP = $.extend({}, r.reponses); REG = $.extend(true, {}, r.regles)
+      D.candidats.forEach(function (c) { c.type0 = c.type }) // rendu sur « Non » après un « Oui »
       if (r.jamais) D.candidats.forEach(function (c) { if (c.coche && c.actif) D.suivi[c.id] = { g: '', t: c.type } }) // première fois : préconisation
       $('#ph_exclure').val(r.exclure); $('#ph_exclusions').val(r.exclusions)
       $('#ph_precedent').toggle(!!r.precedent).attr('data-date', r.precedent ? r.precedent.date : '')
@@ -101,8 +102,8 @@
     var exc = $('#ph_exclusions').val()
     $('#ph_decouverte .ph_dec:checked').each(function () {
       var k = $(this).attr('data-k'), v = $(this).attr('data-v')
-      if (k == 'doublon') { var d = R.doublons.filter(function (x) { return x.id == v })[0]; garder([d.de], D.suivi[v]); delete D.suivi[v]; NOTES[v] = '{{doublon de}} ' + d.nomDe }
-      if (k == 'groupe') { var g = R.groupes.filter(function (x) { return x.id == v })[0]; garder(g.ids, D.suivi[v]); delete D.suivi[v]; NOTES[v] = '{{groupe de}} ' + g.membres.join(', ') }
+      if (k == 'doublon') { var d = R.doublons.filter(function (x) { return x.id == v })[0]; if (repondre(v, 'doublon', String(d.de))) NOTES[v] = '{{doublon de}} ' + d.nomDe }
+      if (k == 'groupe') { var g = R.groupes.filter(function (x) { return x.id == v })[0]; garder(g.ids, D.suivi[v]); g.ids.forEach(function (i) { if (D.suivi[i] && !REP[i]) REP[i] = { r: 'oui' } }); repondre(v, 'groupe'); NOTES[v] = '{{groupe de}} ' + g.membres.join(', ') }
       if (k == 'lumiere' && parId[v]) { parId[v].type = 'lumiere'; NOTES[v] = '{{type générique à renseigner ?}}' }
       if (k == 'absence' && exc.split('\n').map(function (l) { return l.trim() }).indexOf(v) < 0) exc = (exc.trim() ? exc.trim() + '\n' : '') + v
       if (k == 'exclure') $('#ph_exclure').val(v)
@@ -129,27 +130,40 @@
   function aDemander() { // lumières, volets, une prise binaire par équipement, et ce qui est déjà suivi, répondu ou signalé
     var prises = {}
     return D.candidats.filter(function (c) {
-      if (D.suivi[c.id] || REP[c.id] || NOTES[c.id]) return true
+      if (D.suivi[c.id] || REP[c.id] || NOTES[c.id] || VU.some(function (v) { return v.id == c.id })) return true
       if (!c.actif) return false
       if (c.type == 'prise') { if (c.sub != 'binary' || prises[c.eqid]) return false; return prises[c.eqid] = true }
       return (c.type == 'lumiere' || c.type == 'volet') && c.coche
     })
   }
-  function repondre(id, r, de) {
+  function repondre(id, r, de) { // false : refusée (doublon d'un doublon)
     var c = cand(id), s = D.suivi[id]
-    if (!r) { delete REP[id]; return }
+    if (!r) { delete REP[id]; return true }
+    if (r == 'doublon' && de && REP[de] && REP[de].r == 'doublon') { alerte(libelle(de) + ' {{est déjà un doublon : choisissez la commande gardée.}}', 'warning'); return false }
     REP[id] = r == 'doublon' && de ? { r: r, de: de } : { r: r }
-    if (r == 'oui') { if (c && c.type != 'volet') c.type = 'lumiere'; if (!s) D.suivi[id] = { g: '', t: c && c.type == 'volet' ? 'volet' : 'lumiere' } }
-    else delete D.suivi[id]
-    if (r == 'doublon' && de) { garder([de], s); if (!REP[de]) REP[de] = { r: 'oui' } }
+    if (c) c.type = r == 'oui' && c.type0 != 'volet' ? 'lumiere' : c.type0
+    if (r == 'oui') D.suivi[id] = { g: s ? s.g : '', t: c ? c.type : 'lumiere' }
+    else {
+      delete D.suivi[id]
+      Object.keys(REP).forEach(function (y) { // ses doublons : vers la commande gardée à sa place, sinon à revoir
+        if (REP[y].de != id) return
+        if (r == 'doublon' && de && de != y) REP[y].de = de
+        else { delete REP[y]; NOTES[y] = '{{à revoir : la commande gardée n’est plus suivie}}' }
+      })
+    }
+    if (r == 'doublon' && de) { garder([de], s); if (!REP[de] || REP[de].r != 'oui') REP[de] = { r: 'oui' } }
+    return true
   }
   function jours(id) { return (D.donnees || {})[id] || 0 }
+  var HM = /^([01]\d|2[0-3]):[0-5]\d$/
+  function plageOk(p) { return HM.test(p.de) && HM.test(p.a) } // la box écarte les autres
+  function marche(id) { return ((REG[id] || {}).plages || []).some(function (p) { return p.k == 'marche' && plageOk(p) }) }
   function etat(id) { // [texte, à compléter]
     var g = REG[id] || {}, n = jours(id), f = D.fiable || 10
     if (g.jamais) return ['{{jamais simulée}}', false]
     if (!REP[id]) return ['{{à confirmer (question 1)}}', true]
     if (n >= f) return ['{{habitudes}} (' + Math.floor(n) + ' {{j de relevés}})', false]
-    if ((g.plages || []).some(function (p) { return p.k == 'marche' })) return ['{{plages données}}', false]
+    if (marche(id)) return ['{{plages données}}', false]
     return ['{{en observation}} (' + Math.floor(n) + ' / ' + f + ' {{j}}) : {{attendez, ou donnez une plage « peut s’allumer »}}', true]
   }
   function plageH(id, i, p) {
@@ -178,8 +192,8 @@
     var hors = PL ? suivis.filter(function (id) { return !PL.marqueurs[id] }) : []
     h += '<legend style="font-size:1.1em">2. {{Où sont-elles ?}} <small>({{facultatif}})</small></legend>'
       + (hors.length ? '<p>' + hors.map(function (id) { return '<a class="btn btn-xs btn-default ph_gplacer" data-id="' + esc(id) + '" style="margin:0 3px 3px 0"><i class="fas fa-map-marker-alt"></i> ' + esc(libelle(id)) + '</a>' }).join('') + '</p><p><small>{{Cliquez pour la placer sur le plan (pièces et passages se dessinent dans l’onglet Plan).}}</small></p>'
-        : '<p><small>' + (suivis.length ? '{{Tout est placé.}}' : '{{Rien à placer.}}') + '</small></p>')
-    h += '<legend style="font-size:1.1em">3. {{Des règles ?}} <small>({{facultatif}})</small></legend><p><small>{{« Peut s’allumer » : seulement dans ces plages ; « jamais allumée » : jamais dans celles-ci. De 23:00 à 07:00 passe minuit ; de 00:00 à 00:00 = toute la journée. Semaine = du lundi au vendredi.}}</small></p>'
+        : '<p><small>' + (!PL ? '{{Plan pas encore chargé.}}' : suivis.length ? '{{Tout est placé.}}' : '{{Rien à placer.}}') + '</small></p>')
+    h += '<legend style="font-size:1.1em">3. {{Des règles ?}} <small>({{facultatif}})</small></legend><p><small>{{« Peut s’allumer » : seulement dans ces plages ; « jamais allumée » : jamais dans celles-ci. De 23:00 à 07:00 passe minuit ; de 00:00 à 00:00 = toute la journée. Semaine et week-end : comme dans la configuration du plugin (par défaut, le week-end va du vendredi 16:00 au lundi 04:00).}}</small></p>'
       + '<table class="table table-condensed"><tbody>'
     suivis.forEach(function (id) {
       var g = REG[id] || { jamais: 0, plages: [] }
@@ -187,17 +201,23 @@
         + g.plages.map(function (p, i) { return plageH(id, i, p) }).join('') + '<a class="btn btn-xs btn-default ph_pplus"><i class="fas fa-plus"></i> {{plage}}</a></td></tr>'
     })
     h += '</tbody></table>'
-    var peu = suivis.filter(function (id) { return jours(id) < (D.fiable || 10) && !(REG[id] || {}).jamais })
-    h += '<legend style="font-size:1.1em">4. {{Pas encore assez de données}}</legend>'
-      + (peu.length ? '<ul>' + peu.map(function (id) { var c = cand(id); return '<li>' + esc(libelle(id)) + ' : ' + Math.floor(jours(id)) + ' {{j de relevés}}' + (c && !c.hist ? ' <small>({{non historisée : les relevés commencent à l’enregistrement}})</small>' : '') + '</li>' }).join('')
-        + '</ul><p><small>{{Une fois enregistrées, leurs changements sont relevés chaque jour. En attendant, une plage « peut s’allumer » (question 3) suffit pour la simulation.}}</small></p>' : '<p><small>{{Rien.}}</small></p>')
+    h += '<legend style="font-size:1.1em">4. {{Pas encore assez de données}}</legend><div id="ph_gq4"></div>'
     h += '<legend style="font-size:1.1em">{{Bilan}}</legend><div id="ph_gbilan"></div>'
     $('#ph_gcontenu').html(h)
     $('#ph_gcontenu tr[data-id]').each(function () { var r = REP[$(this).attr('data-id')]; if (r && r.de) $(this).find('.ph_gde').val(r.de) })
     $('#ph_gcontenu .ph_plage').each(function () { var id = $(this).closest('tr').attr('data-id'), p = REG[id].plages[$(this).index('#ph_gcontenu tr[data-id="' + id + '"] .ph_plage')]; $(this).find('.ph_pk').val(p.k); $(this).find('.ph_pj').val(p.j) })
     vus(); bilan()
   }
+  function q4() { // comme etat() : ni « jamais », ni plage « peut s'allumer »
+    var peu = Object.keys(D.suivi).filter(function (id) { return jours(id) < (D.fiable || 10) && !(REG[id] || {}).jamais && !marche(id) })
+    $('#ph_gq4').html(peu.length ? '<ul>' + peu.map(function (id) {
+      var c = cand(id) || {}, n = SAUVE[id] ? '' : !c.hist ? '{{non historisée : les relevés commencent à l’enregistrement}}'
+        : c.lisse ? '{{historique lissé : seules les dernières heures sont reprises à l’enregistrement}}' : '{{historisée : son historique est repris à l’enregistrement}}'
+      return '<li>' + esc(libelle(id)) + ' : ' + Math.floor(jours(id)) + ' {{j de relevés}}' + (n ? ' <small>(' + n + ')</small>' : '') + '</li>'
+    }).join('') + '</ul><p><small>{{Une fois enregistrées, leurs changements sont relevés chaque jour. En attendant, une plage « peut s’allumer » (question 3) suffit pour la simulation.}}</small></p>' : '<p><small>{{Rien.}}</small></p>')
+  }
   function bilan() {
+    q4()
     var suivis = Object.keys(D.suivi), manque = 0, h = ''
     var nr = aDemander().filter(function (c) { return !REP[c.id] && !D.suivi[c.id] }).length
     suivis.forEach(function (id) { var e = etat(id); if (e[1]) manque++; h += '<li>' + esc(libelle(id)) + ' : ' + (e[1] ? '<span class="text-warning">' + esc(e[0]) + '</span>' : esc(e[0])) + '</li>' })
@@ -229,9 +249,9 @@
     ECOUTE = on; $('body').off('cmd::update.phg')
     if (on) $('body').on('cmd::update.phg', function (e, d) {
       var l = [].concat(d !== undefined ? d : (e.originalEvent && e.originalEvent.detail) || []), ids = {}, n = 0
-      aDemander().forEach(function (c) { ids[c.id] = 1 })
+      D.candidats.forEach(function (c) { if (c.sub == 'binary' || c.type != 'autre') ids[c.id] = 1 }) // aussi les virtuels et 2es commandes : les doublons cherchés
       l.forEach(function (o) { if (o && ids[o.cmd_id]) { VU.unshift({ id: String(o.cmd_id), v: o.value, t: Date.now() }); n++ } })
-      if (n) { VU = VU.slice(0, 30); vus() }
+      if (n) { VU = VU.slice(0, 30); guide() } // les nouvelles venues deviennent répondables
     })
     guide()
   }
@@ -257,8 +277,8 @@
   })
   $('#ph_gcontenu').on('change', '.ph_rjamais, .ph_pk, .ph_pj, .ph_pde, .ph_pa', function () { lireRegles(); bilan() })
   $('#ph_gcontenu').on('click', '.ph_pplus', function () { lireRegles(); var id = $(this).closest('tr').attr('data-id'); REG[id] = REG[id] || { jamais: 0, plages: [] }; if (REG[id].plages.length < 10) REG[id].plages.push({ k: 'marche', j: 'tous', de: '18:00', a: '23:00' }); guide() })
-  $('#ph_gcontenu').on('click', '.ph_pmoins', function () { var tr = $(this).closest('tr'), i = $(this).closest('.ph_plage').index(tr.find('.ph_plage')); lireRegles(); var g = REG[tr.attr('data-id')]; if (g) { g.plages.splice(i, 1); if (!g.jamais && !g.plages.length) delete REG[tr.attr('data-id')] } guide() })
-  $('#ph_genregistrer').on('click', function () { lireRegles(); $('#ph_enregistrer').trigger('click') })
+  $('#ph_gcontenu').on('click', '.ph_pmoins', function () { var tr = $(this).closest('tr'), i = tr.find('.ph_plage').index($(this).closest('.ph_plage')); lireRegles(); var g = REG[tr.attr('data-id')]; if (g) { g.plages.splice(i, 1); if (!g.jamais && !g.plages.length) delete REG[tr.attr('data-id')] } guide() })
+  $('#ph_genregistrer').on('click', function () { lireRegles(); sauver(function () { if (PL) planEnr() }) }) // plan après le suivi : ses tendances sur le suivi neuf
 
   function profil(g, k) {
     var h = '<tr><th style="width:90px">' + (k == 'S' ? '{{Semaine}}' : '{{Week-end}}') + ' <small>(' + esc(g['n' + k]) + ' {{j}})</small>'
@@ -518,10 +538,8 @@
       })
     })
   })
-  $('#ph_plan_enregistrer').on('click', function () {
-    if (!PL) return
-    ajax('plan_enregistrer', { plan: JSON.stringify(PL) }, function (r) { PL = r.plan; habitudes(r.habitudes); alerte('{{Plan enregistré}}', 'success') })
-  })
+  function planEnr() { ajax('plan_enregistrer', { plan: JSON.stringify(PL) }, function (r) { PL = r.plan; habitudes(r.habitudes); guide(); alerte('{{Plan enregistré}}', 'success') }) }
+  $('#ph_plan_enregistrer').on('click', function () { if (PL) planEnr() })
   ajax('plan', {}, function (r) {
     PL = r.plan; DESIGNS = r.designs
     $('#ph_design').html('<option value="">{{Reprendre les positions d’un design…}}</option>' + DESIGNS.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.nom) + '</option>' }).join(''))
@@ -534,19 +552,23 @@
   $('#ph_liste').on('change', '.ph_coche, .ph_groupe', function () { lire(); dessiner(); guide() }) // cochée sans enregistrer : déjà plaçable sur le plan
   $('#ph_seules').on('click', function () { $('#ph_liste .ph_groupe').val('') })
   $('#ph_choisir').on('click', function () { jeedom.cmd.getSelectModal({ cmd: { type: 'info' } }, function (r) { $('#ph_exclure').val(r.human) }) })
-  $('#ph_enregistrer').on('click', function () {
+  $('#ph_enregistrer').on('click', function () { sauver() })
+  function sauver(ok) {
     lire()
     if (!D) return // liste pas encore chargée (ou en erreur) : rien à enregistrer
+    var mal = Object.keys(REG).filter(function (id) { return REG[id].plages.some(function (p) { return !plageOk(p) }) })
+    if (mal.length) return alerte('{{Plage sans heure de début ou de fin (question 3)}} : ' + mal.map(libelle).join(', '), 'warning')
     var partent = Object.keys(SAUVE).filter(function (id) { return !D.suivi[id] })
-    if (!partent.length) return enregistrer()
-    bootbox.confirm(esc(partent.length) + ' {{commande(s) retirée(s) du suivi}} : ' + esc(partent.map(libelle).join(', ')) + '. {{Leurs relevés seront effacés : si vous les cochez à nouveau, seul l’historique de Jeedom est repris (90 jours, quelques heures pour un historique lissé). Continuer ?}}', function (oui) { if (oui) enregistrer() })
-  })
-  function enregistrer() {
+    if (!partent.length) return enregistrer(ok)
+    bootbox.confirm(esc(partent.length) + ' {{commande(s) retirée(s) du suivi}} : ' + esc(partent.map(libelle).join(', ')) + '. {{Leurs relevés seront effacés : si vous les cochez à nouveau, seul l’historique de Jeedom est repris (90 jours, quelques heures pour un historique lissé). Continuer ?}}', function (oui) { if (oui) enregistrer(ok) })
+  }
+  function enregistrer(ok) {
     ajax('enregistrer', { suivi: JSON.stringify(D.suivi), exclure: $('#ph_exclure').val(), exclusions: $('#ph_exclusions').val(), reponses: JSON.stringify(REP), regles: JSON.stringify(REG) }, function (r) {
       alerte('{{Enregistré}} : ' + r.repris + ' {{changements repris de l’historique}}', 'success')
       $('#ph_precedent').toggle(!!r.precedent).attr('data-date', r.precedent || '')
-      SAUVE = $.extend({}, D.suivi)
-      habitudes(r.habitudes)
+      SAUVE = $.extend({}, D.suivi); REP = $.extend({}, r.reponses); REG = $.extend(true, {}, r.regles); D.donnees = r.donnees // ce que la box a retenu
+      habitudes(r.habitudes); guide()
+      if (ok) ok()
     })
   }
   $('#ph_decouvrir').on('click', function () {
@@ -565,7 +587,8 @@
       if (!oui) return
       ajax('liste', {}, function (r) {
         if (!r.precedent) return
-        D = r; D.suivi = $.extend({}, r.precedent.suivi); NOTES = {}; REP = $.extend({}, r.precedent.reponses); REG = $.extend(true, {}, r.precedent.regles)
+        D = r; D.suivi = $.extend({}, r.precedent.suivi); NOTES = {}; D.candidats.forEach(function (c) { c.type0 = c.type })
+        REP = $.extend({}, r.precedent.reponses || r.reponses); REG = $.extend(true, {}, r.precedent.regles || r.regles) // choix d'avant la 0.8 : réponses actuelles gardées
         $('#ph_exclure').val(r.precedent.exclure); $('#ph_exclusions').val(r.precedent.exclusions)
         liste(); dessiner()
         alerte('{{Choix d’avant rechargé : cliquez sur Enregistrer pour y revenir.}}', 'info')
