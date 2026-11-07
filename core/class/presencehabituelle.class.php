@@ -214,7 +214,8 @@ class presencehabituelle extends eqLogic {
   public static function planFichier() { return __DIR__ . '/../../data/plan.json'; }
   public static function planImage($e) { return __DIR__ . '/../../data/plan_' . $e . '.jpg'; }
   private static function ecrire($f, $d) { // fichier temporaire puis rename : jamais de fichier à moitié écrit
-    if (file_put_contents($f . '.tmp', $d) !== strlen($d) || !rename($f . '.tmp', $f)) { @unlink($f . '.tmp'); throw new Exception(__('Écriture impossible sur la box (disque plein ?) : rien n\'a été enregistré', __FILE__)); }
+    $t = $f . '.' . getmypid() . mt_rand() . '.tmp'; // un temporaire par écriture : deux envois en même temps ne se mélangent pas
+    if (@file_put_contents($t, $d) !== strlen($d) || !@rename($t, $f)) { @unlink($t); throw new Exception(__('Écriture impossible sur la box (disque plein ?) : rien n\'a été enregistré', __FILE__)); }
   }
   private static function idPlan($v) { return is_string($v) && preg_match('/^[a-z0-9]{1,16}$/', $v) ? $v : null; }
   public static function plan() {
@@ -295,8 +296,10 @@ class presencehabituelle extends eqLogic {
     $suivi = self::suivi(); $parEq = [];
     foreach (array_keys($suivi) as $id) if (is_object($c = cmd::byId($id))) $parEq[$c->getEqLogic_id()][] = (int)$id;
     $axe = function ($v, $taille, $dim) { // « 12% » ou des pixels ; + la moitié du widget
-      if (is_string($v) && substr(trim($v), -1) == '%') return (float)$v;
-      return ((float)$v + (is_scalar($dim) ? (float)$dim / 2 : 0)) / $taille * 100; // « 200px » ou « 200 » : 200 ; absente : 0
+      $moitie = is_scalar($dim) ? (float)$dim / 2 : 0; // « 200px » ou « 200 » : 100 ; absente : 0 (coin du widget)
+      $pc = is_scalar($dim) && substr(trim((string)$dim), -1) == '%'; // largeur « 10% » : en % du design
+      if (is_string($v) && substr(trim($v), -1) == '%') return (float)$v + ($pc ? $moitie : $moitie / $taille * 100);
+      return $pc ? (float)$v / $taille * 100 + $moitie : ((float)$v + $moitie) / $taille * 100;
     };
     $r = [];
     foreach (plan::byPlanHeaderId($h->getId()) as $q) {
@@ -341,10 +344,11 @@ class presencehabituelle extends eqLogic {
       $dbl = array_count_values($noms); // deux lampes de même nom : l'id les distingue
       foreach ($noms as $id => $n) if ($dbl[$n] > 1) $noms[$id] = $n . ' #' . $id;
       $g = (string)$g; $seule = $g[0] === "\0" ? (int)substr($g, 1) : 0; $nom = $seule ? self::nom($seule) : ltrim($g, "\1");
-      if (!$iv) { $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'ids' => $ids, 'jours' => 0]; continue; }
+      $pi = $g[0] === "\1"; // groupe d'une pièce du plan
+      if (!$iv) { $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'piece' => $pi, 'ids' => $ids, 'jours' => 0]; continue; }
       $parNom = []; foreach ($iv as $id => $i) $parNom[$noms[$id]] = $i;
       $j = $A::jours($debut, $fin, $exG); $se = $A::sessions($parNom); $p = $A::profil($se, $j);
-      $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'ids' => $ids, 'lampes' => array_values($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
+      $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'piece' => $pi, 'ids' => $ids, 'lampes' => array_values($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
         'S' => $p['S'], 'W' => $p['W'], 'cS' => $p['cS'], 'cW' => $p['cW'], 'lS' => $A::lisser($p['S']), 'lW' => $A::lisser($p['W']),
         'ex' => $p['ex'], 'durees' => $A::durees($se, $j), 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmerS' => $p['nS'] < self::FIABLE, 'confirmerW' => $p['nW'] < self::FIABLE];
     }
@@ -366,9 +370,12 @@ class presencehabituelle extends eqLogic {
       $res['passages'][] = ['id' => $plan['passages'][$i]['id'], 'a' => $noms[$a], 'b' => $noms[$b], 't' => $plan['passages'][$i]['t'], 'ab' => $ab, 'ba' => $ba];
     foreach (['groupes', 'volets'] as $t) { // même nom dans deux pièces : la pièce les départage (un groupe saisi garde son nom)
       $n = array_count_values(array_column($res[$t], 'nom'));
-      foreach ($res[$t] as $i => $x) if ($n[$x['nom']] > 1 && $x['id']) $res[$t][$i]['nom'] = self::nom($x['id'], true);
+      foreach ($res[$t] as $i => $x) if ($n[$x['nom']] > 1) {
+        if ($x['id']) $res[$t][$i]['nom'] = self::nom($x['id'], true);
+        elseif (!empty($x['piece'])) $res[$t][$i]['nom'] .= ' (' . __('pièce', __FILE__) . ')'; // pièce et groupe saisi de même nom
+      }
     }
-    file_put_contents(self::fichier(), json_encode($res));
+    self::ecrire(self::fichier(), json_encode($res));
     return $res;
   }
 

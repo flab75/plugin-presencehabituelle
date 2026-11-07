@@ -67,7 +67,7 @@
   }
 
   function profil(g, k) {
-    var h = '<tr><th style="width:90px">' + (k == 'S' ? '{{Semaine}}' : '{{Week-end}}') + ' <small>(' + esc(g['n' + k]) + ' j)</small>'
+    var h = '<tr><th style="width:90px">' + (k == 'S' ? '{{Semaine}}' : '{{Week-end}}') + ' <small>(' + esc(g['n' + k]) + ' {{j}})</small>'
       + ((g['confirmer' + k] === undefined ? g.confirmer : g['confirmer' + k]) ? ' <span class="label label-warning">{{à confirmer}}</span>' : '') + '</th>'
     g['l' + k].forEach(function (v, i) {
       h += '<td title="' + i + ' h : ' + esc(g[k][i]) + ' % {{des jours}} ({{lissé}} ' + esc(v) + ' %)" style="text-align:center;padding:2px;background:rgba(240,173,78,' + (v / 100) + ')">' + (v ? esc(v) : '') + '</td>'
@@ -105,7 +105,7 @@
           var f = !soir || !x || x.ferme === null || x.ferme === undefined ? '' : '<br><small>' + ((x.nuits !== undefined ? x.fermees == x.nuits : x.ferme >= 100) ? '{{toujours fermé la nuit}}' : (x.nuits !== undefined ? !x.fermees : !x.ferme) ? '{{jamais fermé la nuit}}' : '{{fermé}} ' + esc(x.ferme) + ' % {{des nuits}}') + (x.confirmerF ? ' <span class="label label-warning">{{à confirmer}}</span>' : '') + '</small>'
           var cf = x && x.confirmer ? ' <span class="label label-warning">{{à confirmer}}</span>' : ''
           if (!x || !x.n) return '<td>–' + cf + f + '</td>'
-          return '<td>' + cf.slice(1) + (cf ? '<br>' : '') + '{{médiane}} ' + hm(x.med) + ', {{moyenne}} ' + hm(x.moy) + '<br><small>{{au plus tôt}} ' + hm(x.min) + ', {{au plus tard}} ' + hm(x.max) + ' (' + esc(x.n) + ' j)</small>' + f + '</td>'
+          return '<td>' + cf.slice(1) + (cf ? '<br>' : '') + '{{médiane}} ' + hm(x.med) + ', {{moyenne}} ' + hm(x.moy) + '<br><small>{{au plus tôt}} ' + hm(x.min) + ', {{au plus tard}} ' + hm(x.max) + ' (' + esc(x.n) + ' {{j}})</small>' + f + '</td>'
         }
         ;[['matin', '{{ouverture}}'], ['soir', '{{fermeture}}']].forEach(function (m) {
           ;['S', 'W'].forEach(function (k) { var x = v[m[0]] && v[m[0]][k]; if (x && Object.keys(x.ex || {}).length) ex.push(esc(v.nom) + ', ' + m[1] + ' : ' + exc(x.ex, hm)) })
@@ -211,8 +211,8 @@
   function image() { // image de l'étage, demandée une fois
     if (!ET && PL && PL.etages.length) ET = PL.etages[0].id // à l'ouverture et après « Supprimer l'étage » : le premier
     var e = ET // la réponse va à l'étage demandé, même si on en a changé entre-temps
+    dessiner() // tout de suite : grille en attendant l'image, et la carte suit l'étage même si la demande échoue
     if (e && IMG[e] === undefined) ajax('plan_image', { etage: e }, function (r) { IMG[e] = r; dessiner() })
-    else dessiner()
   }
   function retirer(k, i) {
     if (k == 'pieces') { var id = PL.pieces[i].id; PL.passages = PL.passages.filter(function (o) { return o.a != id && o.b != id }) } // un passage sans sa pièce ne relie plus rien
@@ -342,6 +342,7 @@
 
   $('#ph_autres').on('change', function () { lire(); liste() })
   $('#ph_parObjet').on('click', function () { $('#ph_liste tr[data-id]').each(function () { if ($(this).find('.ph_coche').is(':checked')) $(this).find('.ph_groupe').val($(this).attr('data-objet')) }) })
+  $('#ph_liste').on('change', '.ph_coche, .ph_groupe', function () { lire(); dessiner() }) // cochée sans enregistrer : déjà plaçable sur le plan
   $('#ph_seules').on('click', function () { $('#ph_liste .ph_groupe').val('') })
   $('#ph_choisir').on('click', function () { jeedom.cmd.getSelectModal({ cmd: { type: 'info' } }, function (r) { $('#ph_exclure').val(r.human) }) })
   $('#ph_enregistrer').on('click', function () {
