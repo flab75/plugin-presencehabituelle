@@ -23,7 +23,10 @@ sendVarToJS('eqType', $plugin->getId());
 				<a class="btn btn-sm btn-default" id="ph_seules"><i class="fas fa-lightbulb"></i> {{Une lampe par groupe}}</a>
 				<label class="checkbox-inline" style="margin-left:10px"><input type="checkbox" id="ph_autres"> {{Afficher les autres commandes (sondes…), déconseillées}}</label>
 				<a class="btn btn-sm btn-success pull-right" id="ph_enregistrer"><i class="fas fa-check-circle"></i> {{Enregistrer}}</a>
+				<a class="btn btn-sm btn-default pull-right" id="ph_precedent" style="display:none;margin-right:5px" title="{{Recharge dans la liste le choix d'avant le dernier enregistrement : rien n'est enregistré tant que vous ne cliquez pas sur Enregistrer}}"><i class="fas fa-undo"></i> {{Revenir au choix d'avant}}</a>
+				<a class="btn btn-sm btn-primary pull-right" id="ph_decouvrir" style="margin-right:5px" title="{{Cherche dans l'historique les doublons, les groupes, les lumières sans type générique, les jours sans personne et les lumières automatiques : des propositions, à confirmer}}"><i class="fas fa-search"></i> {{Découvrir}}</a>
 			</div>
+			<div id="ph_decouverte"></div>
 			<div id="ph_liste"></div>
 			<legend style="margin-top:15px"><i class="fas fa-plane-departure"></i> {{Périodes à ne pas analyser}}</legend>
 			<p>{{Vos absences (et toute période où une simulation tournait) faussent les tendances : ces jours-là ne sont pas comptés.}}</p>

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7
+- **Découvrir** : propositions tirées des 30 derniers jours, à confirmer : doublons (même lampe vue par deux commandes), groupes (type groupe Hue), lumières sans type générique d'après leur nom, jours sans aucune lumière (absences possibles), commande d'absence possible, lumières allumées à heure fixe ou au coucher du soleil (signalées seulement) ; « Observer 3 jours » pour les commandes sans historique.
+- **Revenir au choix d'avant** : recharge le choix d'avant le dernier enregistrement.
+- Les périodes où le plugin simulera la présence seront exclues de l'analyse.
+
 ## 0.6
 - Onglet **Plan** : un plan par étage (nom, ordre, image gardée sur la box), lumières et volets placés à la souris (ou repris d'un design Jeedom), pièces qui groupent les lampes qu'elles contiennent, passages entre pièces (porte, couloir, escalier, y compris d'un étage à l'autre) avec les enchaînements relevés, zones à exclure de l'analyse ; les pastilles montrent la tendance à l'heure choisie.
 - Corrections après la 6e revue : part des passages éclair et des scènes affichée 100 % sans l'être toujours, lissage qui arrondissait 99 % à 100 %, « à confirmer » absent de la notice pour les lumières.

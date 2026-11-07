@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7
+- **Discover**: proposals drawn from the last 30 days, to be confirmed: duplicates (one lamp seen by two commands), groups (such as Hue groups), lights without a generic type from their name, days without any light (possible absences), possible absence command, lights switched on at a fixed time or at sunset (flagged only); "Watch for 3 days" for commands without history.
+- **Back to the previous choice**: reloads the choice from before the last save.
+- Periods when the plugin simulates presence will be excluded from the analysis.
+
 ## 0.6
 - **Plan** tab: one plan per floor (name, order, image kept on the box), lights and shutters placed with the mouse (or taken from a Jeedom design), rooms that group the lamps inside them, passages between rooms (door, corridor, staircase, including from one floor to another) with the observed sequences, zones excluded from the analysis; the markers show the trend at the chosen hour.
 - Fixes after the 6th review: share of quick passages and scenes shown as 100 % when not always, smoothing that rounded 99 % to 100 %, "to be confirmed" missing from the documentation for lights.

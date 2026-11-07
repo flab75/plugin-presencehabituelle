@@ -214,4 +214,66 @@ class presencehabituelle_analyse {
     foreach ($passages as $k => [$a, $b]) if ($a !== $b) $r[$k] = [$a, $b, $fois($a, $b), $fois($b, $a)]; // clé gardée : celle du passage
     return $r;
   }
+
+  /* Découverte : intervalles allumés triés sans chevauchement ([début, fin, …], comme ceux d'intervalles()). */
+  public static function duree(array $iv) { $d = 0; foreach ($iv as $i) $d += $i[1] - $i[0]; return $d; }
+  public static function coupe(array $iv, $a, $b) { // ramenés à [a, b]
+    $r = []; foreach ($iv as $i) if ($i[1] > $a && $i[0] < $b) $r[] = [max($a, $i[0]), min($b, $i[1]), true]; return $r;
+  }
+  public static function inter(array $x, array $y) { // durée allumée en commun
+    $d = 0; $j = 0; $n = count($y);
+    foreach ($x as $i) {
+      while ($j < $n && $y[$j][1] <= $i[0]) $j++;
+      for ($k = $j; $k < $n && $y[$k][0] < $i[1]; $k++) $d += min($i[1], $y[$k][1]) - max($i[0], $y[$k][0]);
+    }
+    return $d;
+  }
+  public static function union(array $listes) { return array_map(fn($s) => [$s[0], $s[1], true], self::sessions($listes)); }
+
+  // Part des bascules de $x (allumages, extinctions) que $y fait aussi, dans le même sens, à $tol s près
+  public static function memes(array $x, array $y, $tol = 5) {
+    $b = function ($iv) { $r = []; foreach ($iv as $i) { $r[] = [$i[0], 1]; $r[] = [$i[1], 0]; } return $r; };
+    $bx = $b($x); $by = $b($y); $m = count($by); $n = 0; $j = 0;
+    if (!$bx) return 0;
+    foreach ($bx as [$t, $s]) {
+      while ($j < $m && $by[$j][0] < $t - $tol) $j++;
+      for ($k = $j; $k < $m && $by[$k][0] <= $t + $tol; $k++) if ($by[$k][1] == $s) { $n++; break; }
+    }
+    return $n / count($bx);
+  }
+
+  /* Jours sans aucune lumière : $iv = [lampe => intervalles], $deb = [lampe => début de ses données], $jours = jours() ;
+     un jour compte si au moins 2 lampes étaient déjà relevées. → [[premier jour, dernier jour]] (jours consécutifs regroupés) */
+  public static function absences(array $iv, array $deb, array $jours) {
+    $r = [];
+    foreach ($jours as $j) {
+      $n = 0;
+      foreach ($iv as $l => $i) if (($deb[$l] ?? PHP_INT_MAX) <= $j['a']) { if (self::coupe($i, $j['a'], $j['b'])) continue 2; $n++; }
+      if ($n < 2) continue;
+      $k = count($r) - 1;
+      if ($k >= 0 && date('Y-m-d', strtotime($r[$k][1] . ' +1 day')) == $j['d']) $r[$k][1] = $j['d']; else $r[] = [$j['d'], $j['d']];
+    }
+    return $r;
+  }
+
+  /* Lampe allumée chaque jour à la même heure (à 5 min près) ou au coucher du soleil (à 10 min près), 80 % des jours au moins, sur 7 jours au moins.
+     $couchers = ['Y-m-d' => horodatage du coucher]. → ['heure' => minutes depuis minuit] | ['soleil' => minutes après le coucher] | null
+     ponytail: O(n²) sur les allumages de la lampe (≈ 300 sur 30 jours) ; trier puis fenêtre glissante si une box le sent */
+  public static function automatique(array $iv, array $couchers = []) {
+    $jours = []; foreach ($iv as $i) $jours[date('Y-m-d', $i[0])][] = $i[0];
+    if (count($jours) < 7) return null;
+    $part = function ($f, $tol) use ($jours) { // valeur partagée par le plus de jours
+      $mieux = [null, 0];
+      foreach ($jours as $ts) foreach ($ts as $t) {
+        if (($c = $f($t)) === null) continue;
+        $n = 0; foreach ($jours as $u) foreach ($u as $v) if (($w = $f($v)) !== null && abs($w - $c) <= $tol) { $n++; break; }
+        if ($n > $mieux[1]) $mieux = [$c, $n];
+      }
+      return [$mieux[0], $mieux[1] / count($jours)];
+    };
+    [$m, $p] = $part(fn($t) => (int)date('G', $t) * 60 + (int)date('i', $t), 5);
+    if ($p >= .8) return ['heure' => $m];
+    [$m, $p] = $part(fn($t) => isset($couchers[$d = date('Y-m-d', $t)]) ? intdiv($t - $couchers[$d], 60) : null, 10);
+    return $p >= .8 ? ['soleil' => $m] : null;
+  }
 }

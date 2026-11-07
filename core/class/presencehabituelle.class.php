@@ -1,6 +1,6 @@
 <?php
 /* Présence habituelle : tire des historiques (lumières, volets) les tendances, les exceptions et ce qui n'arrive jamais, sans rien envoyer hors de la box.
-   0.6 : analyse seule (aucune action sur les équipements), plan de la maison par étage. */
+   0.7 : analyse seule (aucune action sur les équipements), plan de la maison par étage, découverte des commandes à suivre. */
 require_once __DIR__ . '/../../../../core/php/core.inc.php';
 require_once __DIR__ . '/presencehabituelle_analyse.class.php';
 
@@ -20,7 +20,7 @@ class presencehabituelle extends eqLogic {
      Une désinstallation efface la configuration (core) : une table restée sans configuration est d'une installation précédente → vidée. */
   public static function demarrer() {
     self::creerTable();
-    if (!self::suivi() && !(int)config::byKey('exclure_cmd', __CLASS__, 0)) self::effacer();
+    if (!self::suivi() && !(int)config::byKey('exclure_cmd', __CLASS__, 0) && !self::observes()) self::effacer();
     else foreach (self::ids() as $id) self::noter($id); // état pendant la désactivation : une extinction manquée ne fait pas une session sans fin
     if ($a = (int)config::byKey('arret', __CLASS__, 0)) { // rien n'a été relevé pendant la désactivation : ces jours ne comptent pas
       self::exclure($a, time()); config::remove('arret', __CLASS__);
@@ -34,16 +34,17 @@ class presencehabituelle extends eqLogic {
     config::save('arret', time(), __CLASS__);
   }
 
-  /* Périodes exclues gardées [[début, fin]] : plugin désactivé, box arrêtée, absences d'une ancienne commande d'absence
-     (config::byKey décode déjà le JSON) */
-  public static function arrets() {
-    $p = config::byKey('arrets', __CLASS__, []);
+  /* Périodes exclues gardées [[début, fin]] (config::byKey décode déjà le JSON) :
+     'arrets' = plugin désactivé, box arrêtée, absences d'une ancienne commande d'absence ;
+     'simulation' = périodes où le plugin lui-même simulait (ponytail: rempli par la future simulation, via exclure($a, $b, 'simulation')) */
+  public static function arrets($cle = 'arrets') {
+    $p = config::byKey($cle, __CLASS__, []);
     if (is_string($p)) $p = json_decode($p, true);
     return is_array($p) ? $p : [];
   }
 
-  public static function exclure($a, $b) {
-    $p = self::arrets(); $p[] = [(int)$a, (int)$b]; config::save('arrets', json_encode($p), __CLASS__);
+  public static function exclure($a, $b, $cle = 'arrets') {
+    $p = self::arrets($cle); $p[] = [(int)$a, (int)$b]; config::save($cle, json_encode($p), __CLASS__);
   }
 
   // Bouton « Tout effacer » : changements d'état et habitudes calculées (le choix des commandes reste)
@@ -59,11 +60,47 @@ class presencehabituelle extends eqLogic {
     return is_array($s) ? $s : [];
   }
 
-  // Commandes lues : suivies + commande d'absence
-  private static function ids() {
+  // Commandes lues : suivies + commande d'absence + commandes observées pour la découverte
+  private static function ids($observees = true) {
     $ids = array_map('intval', array_keys(self::suivi()));
     if ($x = (int)config::byKey('exclure_cmd', __CLASS__, 0)) $ids[] = $x;
+    if ($observees) $ids = array_merge($ids, self::observes());
     return array_values(array_unique($ids));
+  }
+
+  /* Observation (découverte) : commandes sans historique relevées quelques jours, pour les comparer aux autres.
+     config 'observation' = {fin, ids} ; → ids observés tant que la fin n'est pas passée */
+  public static function observes() {
+    $o = config::byKey('observation', __CLASS__, []);
+    if (is_string($o)) $o = json_decode($o, true);
+    return is_array($o) && (int)($o['fin'] ?? 0) > time() ? array_map('intval', (array)($o['ids'] ?? [])) : [];
+  }
+
+  public static function finObservee() {
+    $o = config::byKey('observation', __CLASS__, []);
+    if (is_string($o)) $o = json_decode($o, true);
+    return is_array($o) ? (int)($o['fin'] ?? 0) : 0;
+  }
+
+  public static function observer(array $ids, $jours = 3) {
+    $ids = array_values(array_filter(array_map('intval', $ids), fn($id) => is_object($c = cmd::byId($id)) && $c->getType() == 'info'));
+    if (!$ids) throw new Exception(__('Aucune commande à observer', __FILE__));
+    $ids = array_slice($ids, 0, 500);
+    config::save('observation', json_encode(['fin' => $fin = time() + 86400 * $jours, 'ids' => $ids]), __CLASS__);
+    foreach ($ids as $id) self::noter($id);
+    self::majListener();
+    return $fin;
+  }
+
+  // Fin d'observation : les relevés des commandes ni suivies ni d'absence partent
+  public static function finObservation() {
+    $o = config::byKey('observation', __CLASS__, []);
+    if (is_string($o)) $o = json_decode($o, true);
+    if (!is_array($o) || !$o || (int)($o['fin'] ?? 0) > time()) return;
+    config::remove('observation', __CLASS__);
+    $gardes = self::ids(false);
+    foreach ((array)($o['ids'] ?? []) as $id) if (!in_array((int)$id, $gardes, true)) DB::Prepare('DELETE FROM ' . self::TABLE . ' WHERE cmd_id = ?', [(int)$id], DB::FETCH_TYPE_ROW);
+    self::majListener();
   }
 
   // Valeur d'état → nombre (> 0 = allumé / ouvert / actif)
@@ -113,26 +150,34 @@ class presencehabituelle extends eqLogic {
   public static function amorcer($cmd, $jours) {
     DB::Prepare('DELETE FROM ' . self::TABLE . ' WHERE cmd_id = ? AND src > 0', [$cmd->getId()], DB::FETCH_TYPE_ROW);
     if (!$cmd->getIsHistorized() || $jours <= 0) return 0;
-    $exact = time() - 3600 * max(0, (float)config::byKey('historyArchiveTime', 'core', 2)); // en heures (history::archive)
-    $debut = self::lisse($cmd) ? max($exact, time() - 86400 * $jours) : time() - 86400 * $jours;
     $prem = DB::Prepare('SELECT MIN(ts) t FROM ' . self::TABLE . ' WHERE cmd_id = ?', [$cmd->getId()], DB::FETCH_TYPE_ROW);
     $fin = ($prem['t'] ?? null) ? (int)$prem['t'] : null; // les lignes déjà notées priment sur l'historique
-    $lignes = []; $der = null;
-    if (!self::lisse($cmd) && (!$fin || $fin > $debut)) { // dernier point avant la fenêtre, dans history puis historyArch
-      $d = date('Y-m-d H:i:s', $debut); $av = null;
-      foreach (['history', 'historyArch'] as $t)
-        if (!$av && is_array($r = DB::Prepare('SELECT value FROM ' . $t . ' WHERE cmd_id = ? AND datetime < ? ORDER BY datetime DESC LIMIT 1', [$cmd->getId(), $d], DB::FETCH_TYPE_ROW))) $av = $r;
-      if ($av) { $der = self::valeur($av['value']); $lignes[] = [$cmd->getId(), $debut, $der]; }
-    }
-    foreach (history::all($cmd->getId(), date('Y-m-d H:i:s', $debut), $fin ? date('Y-m-d H:i:s', $fin - 1) : null) as $h) {
-      $v = self::valeur($h->getValue());
-      if ($v === $der) continue;
-      $der = $v; $lignes[] = [$cmd->getId(), strtotime($h->getDatetime()), $v];
-    }
+    $id = $cmd->getId();
+    $lignes = array_map(fn($e) => [$id, $e[0], $e[1]], self::historique($cmd, time() - 86400 * $jours, $fin));
     foreach (array_chunk($lignes, 500) as $paquet) // une requête par 500 lignes
       DB::Prepare('INSERT INTO ' . self::TABLE . ' (cmd_id, ts, valeur, src) VALUES ' . implode(',', array_fill(0, count($paquet), '(?, ?, ?, 1)')),
         array_merge(...$paquet), DB::FETCH_TYPE_ROW);
     return count($lignes);
+  }
+
+  /* Historique Jeedom exact de $debut à $jusqua (exclu, facultatif) → [[ts, valeur, true]], l'état au début compris (sauf lissé).
+     Lissé : points pas encore archivés seulement. */
+  private static function historique($cmd, $debut, $jusqua = null) {
+    $lisse = self::lisse($cmd);
+    if ($lisse) $debut = max($debut, time() - 3600 * max(0, (float)config::byKey('historyArchiveTime', 'core', 2))); // en heures (history::archive)
+    $r = []; $der = null;
+    if (!$lisse && (!$jusqua || $jusqua > $debut)) { // dernier point avant la fenêtre, dans history puis historyArch
+      $d = date('Y-m-d H:i:s', $debut); $av = null;
+      foreach (['history', 'historyArch'] as $t)
+        if (!$av && is_array($x = DB::Prepare('SELECT value FROM ' . $t . ' WHERE cmd_id = ? AND datetime < ? ORDER BY datetime DESC LIMIT 1', [$cmd->getId(), $d], DB::FETCH_TYPE_ROW))) $av = $x;
+      if ($av) { $der = self::valeur($av['value']); $r[] = [$debut, $der, true]; }
+    }
+    foreach (history::all($cmd->getId(), date('Y-m-d H:i:s', $debut), $jusqua ? date('Y-m-d H:i:s', $jusqua - 1) : null) as $h) {
+      $v = self::valeur($h->getValue());
+      if ($v === $der) continue;
+      $der = $v; $r[] = [strtotime($h->getDatetime()), $v, true];
+    }
+    return $r;
   }
 
   // Commandes info proposées, avec la préconisation (une seule commande d'état cochée par équipement)
@@ -147,7 +192,7 @@ class presencehabituelle extends eqLogic {
       $rang = $coche ? ($c->getSubType() == 'binary' || $c->getGeneric_type() == 'LIGHT_STATE_BOOL' ? 2 : 1) : 0;
       $r[] = ['id' => $c->getId(), 'nom' => $c->getName(), 'eq' => $eq->getName(), 'objet' => $objs[$eq->getObject_id()] ?? '',
         'type' => $t, 'coche' => $coche, 'gen' => (string)$c->getGeneric_type(), 'hist' => (int)$c->getIsHistorized(), 'lisse' => (int)self::lisse($c),
-        'actif' => (int)$eq->getIsEnable()];
+        'actif' => (int)$eq->getIsEnable(), 'sub' => (string)$c->getSubType(), 'eqid' => (int)$eq->getId()];
       $k = $eq->getId() . '|' . $t;
       if ($rang && (!isset($choisi[$k]) || $rang > $choisi[$k][0])) $choisi[$k] = [$rang, count($r) - 1];
     }
@@ -180,11 +225,24 @@ class presencehabituelle extends eqLogic {
       if ($id && !in_array((int)$id, $gardes, true)) DB::Prepare('DELETE FROM ' . self::TABLE . ' WHERE cmd_id = ?', [(int)$id], DB::FETCH_TYPE_ROW);
     $jours = self::jours('amorcer');
     foreach (array_unique($gardes) as $id) if (!isset($avant[$id]) && $id != $avantX) { $n += self::amorcer(cmd::byId($id), $jours); self::noter($id); }
+    $vieux = ['suivi' => $avant, 'exclure' => $avantX, 'exclusions' => (string)config::byKey('exclusions', __CLASS__, '')];
+    if ($vieux != ['suivi' => $propre, 'exclure' => $exclure, 'exclusions' => (string)$exclusions]) // « Revenir au choix d'avant »
+      config::save('precedent', json_encode($vieux + ['date' => date('Y-m-d H:i')]), __CLASS__);
     config::save('suivi', json_encode($propre), __CLASS__);
     config::save('exclure_cmd', $exclure ?: '', __CLASS__);
     config::save('exclusions', (string)$exclusions, __CLASS__);
     self::majListener();
     return $n;
+  }
+
+  // Choix d'avant le dernier enregistrement (commande d'absence en clair), ou null
+  public static function precedent() {
+    $p = config::byKey('precedent', __CLASS__, '');
+    if (is_string($p)) $p = json_decode($p, true);
+    if (!is_array($p) || !isset($p['suivi'])) return null;
+    $p['exclure'] = (int)($p['exclure'] ?? 0) ? cmd::cmdToHumanReadable('#' . (int)$p['exclure'] . '#') : '';
+    $p['suivi'] = (object)$p['suivi'];
+    return $p;
   }
 
   private static function evs($id) {
@@ -201,10 +259,99 @@ class presencehabituelle extends eqLogic {
   // Périodes exclues : commande d'exclusion active + périodes saisies + plugin désactivé
   public static function exclusions() {
     $A = 'presencehabituelle_analyse';
-    $p = array_merge($A::periodes(config::byKey('exclusions', __CLASS__, '')), self::arrets());
+    $p = array_merge($A::periodes(config::byKey('exclusions', __CLASS__, '')), self::arrets(), self::arrets('simulation'));
     if ($x = (int)config::byKey('exclure_cmd', __CLASS__, 0))
       foreach ($A::intervalles(self::evs($x), time()) as $i) $p[] = [$i[0], $i[1]];
     return $p;
+  }
+
+  /* Découverte : propositions tirées des 30 derniers jours, à confirmer sur la page (rien n'est enregistré ici).
+     Aucune connaissance de la maison : types génériques, noms, et comportements dans l'historique. */
+  const LAMPE = '/(?<![\p{L}\d])(lampes?|lamps?|lights?|appliques?|plafonniers?|plafonds?|lustres?|spots?|suspensions?|ampoules?|bulbs?|leds?|veilleuses?|guirlandes?|lumi\p{L}*|[ée]clairages?|halog[èe]nes?|lampadaires?|chevets?)(?![\p{L}\d])/iu';
+  const ABSENCE = '/(absen|vacanc|simulation|away|holiday|d[ée]part)/iu';
+  const DECOUVERTE = 30; // jours lus
+
+  public static function decouverte() {
+    $A = 'presencehabituelle_analyse'; $fin = time(); $debut = $fin - 86400 * self::DECOUVERTE;
+    $suivi = self::suivi(); $lampes = []; $eqNomme = []; $nommees = []; $absence = [];
+    $sansX = !(int)config::byKey('exclure_cmd', __CLASS__, 0);
+    foreach (self::candidats() as $c) {
+      if (!$c['actif']) continue;
+      $txt = $c['nom'] . ' ' . $c['eq'];
+      // commande d'absence possible : alarme activée, ou nom parlant ; pas de texte, pas de lissé (refusés à l'enregistrement)
+      if ($sansX && $c['sub'] != 'string' && !$c['lisse'] && ($c['gen'] == 'ALARM_ENABLE_STATE' || preg_match(self::ABSENCE, $txt)))
+        $absence[] = ['h' => cmd::cmdToHumanReadable('#' . $c['id'] . '#'), 'nom' => self::nom($c['id'], true),
+          'alarme' => $c['gen'] == 'ALARM_ENABLE_STATE'];
+      if ($c['type'] == 'autre' && in_array($c['gen'], ['', 'GENERIC_INFO'], true) && $c['sub'] == 'binary' && preg_match(self::LAMPE, $txt)) {
+        if (isset($eqNomme[$c['eqid']])) continue; // une par équipement
+        $eqNomme[$c['eqid']] = 1; $nommees[] = $c['id'];
+      } elseif (!($c['type'] == 'lumiere' && ($c['coche'] || isset($suivi[$c['id']])))) continue;
+      $lampes[$c['id']] = $c;
+    }
+    $observees = self::observes();
+    $iv = []; $deb = []; $sans = [];
+    foreach ($lampes as $id => $c) {
+      $ev = self::evs($id); // relevés du plugin (suivie ou observée), sinon historique Jeedom
+      if ($ev) {
+        $av = null; $e = [];
+        foreach ($ev as $x) if ($x[0] < $debut) $av = $x; else $e[] = $x;
+        if ($av) array_unshift($e, [$debut, $av[1], true]);
+        $ev = $e;
+      } elseif (is_object($cmd = cmd::byId($id)) && $cmd->getIsHistorized()) $ev = self::historique($cmd, $debut);
+      if (!$ev) { if (!in_array($id, $observees, true)) $sans[] = $id; continue; }
+      $deb[$id] = $ev[0][0]; $iv[$id] = $A::intervalles($ev, $fin);
+    }
+    $ids = array_keys($iv);
+    $commun = function (...$l) use ($deb) { return max(array_map(fn($x) => $deb[$x], $l)); };
+
+    // 1. Doublons : mêmes bascules à 5 s près, 90 % des fois dans les deux sens ; on garde l'historisée exacte
+    $rang = fn($id) => [$lampes[$id]['hist'] && !$lampes[$id]['lisse'], (bool)$lampes[$id]['hist'], $lampes[$id]['sub'] == 'binary', count($iv[$id]), -$id];
+    $doublon = [];
+    foreach ($ids as $i => $a) foreach (array_slice($ids, $i + 1) as $b) {
+      if (isset($doublon[$a]) || isset($doublon[$b]) || $fin - ($s = $commun($a, $b)) < 86400) continue;
+      $x = $A::coupe($iv[$a], $s, $fin); $y = $A::coupe($iv[$b], $s, $fin);
+      if (count($x) < 2 || count($y) < 2 || $A::memes($x, $y) < .9 || $A::memes($y, $x) < .9) continue;
+      [$g, $p] = $rang($a) >= $rang($b) ? [$a, $b] : [$b, $a];
+      $doublon[$p] = $g;
+    }
+    $canon = array_values(array_diff($ids, array_keys($doublon)));
+
+    // 2. Groupes : allumée seulement quand d'autres le sont, et ses bascules sont celles de leur réunion (2 lampes au moins)
+    $groupe = [];
+    foreach ($canon as $g) {
+      $m = [];
+      foreach ($canon as $l) {
+        if ($l == $g || $fin - ($s = $commun($g, $l)) < 86400) continue;
+        $x = $A::coupe($iv[$l], $s, $fin);
+        if (($d = $A::duree($x)) > 0 && $A::inter($x, $A::coupe($iv[$g], $s, $fin)) >= .9 * $d) $m[] = $l;
+      }
+      if (count($m) < 2 || $fin - ($s = $commun($g, ...$m)) < 86400) continue;
+      $x = $A::coupe($iv[$g], $s, $fin);
+      $u = $A::union(array_combine($m, array_map(fn($l) => $A::coupe($iv[$l], $s, $fin), $m)));
+      if (count($x) >= 2 && $A::memes($x, $u) >= .8 && $A::memes($u, $x) >= .8) $groupe[$g] = $m;
+    }
+    $seules = array_values(array_diff($canon, array_keys($groupe)));
+
+    // 4. Jours sans aucune lumière (hors périodes déjà exclues)
+    $absences = $A::absences(array_intersect_key($iv, array_flip($seules)), $deb, $A::jours($debut, $fin, self::exclusions()));
+
+    // 6. Allumée à heure fixe ou au coucher du soleil : signalée seulement
+    $lat = (float)config::byKey('info::latitude', 'core', 0); $lon = (float)config::byKey('info::longitude', 'core', 0);
+    $couchers = [];
+    if ($lat || $lon) for ($t = strtotime('today', $debut); $t <= $fin; $t = strtotime('+1 day', $t))
+      if (is_int($c = date_sun_info($t + 43200, $lat, $lon)['sunset'] ?? null)) $couchers[date('Y-m-d', $t)] = $c;
+    $auto = [];
+    foreach ($seules as $l) if ($a = $A::automatique($A::coupe($iv[$l], $deb[$l], $fin), $couchers)) $auto[] = ['id' => $l, 'nom' => self::nom($l, true)] + $a;
+
+    $n = fn($id) => self::nom($id, true);
+    return ['jours' => self::DECOUVERTE,
+      'doublons' => array_map(fn($p, $g) => ['id' => $p, 'nom' => $n($p), 'de' => $g, 'nomDe' => $n($g)], array_keys($doublon), $doublon),
+      'groupes' => array_map(fn($g, $m) => ['id' => $g, 'nom' => $n($g), 'membres' => array_map($n, array_values(array_diff($m, array_keys($groupe))) ?: $m)], array_keys($groupe), $groupe),
+      'nommees' => array_map(fn($id) => ['id' => $id, 'nom' => $n($id)], $nommees),
+      'sans' => array_map(fn($id) => ['id' => $id, 'nom' => $n($id)], $sans),
+      'observation' => $observees ? self::finObservee() : 0,
+      'absences' => array_map(fn($p) => $p[0] . ' → ' . $p[1], $absences),
+      'automatiques' => $auto, 'absence' => $absence];
   }
 
   /* Plan de la maison : data/plan.json + une image par étage data/plan_<étage>.jpg (refusés au web par data/.htaccess).
@@ -402,6 +549,7 @@ class presencehabituelle extends eqLogic {
      ponytail: 3 h = deux cronHourly manqués ; un arrêt plus court n'est pas vu */
   public static function cronHourly() {
     try {
+      self::finObservation();
       $vu = (int)config::byKey('vu', __CLASS__, 0);
       if ($vu && time() - $vu > 3 * 3600) self::exclure($vu, time());
       config::save('vu', time(), __CLASS__);

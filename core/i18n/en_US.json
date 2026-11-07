@@ -18,7 +18,8 @@
 		"Image refusée : JPEG de 4000 × 4000 pixels au plus": "Image refused: JPEG of 4000 × 4000 pixels at most",
 		"pièce": "room",
 		"Écriture impossible sur la box (disque plein ?) : rien n'a été enregistré": "Cannot write on the box (disk full?): nothing was saved",
-		"Étage inconnu": "Unknown floor"
+		"Étage inconnu": "Unknown floor",
+		"Aucune commande à observer": "No command to watch"
 	},
 	"plugins/presencehabituelle/core/ajax/presencehabituelle.ajax.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",
@@ -137,7 +138,42 @@
 		"fois": "times",
 		"médianes": "medians",
 		"porte": "door",
-		"une pièce d’un autre étage pour un escalier": "a room on another floor for a staircase"
+		"une pièce d’un autre étage pour un escalier": "a room on another floor for a staircase",
+		"à cocher si elle est vraie pendant vos absences (une alarme activée l’est souvent aussi la nuit)": "tick it if it is true while you are away (an armed alarm often is at night too)",
+		"absences possibles : cochée = ajoutée aux périodes à ne pas analyser": "possible absences: ticked = added to the periods not to analyse",
+		"alarme activée": "alarm armed",
+		"allumé seulement quand ses lampes le sont : cochée = décochée de la liste": "on only when its lamps are: ticked = unticked in the list",
+		"Appliquer à la liste": "Apply to the list",
+		"Choix d’avant rechargé : cliquez sur Enregistrer pour y revenir.": "Previous choice reloaded: click Save to go back to it.",
+		"Commande d’absence possible": "Possible absence command",
+		"d’après leur nom : montrées dans la liste comme lumières, décochées": "from their name: shown in the list as lights, unticked",
+		"Découverte": "Discovery",
+		"derniers jours": "last days",
+		"doublon de": "duplicate of",
+		"Doublons": "Duplicates",
+		"Fermer": "Close",
+		"groupe de": "group of",
+		"Groupes": "Groups",
+		"Jours sans aucune lumière": "Days without any light",
+		"Lecture des historiques…": "Reading the history…",
+		"Lumières automatiques ?": "Automatic lights?",
+		"Lumières sans type générique": "Lights without a generic type",
+		"même lampe vue par deux commandes (ou deux lampes toujours commandées ensemble) : cochée = décochée de la liste": "same lamp seen by two commands (or two lamps always switched together): ticked = unticked in the list",
+		"min": "min",
+		"Observation des commandes sans historique jusqu’au": "Watching the commands without history until",
+		"Observer 3 jours": "Watch for 3 days",
+		"Propositions reportées dans la liste : vérifiez, puis cliquez sur Enregistrer.": "Proposals carried into the list: check them, then click Save.",
+		"Recharger dans la liste le choix d’avant le dernier enregistrement": "Reload into the list the choice from before the last save",
+		"relancez la découverte ensuite.": "run the discovery again afterwards.",
+		"rien à comparer : le plugin peut relever leurs changements quelques jours, puis relancez la découverte": "nothing to compare: the plugin can record their changes for a few days, then run the discovery again",
+		"Rien à signaler.": "Nothing to report.",
+		"Rien n’est enregistré tant que vous ne cliquez pas sur Enregistrer.": "Nothing is saved until you click Save.",
+		"s’allume à heure fixe ?": "switches on at a fixed time?",
+		"s’allume au coucher du soleil ?": "switches on at sunset?",
+		"Sans historique": "Without history",
+		"signalées seulement : à décocher vous-même si un programme les allume": "flagged only: untick them yourself if a program switches them on",
+		"sur les": "over the",
+		"type générique à renseigner ?": "generic type to fill in?"
 	},
 	"plugins/presencehabituelle/desktop/php/presencehabituelle.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",
@@ -179,6 +215,10 @@
 		"Zone à exclure": "Zone to exclude",
 		"en semaine": "on weekdays",
 		"le week-end": "at the weekend",
-		"Étage": "Floor"
+		"Étage": "Floor",
+		"Cherche dans l'historique les doublons, les groupes, les lumières sans type générique, les jours sans personne et les lumières automatiques : des propositions, à confirmer": "Looks in the history for duplicates, groups, lights without a generic type, days with nobody home and automatic lights: proposals, to be confirmed",
+		"Découvrir": "Discover",
+		"Recharge dans la liste le choix d'avant le dernier enregistrement : rien n'est enregistré tant que vous ne cliquez pas sur Enregistrer": "Reloads into the list the choice from before the last save: nothing is saved until you click Save",
+		"Revenir au choix d'avant": "Back to the previous choice"
 	}
 }

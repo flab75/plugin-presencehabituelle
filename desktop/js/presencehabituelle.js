@@ -1,6 +1,7 @@
 /* Présence habituelle : choix des commandes suivies et tableau des habitudes */
 (function () {
   var D = null // dernière liste reçue
+  var NOTES = {}, R = null // remarques de la découverte par commande, dernière découverte reçue
   function esc(s) { return String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, function (x) { return '&#' + x.charCodeAt(0) + ';' }) }
   function alerte(m, n) { $('#div_alert').showAlert({ message: esc(m), level: n || 'danger' }) }
   function ajax(action, champs, ok) {
@@ -28,7 +29,7 @@
     var autres = $('#ph_autres').is(':checked'), parObjet = {}
     D.candidats.forEach(function (c) {
       var s = D.suivi[c.id]
-      if (c.type == 'autre' && !autres && !s) return
+      if (c.type == 'autre' && !autres && !s && !NOTES[c.id]) return
       ;(parObjet[c.objet || '{{Sans objet}}'] = parObjet[c.objet || '{{Sans objet}}'] || []).push(c)
     })
     var h = ''
@@ -38,7 +39,7 @@
         var s = D.suivi[c.id]
         h += '<tr data-id="' + esc(c.id) + '" data-type="' + esc(c.type) + '" data-objet="' + esc(c.objet) + '"' + (c.actif ? '' : ' style="opacity:.5"') + '>'
           + '<td style="width:30px"><input type="checkbox" class="ph_coche"' + (s ? ' checked' : '') + '></td>'
-          + '<td>' + esc(c.eq) + ' <small>' + esc(c.nom) + '</small></td>'
+          + '<td>' + esc(c.eq) + ' <small>' + esc(c.nom) + '</small>' + (NOTES[c.id] ? ' <span class="label label-info">' + esc(NOTES[c.id]) + '</span>' : '') + '</td>'
           + '<td style="width:110px">' + esc(NOMS[c.type]) + (c.type == 'autre' ? ' <i class="fas fa-exclamation-triangle text-warning" title="{{Déconseillé : pas un geste de présence}}"></i>' : '') + '</td>'
           + '<td style="width:150px">' + (!c.hist ? '<small class="text-warning" title="{{Rien à reprendre : l’analyse part de l’enregistrement}}">{{non historisée}}</small>'
             : c.lisse ? '<small class="text-warning" title="{{Jeedom remplace ses valeurs par une moyenne horaire après quelques heures : seules les dernières heures sont reprises. Réglez son lissage sur « Aucun » (configuration de la commande, onglet Historique).}}">{{historique lissé}}</small>'
@@ -55,8 +56,56 @@
       D = r
       if (r.jamais) D.candidats.forEach(function (c) { if (c.coche && c.actif) D.suivi[c.id] = { g: '', t: c.type } }) // première fois : préconisation
       $('#ph_exclure').val(r.exclure); $('#ph_exclusions').val(r.exclusions)
+      $('#ph_precedent').toggle(!!r.precedent).attr('data-date', r.precedent ? r.precedent.date : '')
       liste(); dessiner()
     })
+  }
+
+  // Découverte : propositions cochées = acceptées ; « Appliquer » les reporte dans la liste, « Enregistrer » confirme
+  function decouverte(r) {
+    R = r
+    var h = ''
+    function bloc(titre, aide, l) { return l ? '<p style="margin:8px 0 2px"><b>' + titre + '</b> <small class="text-muted">' + aide + '</small></p><ul class="list-unstyled" style="margin-left:10px">' + l + '</ul>' : '' }
+    function cb(k, v, txt, oui) { return '<li><label style="font-weight:normal;margin:0"><input type="checkbox" class="ph_dec" data-k="' + k + '" data-v="' + esc(v) + '"' + (oui ? ' checked' : '') + '> ' + txt + '</label></li>' }
+    h += bloc('{{Doublons}}', '{{même lampe vue par deux commandes (ou deux lampes toujours commandées ensemble) : cochée = décochée de la liste}}',
+      r.doublons.map(function (d) { return cb('doublon', d.id, esc(d.nom) + ' — {{doublon de}} ' + esc(d.nomDe), true) }).join(''))
+    h += bloc('{{Groupes}}', '{{allumé seulement quand ses lampes le sont : cochée = décochée de la liste}}',
+      r.groupes.map(function (g) { return cb('groupe', g.id, esc(g.nom) + ' — {{groupe de}} ' + esc(g.membres.join(', ')), true) }).join(''))
+    h += bloc('{{Lumières sans type générique}}', '{{d’après leur nom : montrées dans la liste comme lumières, décochées}}',
+      r.nommees.map(function (n) { return cb('lumiere', n.id, esc(n.nom) + ' — {{type générique à renseigner ?}}', true) }).join(''))
+    h += bloc('{{Jours sans aucune lumière}}', '{{absences possibles : cochée = ajoutée aux périodes à ne pas analyser}}',
+      r.absences.map(function (p) { return cb('absence', p, esc(p), true) }).join(''))
+    h += bloc('{{Commande d’absence possible}}', '{{à cocher si elle est vraie pendant vos absences (une alarme activée l’est souvent aussi la nuit)}}',
+      r.absence.map(function (a) { return cb('exclure', a.h, esc(a.nom) + (a.alarme ? ' <small>({{alarme activée}})</small>' : ''), false) }).join(''))
+    h += bloc('{{Lumières automatiques ?}}', '{{signalées seulement : à décocher vous-même si un programme les allume}}',
+      r.automatiques.map(function (a) {
+        return '<li>' + esc(a.nom) + ' — ' + (a.heure !== undefined ? '{{s’allume à heure fixe ?}} (' + hm(a.heure) + ')' : '{{s’allume au coucher du soleil ?}} (' + (a.soleil >= 0 ? '+' : '') + a.soleil + ' {{min}})') + '</li>'
+      }).join(''))
+    if (r.observation) h += '<p class="text-info" style="margin-top:8px"><i class="fas fa-hourglass-half"></i> {{Observation des commandes sans historique jusqu’au}} ' + esc(new Date(r.observation * 1000).toLocaleString()) + ' : {{relancez la découverte ensuite.}}</p>'
+    else if (r.sans.length) h += bloc('{{Sans historique}}', '{{rien à comparer : le plugin peut relever leurs changements quelques jours, puis relancez la découverte}}',
+      '<li>' + r.sans.map(function (x) { return esc(x.nom) }).join(', ') + '</li><li style="margin-top:4px"><a class="btn btn-xs btn-default" id="ph_observer"><i class="fas fa-eye"></i> {{Observer 3 jours}}</a></li>')
+    $('#ph_decouverte').html('<div class="panel panel-info"><div class="panel-heading"><i class="fas fa-search"></i> {{Découverte}} <small>({{sur les}} ' + esc(r.jours) + ' {{derniers jours}})</small>'
+      + '<a class="close" id="ph_dec_fermer" style="margin-top:-2px" aria-label="{{Fermer}}">&times;</a></div><div class="panel-body">'
+      + (h || '<p>{{Rien à signaler.}}</p>')
+      + '<p style="margin-top:10px"><a class="btn btn-sm btn-primary" id="ph_appliquer"><i class="fas fa-arrow-down"></i> {{Appliquer à la liste}}</a> <small class="text-muted">{{Rien n’est enregistré tant que vous ne cliquez pas sur Enregistrer.}}</small></p></div></div>')
+  }
+  function appliquer() {
+    if (!R || !D) return
+    lire()
+    var parId = {}; D.candidats.forEach(function (c) { parId[c.id] = c })
+    R.automatiques.forEach(function (a) { NOTES[a.id] = a.heure !== undefined ? '{{s’allume à heure fixe ?}}' : '{{s’allume au coucher du soleil ?}}' })
+    var exc = $('#ph_exclusions').val()
+    $('#ph_decouverte .ph_dec:checked').each(function () {
+      var k = $(this).attr('data-k'), v = $(this).attr('data-v')
+      if (k == 'doublon') { var d = R.doublons.filter(function (x) { return x.id == v })[0]; delete D.suivi[v]; NOTES[v] = '{{doublon de}} ' + d.nomDe }
+      if (k == 'groupe') { var g = R.groupes.filter(function (x) { return x.id == v })[0]; delete D.suivi[v]; NOTES[v] = '{{groupe de}} ' + g.membres.join(', ') }
+      if (k == 'lumiere' && parId[v]) { parId[v].type = 'lumiere'; NOTES[v] = '{{type générique à renseigner ?}}' }
+      if (k == 'absence' && exc.split('\n').map(function (l) { return l.trim() }).indexOf(v) < 0) exc = (exc.trim() ? exc.trim() + '\n' : '') + v
+      if (k == 'exclure') $('#ph_exclure').val(v)
+    })
+    $('#ph_exclusions').val(exc)
+    liste(); dessiner()
+    alerte('{{Propositions reportées dans la liste : vérifiez, puis cliquez sur Enregistrer.}}', 'info')
   }
   function lire() { // reporte les cases et les groupes de l'écran dans D.suivi
     $('#ph_liste tr[data-id]').each(function () {
@@ -350,7 +399,31 @@
     if (!D) return // liste pas encore chargée (ou en erreur) : rien à enregistrer
     ajax('enregistrer', { suivi: JSON.stringify(D.suivi), exclure: $('#ph_exclure').val(), exclusions: $('#ph_exclusions').val() }, function (r) {
       alerte('{{Enregistré}} : ' + r.repris + ' {{changements repris de l’historique}}', 'success')
+      $('#ph_precedent').toggle(!!r.precedent).attr('data-date', r.precedent || '')
       habitudes(r.habitudes)
+    })
+  })
+  $('#ph_decouvrir').on('click', function () {
+    var b = $(this).addClass('disabled')
+    $('#ph_decouverte').html('<p><i class="fas fa-spinner fa-spin"></i> {{Lecture des historiques…}}</p>')
+    ajax('decouverte', {}, function (r) { b.removeClass('disabled'); decouverte(r) })
+    setTimeout(function () { b.removeClass('disabled') }, 60000) // réponse en erreur : bouton rendu
+  })
+  $('#ph_decouverte').on('click', '#ph_appliquer', appliquer)
+  $('#ph_decouverte').on('click', '#ph_dec_fermer', function () { $('#ph_decouverte').empty() })
+  $('#ph_decouverte').on('click', '#ph_observer', function () {
+    ajax('observer', { ids: JSON.stringify(R.sans.map(function (x) { return x.id })) }, function (fin) { R.observation = fin; R.sans = []; decouverte(R) })
+  })
+  $('#ph_precedent').on('click', function () {
+    bootbox.confirm('{{Recharger dans la liste le choix d’avant le dernier enregistrement}} (' + esc($(this).attr('data-date')) + ') ? {{Rien n’est enregistré tant que vous ne cliquez pas sur Enregistrer.}}', function (oui) {
+      if (!oui) return
+      ajax('liste', {}, function (r) {
+        if (!r.precedent) return
+        D = r; D.suivi = $.extend({}, r.precedent.suivi); NOTES = {}
+        $('#ph_exclure').val(r.precedent.exclure); $('#ph_exclusions').val(r.precedent.exclusions)
+        liste(); dessiner()
+        alerte('{{Choix d’avant rechargé : cliquez sur Enregistrer pour y revenir.}}', 'info')
+      })
     })
   })
   $('#ph_recalculer').on('click', function () { ajax('recalculer', {}, habitudes) })

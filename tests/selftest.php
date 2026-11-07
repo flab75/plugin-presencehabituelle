@@ -28,6 +28,27 @@ $ok($l[19] == 17 && $l[20] == 0 && $l[22] == 17, 'lissage : ' . json_encode($l))
 
 $ok($p['ex'] == [], 'aucune heure rare : ' . json_encode($p['ex'])); // 33 % > RARE
 
+// découverte : B = doublon de A (3 s de retard), G = groupe de A et C, D seule
+$jr = fn($j, $h, $m = 0) => $t('2026-03-02') + 86400 * $j + 3600 * $h + 60 * $m;
+$LA = $LB = $LC = $LD = [];
+for ($q = 0; $q < 10; $q++) {
+  $LA[] = [$jr($q, 19), $jr($q, 20), true]; $LB[] = [$jr($q, 19) + 3, $jr($q, 20) + 3, true];
+  $LC[] = [$jr($q, 19, 30), $jr($q, 21), true]; $LD[] = [$jr($q, 7, $q * 7), $jr($q, 8), true];
+}
+$ok($A::memes($LA, $LB) == 1 && $A::memes($LB, $LA) == 1 && $A::memes($LA, $LC) < .9, 'doublon : ' . $A::memes($LA, $LC));
+$LG = $A::union(['A' => $LA, 'C' => $LC]);
+$ok(count($LG) == 10 && $LG[0][0] == $jr(0, 19) && $LG[0][1] == $jr(0, 21) && $A::inter($LA, $LG) == $A::duree($LA) && $A::memes($LG, $A::union(['A' => $LA, 'C' => $LC])) == 1, 'groupe');
+$ok($A::memes($LA, $LG) < .8, 'une lampe n’est pas le groupe');
+// absences : rien d'allumé les 4 et 5 mars (D éteinte aussi), 3 lampes relevées
+$cut = fn($iv) => array_values(array_filter($iv, fn($i) => date('d', $i[0]) != '04' && date('d', $i[0]) != '05'));
+$ab = $A::absences(['A' => $cut($LA), 'C' => $cut($LC), 'D' => $cut($LD)], ['A' => $jr(0, 0), 'C' => $jr(0, 0), 'D' => $jr(0, 0)], $A::jours($jr(-1, 12), $jr(9, 12), []));
+$ok($ab == [['2026-03-04', '2026-03-05']], 'absences : ' . json_encode($ab));
+// automatique : A à 19:00 chaque jour ; D décalée de 7 min par jour ; E au coucher du soleil + 2 min
+$cou = []; $LE = [];
+for ($q = 0; $q < 10; $q++) { $cou[date('Y-m-d', $jr($q, 0))] = $jr($q, 18, 2 * $q); $LE[] = [$jr($q, 18, 2 * $q + 2), $jr($q, 23), true]; }
+$ok($A::automatique($LA) == ['heure' => 1140] && $A::automatique($LD) === null && $A::automatique($LE, $cou) == ['soleil' => 2], 'automatique : ' . json_encode([$A::automatique($LD), $A::automatique($LE, $cou)]));
+echo "découverte OK\n";
+
 // journée 04:00 → 04:00 : dim. 22 h = semaine, sam. 01 h = soir du vendredi = week-end, lun. 01 h = soir du dimanche = semaine
 $ok($A::cle(7, 22) == 'S' && $A::cle(6, 1) == 'W' && $A::cle(1, 1) == 'S' && $A::cle(5, 22) == 'W' && $A::cle(5, 10) == 'S' && $A::cle(7, 10) == 'W', 'journée 04:00');
 $ok($A::pc(299, 300) == 99 && $A::pc(1, 300) == 1 && $A::pc(300, 300) == 100 && $A::pc(0, 300) == 0 && $A::pc(0, 0) == 0, 'pourcentage borné');

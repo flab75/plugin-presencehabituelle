@@ -11,7 +11,13 @@ try {
     $x = (int)config::byKey('exclure_cmd', $P, 0);
     ajax::success(['candidats' => $P::candidats(), 'suivi' => (object)$P::suivi(), 'exclure' => $x ? cmd::cmdToHumanReadable('#' . $x . '#') : '',
       'exclusions' => config::byKey('exclusions', $P, ''),
-      'jamais' => config::byKey('suivi', $P, '') === '']); // jamais enregistré : la page préconise
+      'jamais' => config::byKey('suivi', $P, '') === '', // jamais enregistré : la page préconise
+      'precedent' => $P::precedent(), 'observation' => $P::observes() ? $P::finObservee() : 0]);
+  }
+  if (init('action') == 'decouverte') ajax::success($P::decouverte());
+  if (init('action') == 'observer') {
+    $ids = json_decode((string)init('ids'), true);
+    ajax::success($P::observer(is_array($ids) ? $ids : []));
   }
   if (init('action') == 'enregistrer') {
     $s = json_decode((string)init('suivi'), true);
@@ -21,7 +27,7 @@ try {
       if (!preg_match('/^#(\d+)#$/', trim(cmd::humanReadableToCmd($x)), $m)) throw new Exception(__('Commande d\'absence introuvable', __FILE__) . ' : ' . $x);
       $x = (int)$m[1];
     } else $x = 0;
-    ajax::success(['repris' => $P::enregistrer($s, $x, (string)init('exclusions')), 'habitudes' => $P::analyser()]);
+    ajax::success(['repris' => $P::enregistrer($s, $x, (string)init('exclusions')), 'habitudes' => $P::analyser(), 'precedent' => ($p = $P::precedent()) ? $p['date'] : null]);
   }
   if (init('action') == 'habitudes') {
     ajax::success($P::habitudes());
