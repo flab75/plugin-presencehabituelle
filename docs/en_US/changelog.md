@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.11
+- **More readable trends**: a summary table (one row per room: hours when it is mostly on on weekdays and at weekends, hours when it never is, usual duration, quick switch-ons of a lamp on a sensor flagged), the hour-by-hour detail folded under each room (click its name), plain durations ("5 min", "1 h 57"), readable figures on dark cells, shutters: usual time in bold with the range, exceptions folded.
+
 ## 0.10
 - **Plan**: everything can be edited or deleted (click a room, a passage or a zone: Rename / Edit / Delete panel, orange corners to drag; ✎ and 🗑 in the lists), deleting a room lists the passages that go with it, **Undo** button.
 - Passages and staircases with more than two points ("Finish the shape"). A staircase between two floors is saved once and shown on both: on the other floor, first at the same place, pale and dashed "to adjust", until you drag its points. Staircases entered twice (once from each floor) are merged.

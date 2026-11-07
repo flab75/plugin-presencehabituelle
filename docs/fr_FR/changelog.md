@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.11
+- **Tendances plus lisibles** : un tableau résumé (une ligne par pièce : heures où elle est surtout allumée en semaine et le week-end, heures où elle ne l'est jamais, durée habituelle, allumages éclair d'une lampe sur détecteur signalés), le détail heure par heure replié sous chaque pièce (clic sur son nom), durées en clair (« 5 min », « 1 h 57 »), chiffres lisibles sur les cases foncées, volets : heure habituelle en gras avec l'écart, exceptions repliées.
+
 ## 0.10
 - **Plan** : tout se modifie ou se supprime (cliquez une pièce, un passage ou une zone : panneau Renommer / Modifier / Supprimer, coins orange à glisser ; ✎ et 🗑 dans les listes), suppression d'une pièce annonçant les passages qui partent avec elle, bouton **Annuler**.
 - Passages et escaliers de plus de deux points (« Terminer la forme »). Un escalier entre deux étages est enregistré une fois et montré sur les deux : sur l'autre étage, d'abord à la même place, en pointillé pâle « à ajuster », jusqu'à ce que vous glissiez ses points. Les escaliers saisis deux fois (une fois de chaque étage) sont fusionnés.
