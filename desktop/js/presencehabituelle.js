@@ -145,6 +145,8 @@
     return [f((ev.clientX - r.left) / r.width * 100), f((ev.clientY - r.top) / r.height * 100)]
   }
   function tendance(id) { // [texte, intensité 0..1] à l'heure choisie
+    var pm = PL.marqueurs[id]
+    if (pm && PL.zones.some(function (o) { return o.e == pm.e && dans(pm.x, pm.y, o.pts) })) return ['{{Zone exclue : ni analysée ni simulée.}}', 0]
     if (!H) return ['', 0]
     var h = +$('#ph_heure').val(), k = $('#ph_jour').val()
     if (D.suivi[id].t == 'volet') {
@@ -201,13 +203,15 @@
       return '<div><a class="ph_pnom" data-i="' + i + '" style="cursor:pointer" title="{{Renommer}}"><i class="fas fa-pen"></i></a> ' + esc(o.nom) + ' <small>(' + n + ')</small></div>'
     }).join('') || '<small>{{Aucune pièce sur cet étage.}}</small>')
     $('#ph_passages').html(PL.passages.map(function (o) {
-      var a = piece(o.a), b = piece(o.b), r = a && b && (H && H.passages || []).find(function (x) { return x.a == a.nom && x.b == b.nom && x.t == o.t })
+      var a = piece(o.a), b = piece(o.b), r = a && b && (H && H.passages || []).find(function (x) { return x.id == o.id })
       return '<div>' + esc(pieceNom(o.a)) + ' ↔ ' + esc(pieceNom(o.b)) + ' <small>(' + esc({ porte: '{{porte}}', couloir: '{{couloir}}', escalier: '{{escalier}}' }[o.t]) + ')'
         + (r ? '<br>→ ' + esc(r.ab) + ' {{fois}}, ← ' + esc(r.ba) + ' {{fois}}' : '') + '</small></div>'
     }).join('') + (PL.passages.length ? '<p><small>{{Fois où une lumière de la seconde pièce s’allume moins de 3 min après l’extinction d’une lumière de la première.}}</small></p>' : '<small>{{Aucun passage.}}</small>'))
   }
   function image() { // image de l'étage, demandée une fois
-    if (ET && IMG[ET] === undefined) ajax('plan_image', { etage: ET }, function (r) { IMG[ET] = r; dessiner() })
+    if (!ET && PL && PL.etages.length) ET = PL.etages[0].id // à l'ouverture et après « Supprimer l'étage » : le premier
+    var e = ET // la réponse va à l'étage demandé, même si on en a changé entre-temps
+    if (e && IMG[e] === undefined) ajax('plan_image', { etage: e }, function (r) { IMG[e] = r; dessiner() })
     else dessiner()
   }
   function retirer(k, i) {
@@ -251,6 +255,7 @@
       if (k == 'pieces') { var i = +$t.attr('data-i'); nomPiece('{{Nom de la pièce}}', PL.pieces[i].nom, function (n) { PL.pieces[i].nom = n }) }
       return
     }
+    if (TRACE.length >= 200) return alerte('{{200 coins au plus : terminez la forme.}}', 'warning')
     TRACE.push(p)
     if (OUTIL == 'passage' && TRACE.length == 2) return passage()
     dessiner()
@@ -258,7 +263,7 @@
   $('#ph_carte').on('pointerdown', '.ph_m', function (ev) {
     if (OUTIL != 'deplacer' || PLACER) return
     var id = $(this).attr('data-id'), el = this, bouge = false
-    ev.preventDefault()
+    ev.preventDefault(); this.setPointerCapture(ev.pointerId) // relâché hors de la fenêtre : le pointerup arrive quand même
     $(document).on('pointermove.ph', function (e) { bouge = true; var p = pos(e); PL.marqueurs[id].x = p[0]; PL.marqueurs[id].y = p[1]; el.style.left = p[0] + '%'; el.style.top = p[1] + '%' })
       .on('pointerup.ph pointercancel.ph', function () { $(document).off('.ph'); if (bouge) { GLISSE = true; setTimeout(function () { GLISSE = false; dessiner() }, 0) } }) // le clic qui suit un glissé ne compte pas
   })

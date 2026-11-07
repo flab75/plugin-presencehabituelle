@@ -213,6 +213,9 @@ class presencehabituelle extends eqLogic {
   const VIDE = ['etages' => [], 'marqueurs' => [], 'pieces' => [], 'passages' => [], 'zones' => []];
   public static function planFichier() { return __DIR__ . '/../../data/plan.json'; }
   public static function planImage($e) { return __DIR__ . '/../../data/plan_' . $e . '.jpg'; }
+  private static function ecrire($f, $d) { // fichier temporaire puis rename : jamais de fichier à moitié écrit
+    if (file_put_contents($f . '.tmp', $d) !== strlen($d) || !rename($f . '.tmp', $f)) { @unlink($f . '.tmp'); throw new Exception(__('Écriture impossible sur la box (disque plein ?) : rien n\'a été enregistré', __FILE__)); }
+  }
   private static function idPlan($v) { return is_string($v) && preg_match('/^[a-z0-9]{1,16}$/', $v) ? $v : null; }
   public static function plan() {
     $p = is_file($f = self::planFichier()) ? json_decode((string)file_get_contents($f), true) : null;
@@ -234,9 +237,8 @@ class presencehabituelle extends eqLogic {
     foreach (array_slice((array)($p['etages'] ?? []), 0, 20) as $e)
       if (($id = self::idPlan($e['id'] ?? null)) && !isset($et[$id]) && ($n = $nom($e['nom'] ?? '')) !== '') { $et[$id] = 1; $r['etages'][] = ['id' => $id, 'nom' => $n]; }
     $etage = fn($v) => ($e = self::idPlan($v)) && isset($et[$e]) ? $e : null; // après les étages : fn capture $et par valeur
-    $suivi = self::suivi();
-    foreach ((array)($p['marqueurs'] ?? []) as $id => $m)
-      if (isset($suivi[(int)$id]) && is_array($m) && $etage($m['e'] ?? null) && ($x = $pc($m['x'] ?? null)) !== null && ($y = $pc($m['y'] ?? null)) !== null)
+    foreach (array_slice((array)($p['marqueurs'] ?? []), 0, 2000, true) as $id => $m) // commande pas encore enregistrée dans le suivi : gardée quand même
+      if (is_object(cmd::byId((int)$id)) && is_array($m) && $etage($m['e'] ?? null) && ($x = $pc($m['x'] ?? null)) !== null && ($y = $pc($m['y'] ?? null)) !== null)
         $r['marqueurs'][(int)$id] = ['e' => $m['e'], 'x' => $x, 'y' => $y];
     $vus = [];
     foreach (['pieces' => [3, 200], 'zones' => [3, 200], 'passages' => [2, 2]] as $k => [$min, $max])
@@ -252,9 +254,10 @@ class presencehabituelle extends eqLogic {
       }
     $pieces = array_flip(array_column($r['pieces'], 'id'));
     $r['passages'] = array_values(array_filter($r['passages'], fn($x) => $x['a'] && $x['b'] && isset($pieces[$x['a']], $pieces[$x['b']]) && $x['a'] !== $x['b']));
-    file_put_contents(self::planFichier(), json_encode($r));
-    foreach (glob(__DIR__ . '/../../data/plan_*.jpg') ?: [] as $f)
-      if (!isset($et[substr(basename($f, '.jpg'), 5)])) unlink($f);
+    $avant = self::plan()['etages'];
+    self::ecrire(self::planFichier(), json_encode($r));
+    foreach ($avant as $e) if (!isset($et[$e['id']]) && is_file($f = self::planImage($e['id']))) unlink($f); // seulement les étages retirés : un plan illisible n'efface rien
+    // ponytail: image déposée puis étage jamais enregistré : le fichier reste (quelques centaines de Ko)
     return self::plan();
   }
 
@@ -264,7 +267,7 @@ class presencehabituelle extends eqLogic {
     if (!preg_match('#^data:image/jpeg;base64,([A-Za-z0-9+/=]+)$#', (string)$data, $m) || ($b = base64_decode($m[1], true)) === false
       || strlen($b) > 6000000 || !($i = @getimagesizefromstring($b)) || $i[2] != IMAGETYPE_JPEG || $i[0] > 4000 || $i[1] > 4000)
       throw new Exception(__('Image refusée : JPEG de 4000 × 4000 pixels au plus', __FILE__));
-    file_put_contents(self::planImage($e), $b);
+    self::ecrire(self::planImage($e), $b);
   }
   public static function planImageLire($e) {
     return ($e = self::idPlan($e)) && is_file($f = self::planImage($e)) ? 'data:image/jpeg;base64,' . base64_encode((string)file_get_contents($f)) : '';
@@ -293,7 +296,7 @@ class presencehabituelle extends eqLogic {
     foreach (array_keys($suivi) as $id) if (is_object($c = cmd::byId($id))) $parEq[$c->getEqLogic_id()][] = (int)$id;
     $axe = function ($v, $taille, $dim) { // « 12% » ou des pixels ; + la moitié du widget
       if (is_string($v) && substr(trim($v), -1) == '%') return (float)$v;
-      return ((float)$v + (is_numeric($dim) ? (float)$dim / 2 : 0)) / $taille * 100;
+      return ((float)$v + (is_scalar($dim) ? (float)$dim / 2 : 0)) / $taille * 100; // « 200px » ou « 200 » : 200 ; absente : 0
     };
     $r = [];
     foreach (plan::byPlanHeaderId($h->getId()) as $q) {
@@ -321,7 +324,7 @@ class presencehabituelle extends eqLogic {
       if ($l['zone']) continue; // zone à exclure du plan : ni analysée ni simulée
       if ($l['piece']) $piece[$id] = $l['piece']['id'];
       if ($s['t'] == 'volet') { $volets[$id] = $s; continue; }
-      if ($s['g'] === '' && $l['piece']) $s['g'] = $l['piece']['nom']; // pièce du plan = groupe, sauf groupe saisi
+      if ($s['g'] === '' && $l['piece']) $s['g'] = "\1" . $l['piece']['nom']; // pièce du plan = groupe, sauf groupe saisi ; \1 : jamais confondue avec un groupe saisi de même nom
       $groupes[$s['g'] !== '' ? $s['g'] : "\0" . $id][] = (int)$id; // \0 : une lampe seule, jamais confondue avec un groupe saisi « #12 » ; un groupe « 12 » devient la clé entière 12 : (string) plus bas
     }
     $res = ['date' => date('Y-m-d H:i:s'), 'groupes' => [], 'volets' => [], 'passages' => []]; $parPiece = [];
@@ -337,7 +340,7 @@ class presencehabituelle extends eqLogic {
       }
       $dbl = array_count_values($noms); // deux lampes de même nom : l'id les distingue
       foreach ($noms as $id => $n) if ($dbl[$n] > 1) $noms[$id] = $n . ' #' . $id;
-      $g = (string)$g; $seule = $g[0] === "\0" ? (int)substr($g, 1) : 0; $nom = $seule ? self::nom($seule) : $g;
+      $g = (string)$g; $seule = $g[0] === "\0" ? (int)substr($g, 1) : 0; $nom = $seule ? self::nom($seule) : ltrim($g, "\1");
       if (!$iv) { $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'ids' => $ids, 'jours' => 0]; continue; }
       $parNom = []; foreach ($iv as $id => $i) $parNom[$noms[$id]] = $i;
       $j = $A::jours($debut, $fin, $exG); $se = $A::sessions($parNom); $p = $A::profil($se, $j);
@@ -360,7 +363,7 @@ class presencehabituelle extends eqLogic {
     $se = array_map(fn($p) => $A::sessions($p), $parPiece); // allumée tant qu'une de ses lampes l'est
     $pa = array_map(fn($p) => [$p['a'], $p['b']], $plan['passages']);
     foreach ($A::enchainements($se, $pa, $excl) as $i => [$a, $b, $ab, $ba])
-      $res['passages'][] = ['a' => $noms[$a], 'b' => $noms[$b], 't' => $plan['passages'][$i]['t'], 'ab' => $ab, 'ba' => $ba];
+      $res['passages'][] = ['id' => $plan['passages'][$i]['id'], 'a' => $noms[$a], 'b' => $noms[$b], 't' => $plan['passages'][$i]['t'], 'ab' => $ab, 'ba' => $ba];
     foreach (['groupes', 'volets'] as $t) { // même nom dans deux pièces : la pièce les départage (un groupe saisi garde son nom)
       $n = array_count_values(array_column($res[$t], 'nom'));
       foreach ($res[$t] as $i => $x) if ($n[$x['nom']] > 1 && $x['id']) $res[$t][$i]['nom'] = self::nom($x['id'], true);

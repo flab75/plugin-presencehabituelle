@@ -16,6 +16,7 @@
 		"Commande d'absence numérique lissée : réglez son lissage sur « Aucun » (configuration de la commande, onglet Historique) ou passez par un virtuel binaire": "Smoothed numeric absence command: set its smoothing to \"None\" (command configuration, History tab) or use a binary virtual",
 		"Design introuvable": "Design not found",
 		"Image refusée : JPEG de 4000 × 4000 pixels au plus": "Image refused: JPEG of 4000 × 4000 pixels at most",
+		"Écriture impossible sur la box (disque plein ?) : rien n'a été enregistré": "Cannot write on the box (disk full?): nothing was saved",
 		"Étage inconnu": "Unknown floor"
 	},
 	"plugins/presencehabituelle/core/ajax/presencehabituelle.ajax.php": {
@@ -88,6 +89,8 @@
 		"Effacer les changements d’état relevés et les tendances calculées ? Le choix des commandes est gardé ; l’historique de Jeedom n’est pas repris.": "Erase the recorded state changes and computed trends? The choice of commands is kept; the Jeedom history is not imported again.",
 		"Relevés effacés": "Records erased",
 		"20 étages au plus.": "20 floors at most.",
+		"200 coins au plus : terminez la forme.": "200 corners at most: finish the shape.",
+		"Zone exclue : ni analysée ni simulée.": "Excluded zone: neither analysed nor simulated.",
 		"Ajouter": "Add",
 		"Ajoutez d’abord un étage.": "Add a floor first.",
 		"Ajoutez un étage pour commencer.": "Add a floor to start.",
