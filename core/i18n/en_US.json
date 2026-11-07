@@ -75,7 +75,7 @@
 		"ouverture": "opening",
 		"fermeture": "closing",
 		"Pas encore assez de données.": "Not enough data yet.",
-		"Exceptions : jours loin de la moitié centrale (plus de 30 min, ou 1,5 fois son étendue).": "Exceptions: days far from the middle half (more than 30 min, or 1.5 times its spread).",
+		"Exceptions : jours loin de la moitié centrale, de plus de 30 min et de plus de 1,5 fois son étendue (le plus grand des deux).": "Exceptions: days far from the middle half, by more than 30 min and by more than 1.5 times its spread (whichever is larger).",
 		"Week-end : matins du samedi et du dimanche, soirs du vendredi et du samedi. Une fermeture partielle (contre le soleil) ne compte pas.": "Weekend: Saturday and Sunday mornings, Friday and Saturday evenings. A partial closing (against the sun) does not count.",
 		"Aucune commande suivie.": "No command followed.",
 		"Enregistré": "Saved",

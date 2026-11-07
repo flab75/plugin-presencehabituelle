@@ -67,7 +67,8 @@
   }
 
   function profil(g, k) {
-    var h = '<tr><th style="width:90px">' + (k == 'S' ? '{{Semaine}}' : '{{Week-end}}') + ' <small>(' + esc(g['n' + k]) + ' j)</small></th>'
+    var h = '<tr><th style="width:90px">' + (k == 'S' ? '{{Semaine}}' : '{{Week-end}}') + ' <small>(' + esc(g['n' + k]) + ' j)</small>'
+      + ((g['confirmer' + k] === undefined ? g.confirmer : g['confirmer' + k]) ? ' <span class="label label-warning">{{à confirmer}}</span>' : '') + '</th>'
     g['l' + k].forEach(function (v, i) {
       h += '<td title="' + i + ' h : ' + esc(g[k][i]) + ' % {{des jours}} ({{lissé}} ' + esc(v) + ' %)" style="text-align:center;padding:2px;background:rgba(240,173,78,' + (v / 100) + ')">' + (v ? esc(v) : '') + '</td>'
     })
@@ -77,7 +78,7 @@
     $('#ph_date').text(r.date ? '{{Calculé le}} ' + r.date : '')
     var h = ''
     ;(r.groupes || []).forEach(function (g) {
-      h += '<legend style="font-size:1.1em">' + esc(g.nom) + (g.confirmer ? ' <span class="label label-warning">{{à confirmer}}</span>' : '') + '</legend>'
+      h += '<legend style="font-size:1.1em">' + esc(g.nom) + '</legend>'
       if (!g.jours) { h += '<p>{{Pas encore assez de données (un jour entier au moins).}}</p>'; return }
       if (g.lampes.length > 1) h += '<p><small>' + esc(g.lampes.join(', ')) + '</small></p>'
       h += '<table class="table table-condensed table-bordered" style="table-layout:fixed;font-size:.85em"><tr><th></th>'
@@ -100,17 +101,18 @@
       var ex = []
       r.volets.forEach(function (v) {
         function c(x, soir) {
-          var f = !soir || !x || x.ferme === null || x.ferme === undefined ? '' : '<br><small>' + (x.ferme >= 100 ? '{{toujours fermé la nuit}}' : x.ferme ? '{{fermé}} ' + esc(x.ferme) + ' % {{des nuits}}' : '{{jamais fermé la nuit}}') + '</small>'
-          if (!x || !x.n) return '<td>–' + f + '</td>'
-          return '<td>{{médiane}} ' + hm(x.med) + ', {{moyenne}} ' + hm(x.moy) + '<br><small>{{au plus tôt}} ' + hm(x.min) + ', {{au plus tard}} ' + hm(x.max) + ' (' + esc(x.n) + ' j)</small>' + f + '</td>'
+          var f = !soir || !x || x.ferme === null || x.ferme === undefined ? '' : '<br><small>' + ((x.nuits !== undefined ? x.fermees == x.nuits : x.ferme >= 100) ? '{{toujours fermé la nuit}}' : (x.nuits !== undefined ? !x.fermees : !x.ferme) ? '{{jamais fermé la nuit}}' : '{{fermé}} ' + esc(x.ferme) + ' % {{des nuits}}') + '</small>'
+          var cf = x && x.confirmer ? ' <span class="label label-warning">{{à confirmer}}</span>' : ''
+          if (!x || !x.n) return '<td>–' + cf + f + '</td>'
+          return '<td>' + cf.slice(1) + (cf ? '<br>' : '') + '{{médiane}} ' + hm(x.med) + ', {{moyenne}} ' + hm(x.moy) + '<br><small>{{au plus tôt}} ' + hm(x.min) + ', {{au plus tard}} ' + hm(x.max) + ' (' + esc(x.n) + ' j)</small>' + f + '</td>'
         }
         ;[['matin', '{{ouverture}}'], ['soir', '{{fermeture}}']].forEach(function (m) {
           ;['S', 'W'].forEach(function (k) { var x = v[m[0]] && v[m[0]][k]; if (x && Object.keys(x.ex || {}).length) ex.push(esc(v.nom) + ', ' + m[1] + ' : ' + exc(x.ex, hm)) })
         })
-        h += '<tr><td>' + esc(v.nom) + (v.confirmer ? ' <span class="label label-warning">{{à confirmer}}</span>' : '') + '</td>'
+        h += '<tr><td>' + esc(v.nom) + (v.confirmer ? ' <span class="label label-warning">{{à confirmer}}</span>' : '') + '</td>' // v.confirmer : habitudes.json d’avant 0.5
           + (v.jours ? c(v.matin.S) + c(v.matin.W) + c(v.soir.S, 1) + c(v.soir.W, 1) : '<td colspan="4">{{Pas encore assez de données.}}</td>') + '</tr>'
       })
-      h += '</table>' + (ex.length ? '<p><b>{{Exceptions}}</b> :<br>' + ex.join('<br>') + '</p>' : '') + '<p><small>{{Exceptions : jours loin de la moitié centrale (plus de 30 min, ou 1,5 fois son étendue).}} {{Week-end : matins du samedi et du dimanche, soirs du vendredi et du samedi. Une fermeture partielle (contre le soleil) ne compte pas.}}</small></p>'
+      h += '</table>' + (ex.length ? '<p><b>{{Exceptions}}</b> :<br>' + ex.join('<br>') + '</p>' : '') + '<p><small>{{Exceptions : jours loin de la moitié centrale, de plus de 30 min et de plus de 1,5 fois son étendue (le plus grand des deux).}} {{Week-end : matins du samedi et du dimanche, soirs du vendredi et du samedi. Une fermeture partielle (contre le soleil) ne compte pas.}}</small></p>'
     }
     $('#ph_resultats').html(h || '<p>{{Aucune commande suivie.}}</p>')
   }
@@ -121,6 +123,7 @@
   $('#ph_choisir').on('click', function () { jeedom.cmd.getSelectModal({ cmd: { type: 'info' } }, function (r) { $('#ph_exclure').val(r.human) }) })
   $('#ph_enregistrer').on('click', function () {
     lire()
+    if (!D) return // liste pas encore chargée (ou en erreur) : rien à enregistrer
     ajax('enregistrer', { suivi: JSON.stringify(D.suivi), exclure: $('#ph_exclure').val(), exclusions: $('#ph_exclusions').val() }, function (r) {
       alerte('{{Enregistré}} : ' + r.repris + ' {{changements repris de l’historique}}', 'success')
       habitudes(r.habitudes)

@@ -115,12 +115,13 @@ class presencehabituelle_analyse {
   /* Volet : journée de 04:00 à 04:00. Matin = 1re ouverture entre 04:00 et 16:00 ; soir = dernière fermeture entre 16:00 et 04:00.
      Fermé = position ≤ 1 % du maximum observé (une position partielle contre le soleil n'est pas une fermeture).
      Semaine / week-end : matins du sam. et dim., soirs du ven. et sam. (on se couche plus tard la veille d'un jour sans travail).
-     Une nuit pas encore finie à $fin (le calcul tourne vers minuit) ne compte pas pour le soir.
-     → ['matin' => ['S' => stats, 'W' => stats], 'soir' => [...]] ; stats() en minutes depuis 00:00 (exceptions par date), ferme = % des nuits où il est fermé à 04:00 (null sans nuit observée) */
-  public static function volet(array $ev, array $jours, $fin = PHP_INT_MAX) {
+     Une nuit pas encore finie à $fin (le calcul tourne vers minuit), ou qui déborde sur une exclusion (lendemain d'un départ), ne compte pas pour le soir.
+     → ['matin' => ['S' => stats, 'W' => stats], 'soir' => [...]] ; stats() en minutes depuis 00:00 (exceptions par date), jours = jours comptés dans la colonne,
+       ferme = % des nuits où il est fermé à 04:00 (null sans nuit observée), nuits / fermees = comptes bruts (« toujours » / « jamais » se lisent sur eux) */
+  public static function volet(array $ev, array $jours, $fin = PHP_INT_MAX, array $excl = []) {
     $max = 0; foreach ($ev as $e) $max = max($max, $e[1]);
     $seuil = $max * 0.01;
-    $m = ['S' => [], 'W' => []]; $s = ['S' => [], 'W' => []]; $nsoir = ['S' => 0, 'W' => 0]; $fsoir = ['S' => 0, 'W' => 0];
+    $m = ['S' => [], 'W' => []]; $s = ['S' => [], 'W' => []]; $nsoir = ['S' => 0, 'W' => 0]; $fsoir = ['S' => 0, 'W' => 0]; $jm = ['S' => 0, 'W' => 0]; $js = ['S' => 0, 'W' => 0];
     foreach ($jours as $j) {
       $a = strtotime('04:00', $j['a']); $mid = strtotime('16:00', $j['a']); $b = strtotime('04:00', $j['b']); // heures d'horloge : justes les jours de changement d'heure
       $ferme = null; $mat = null; $soir = null;
@@ -135,15 +136,18 @@ class presencehabituelle_analyse {
         $ferme = $f;
       }
       $km = $j['n'] >= 6 ? 'W' : 'S'; $ks = in_array($j['n'], [5, 6]) ? 'W' : 'S';
-      if ($mat !== null) $m[$km][$j['d']] = self::minutes($mat, $j['d']);
+      $jm[$km]++; if ($mat !== null) $m[$km][$j['d']] = self::minutes($mat, $j['d']);
       if ($b > $fin) continue; // nuit en cours
+      foreach ($excl as [$x, $y]) if ($x < $b && $y > $a) continue 2; // le soir finit le lendemain à 04:00 : absent ce matin-là, la nuit ne dit rien
+      $js[$ks]++;
       if ($ferme !== null) { $nsoir[$ks]++; if ($ferme) $fsoir[$ks]++; } // fermé à 04:00, même resté fermé toute la journée
       if ($soir !== null) $s[$ks][$j['d']] = self::minutes($soir, $j['d']);
     }
     $r = ['matin' => [], 'soir' => []];
     foreach (['S', 'W'] as $k) {
-      $r['matin'][$k] = self::stats($m[$k]);
-      $r['soir'][$k] = self::stats($s[$k]) + ['ferme' => $nsoir[$k] ? (int)round(100 * $fsoir[$k] / $nsoir[$k]) : null]; // null : aucune nuit observée
+      $r['matin'][$k] = self::stats($m[$k]) + ['jours' => $jm[$k]];
+      $r['soir'][$k] = self::stats($s[$k]) + ['jours' => $js[$k], 'nuits' => $nsoir[$k], 'fermees' => $fsoir[$k],
+        'ferme' => $nsoir[$k] ? (int)round(100 * $fsoir[$k] / $nsoir[$k]) : null]; // null : aucune nuit observée
     }
     return $r;
   }

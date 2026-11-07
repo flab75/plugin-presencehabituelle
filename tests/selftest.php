@@ -52,6 +52,10 @@ $ok($A::minutes($t('2026-03-30 00:30'), '2026-03-29') == 1470 && $A::minutes($t(
 // aucune nuit de week-end observée : % fermé inconnu (null), pas « jamais fermé »
 $vs = $A::volet($ev, $A::jours($t('2026-03-01 12:00'), $t('2026-03-06 08:00'), [])); // lun.-jeu. (le soir du vendredi compte pour le week-end)
 $ok($vs['soir']['W']['ferme'] === null && $vs['soir']['S']['ferme'] == 100, 'volet sans nuit : ' . json_encode($vs['soir']));
+// soir dont le lendemain matin est une absence (départ le sam. 7 à 02:00) : le soir du vendredi 6 ne compte pas ; comptes bruts des nuits
+$vx = $A::volet($ev, $A::jours($t('2026-03-01 12:00'), $t('2026-03-09 08:00'), []), PHP_INT_MAX, [[$t('2026-03-07 02:00'), $t('2026-03-07 03:00')]]);
+$ok($vx['soir']['W']['n'] == 1 && $vx['soir']['W']['jours'] == 1 && $vx['soir']['W']['nuits'] == 1 && $vx['soir']['W']['fermees'] == 1 && $vx['matin']['W']['jours'] == 2, 'volet soir avant absence : ' . json_encode($vx['soir']['W']));
+$ok($v['soir']['S']['nuits'] == $v['soir']['S']['fermees'] && $v['soir']['S']['nuits'] > 0 && $v['matin']['S']['jours'] == 5, 'volet comptes bruts : ' . json_encode($v['soir']['S']));
 $ok($p['cS'][19] == 1 && $p['cS'][20] == 0, 'comptes bruts : ' . json_encode($p['cS']));
 
 // deux allumages dans la même minute : deux durées, passages ≤ 100 %

@@ -1,6 +1,6 @@
 <?php
 /* Présence habituelle : tire des historiques (lumières, volets) les tendances, les exceptions et ce qui n'arrive jamais, sans rien envoyer hors de la box.
-   0.4 : analyse seule (aucune action sur les équipements). */
+   0.5 : analyse seule (aucune action sur les équipements). */
 require_once __DIR__ . '/../../../../core/php/core.inc.php';
 require_once __DIR__ . '/presencehabituelle_analyse.class.php';
 
@@ -214,7 +214,7 @@ class presencehabituelle extends eqLogic {
 
   public static function analyser() {
     $A = 'presencehabituelle_analyse'; $fin = time(); $excl = self::exclusions();
-    $max = 3600 * max(1, (float)config::byKey('session_max', __CLASS__, 18));
+    $max = 3600 * (($h = (float)config::byKey('session_max', __CLASS__, 18)) > 0 ? max(1, $h) : 18); // 0 ou illisible : 18 h, comme jours()
     $groupes = []; $volets = [];
     foreach (self::suivi() as $id => $s) {
       if ($s['t'] == 'volet') { $volets[$id] = $s; continue; }
@@ -238,13 +238,15 @@ class presencehabituelle extends eqLogic {
       $j = $A::jours($debut, $fin, $exG); $se = $A::sessions($parNom); $p = $A::profil($se, $j);
       $res['groupes'][] = ['nom' => $nom, 'lampes' => array_values($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
         'S' => $p['S'], 'W' => $p['W'], 'cS' => $p['cS'], 'cW' => $p['cW'], 'lS' => $A::lisser($p['S']), 'lW' => $A::lisser($p['W']),
-        'ex' => $p['ex'], 'durees' => $A::durees($se, $j), 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmer' => count($j) < self::FIABLE];
+        'ex' => $p['ex'], 'durees' => $A::durees($se, $j), 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmerS' => $p['nS'] < self::FIABLE, 'confirmerW' => $p['nW'] < self::FIABLE];
     }
     foreach ($volets as $id => $s) {
       $ev = self::evs($id); $nom = self::nom($id);
       if (!$ev) { $res['volets'][] = ['nom' => $nom, 'jours' => 0]; continue; }
       $j = $A::jours($ev[0][0], $fin, $excl);
-      $res['volets'][] = ['nom' => $nom, 'groupe' => $s['g'], 'jours' => count($j), 'confirmer' => count($j) < self::FIABLE] + $A::volet($ev, $j, $fin);
+      $v = $A::volet($ev, $j, $fin, $excl);
+      foreach ($v as $m => $c) foreach ($c as $k => $x) $v[$m][$k]['confirmer'] = $x['jours'] < self::FIABLE; // par colonne : 60 jours de semaine ne confirment pas 4 week-ends
+      $res['volets'][] = ['nom' => $nom, 'groupe' => $s['g'], 'jours' => count($j)] + $v;
     }
     file_put_contents(self::fichier(), json_encode($res));
     return $res;
