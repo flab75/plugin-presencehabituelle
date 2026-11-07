@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.8
+- **Guide** : quatre questions (lampe ou volet de la maison, doublon ou groupe ; place sur le plan ; règles : jamais simulée, plages où elle peut ou ne doit pas s'allumer ; commandes sans assez de données), « Identifier en allumant », et un bilan qui dit quand une simulation est proposable. Rien n'est encore lancé.
+
 ## 0.7.1
 - Découverte : les « Etat LED » et autres voyants d'une prise ne sont plus pris pour des lampes ; un équipement qui a déjà une lumière typée ne propose pas ses autres binaires ; les bascules en bord de période ne comptent plus dans les doublons et groupes ; chaîne de doublons résolue ; latitude à virgule acceptée.
 - Jours sans lumière proposés décochés ; lampes à historique lissé signalées.

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.8
+- **Guide**: four questions (lamp or shutter of the house, duplicate or group; place on the plan; rules: never simulated, ranges when it may or must not switch on; commands without enough data), "Identify by switching on", and a summary that says when a simulation can be proposed. Nothing is started yet.
+
 ## 0.7.1
 - Discover: "LED state" and other indicators of a plug are no longer taken for lamps; a device that already has a typed light does not offer its other binaries; switches on the period's bounds no longer count in duplicates and groups; duplicate chains resolved; latitude with a comma accepted.
 - Days without light proposed unticked; lamps with smoothed history flagged.

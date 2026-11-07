@@ -70,6 +70,17 @@ class presencehabituelle extends eqLogic {
 
   /* Observation (découverte) : commandes sans historique relevées quelques jours, pour les comparer aux autres.
      config 'observation' = {fin, ids} ; → ids observés tant que la fin n'est pas passée */
+  public static function cfg($cle) { // config JSON (réponses, règles du mode guidé) ; config::byKey décode déjà le JSON
+    $v = config::byKey($cle, __CLASS__, []);
+    if (is_string($v)) $v = json_decode($v, true);
+    return is_array($v) ? $v : [];
+  }
+  public static function donnees() { // {cmdId: jours depuis le premier relevé} ; ponytail: étendue, pas les jours comptés (arrêts, absences)
+    $r = [];
+    foreach (DB::Prepare('SELECT cmd_id, MIN(ts) AS d FROM ' . self::TABLE . ' GROUP BY cmd_id', [], DB::FETCH_TYPE_ALL) ?: [] as $l)
+      $r[(int)$l['cmd_id']] = round((time() - (int)$l['d']) / 86400, 1);
+    return $r;
+  }
   public static function observes() {
     $o = config::byKey('observation', __CLASS__, []);
     if (is_string($o)) $o = json_decode($o, true);
@@ -214,7 +225,7 @@ class presencehabituelle extends eqLogic {
   }
 
   /* Enregistre le choix de la page. $suivi = {cmdId: {g, t}} ; renvoie le nombre de changements repris de l'historique. */
-  public static function enregistrer(array $suivi, $exclure, $exclusions) {
+  public static function enregistrer(array $suivi, $exclure, $exclusions, $reponses = null, $regles = null) {
     $A = 'presencehabituelle_analyse';
     $mal = [];
     foreach (preg_split('/\R/', (string)$exclusions) as $l) if (trim($l) !== '' && !$A::periodes($l)) $mal[] = trim($l);
@@ -237,12 +248,16 @@ class presencehabituelle extends eqLogic {
       if ($id && !in_array((int)$id, $gardes, true)) DB::Prepare('DELETE FROM ' . self::TABLE . ' WHERE cmd_id = ?', [(int)$id], DB::FETCH_TYPE_ROW);
     $jours = self::jours('amorcer');
     foreach (array_unique($gardes) as $id) if (!isset($avant[$id]) && $id != $avantX) { $n += self::amorcer(cmd::byId($id), $jours); self::noter($id); }
-    $vieux = ['suivi' => $avant, 'exclure' => $avantX, 'exclusions' => (string)config::byKey('exclusions', __CLASS__, '')];
-    if (config::byKey('suivi', __CLASS__, '') !== '' && $vieux != ['suivi' => $propre, 'exclure' => $exclure, 'exclusions' => (string)$exclusions]) // « Revenir au choix d'avant »
+    $reponses = $reponses === null ? self::cfg('reponses') : $A::reponses($reponses); // null : page d'avant 0.8, réponses gardées
+    $regles = $regles === null ? self::cfg('regles') : $A::regles($regles);
+    $vieux = ['suivi' => $avant, 'exclure' => $avantX, 'exclusions' => (string)config::byKey('exclusions', __CLASS__, ''), 'reponses' => self::cfg('reponses'), 'regles' => self::cfg('regles')];
+    if (config::byKey('suivi', __CLASS__, '') !== '' && $vieux != ['suivi' => $propre, 'exclure' => $exclure, 'exclusions' => (string)$exclusions, 'reponses' => $reponses, 'regles' => $regles]) // « Revenir au choix d'avant »
       config::save('precedent', json_encode($vieux + ['date' => date('Y-m-d H:i')]), __CLASS__);
     config::save('suivi', json_encode($propre), __CLASS__);
     config::save('exclure_cmd', $exclure ?: '', __CLASS__);
     config::save('exclusions', (string)$exclusions, __CLASS__);
+    config::save('reponses', json_encode((object)$reponses), __CLASS__);
+    config::save('regles', json_encode((object)$regles), __CLASS__);
     self::majListener();
     return $n;
   }
@@ -253,7 +268,7 @@ class presencehabituelle extends eqLogic {
     if (is_string($p)) $p = json_decode($p, true);
     if (!is_array($p) || !isset($p['suivi'])) return null;
     $p['exclure'] = (int)($p['exclure'] ?? 0) ? cmd::cmdToHumanReadable('#' . (int)$p['exclure'] . '#') : '';
-    $p['suivi'] = (object)$p['suivi'];
+    $p['suivi'] = (object)$p['suivi']; $p['reponses'] = (object)($p['reponses'] ?? []); $p['regles'] = (object)($p['regles'] ?? []);
     return $p;
   }
 

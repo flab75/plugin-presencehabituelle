@@ -6,6 +6,17 @@ Presence simulation **drawn from your history**. The plugin records when your li
 
 Everything is computed on the box. The plugin makes **no network call** (checked by `tests/selftest.php`), uses no online service and no "AI". State changes are kept in a table of the Jeedom database (`presencehabituelle_event`) and computed trends in `data/habitudes.json`, the plan in `data/plan.json` and its images in `data/plan_*.jpg` (not reachable from the Web). Only administrators can see them. Like the rest of the database, they are part of the **Jeedom backups**, including a cloud backup if you set one up. The **Erase all** button (Trends tab) deletes the records and the trends (the plan is erased by deleting its floors); they are also erased when the plugin is reinstalled after being removed. **Before uninstalling, click Erase all**: uninstalling alone leaves the table in the database.
 
+## Guide (four questions)
+
+The plugin knows nothing about your house. The **Guide** tab reads your devices and their history, then asks you four questions; your answers fill in the "Followed commands" and prepare the future simulation.
+
+1. **Is it a lamp or a shutter of the house?** For each light, shutter, plug (one per device) or command flagged by the discovery: **Yes, follow it**, **No** (a fridge plug, a status LED), **Duplicate of…** (the same lamp seen by another command: the chosen one is kept) or **Group of lamps** (a command that switches several lamps already listed). **Identify by switching on** shows what changes while you switch a lamp on or off: if several commands change together (within 5 seconds), keep the one that stands for it, the others become its duplicates.
+2. **Where are they?** (optional) The followed commands not yet placed: a click opens the Plan tab to place them.
+3. **Any rules?** (optional) Per lamp or shutter: **Never simulate it** (not even while you are away), or time ranges: "may switch on" (only within these ranges) or "never on" (never within these), every day, on weekdays (Monday-Friday) or at the weekend. From 23:00 to 07:00 crosses midnight; from 00:00 to 00:00 = the whole day.
+4. **Not enough data yet**: the followed commands recorded for less than 10 days (a non-historized command only from the time it is saved). Wait, or give them a "may switch on" range.
+
+The **summary** says, for each followed command: habits (10 days of records or more), ranges given, never simulated, or to complete. When nothing is left to complete: "Simulation can be proposed" — nothing is started for now. **Save** keeps the answers, the rules and the choice of commands together; **Back to the previous choice** brings them back too.
+
 ## For now: analysis only
 
 The plugin **acts on nothing yet**: it analyses your history and shows what it draws from it.

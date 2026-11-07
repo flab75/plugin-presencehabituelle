@@ -55,6 +55,11 @@ $ok($A::nommee('Lumière', 'PriseLumiereBoite') && $A::nommee('Etat', 'Ruban LED
   && !$A::nommee('Etat LED', 'PriseSerre') && !$A::nommee('Luminosité basse', 'Détecteur') && !$A::nommee('Disponibilité', 'Lampe bureau')
   && !$A::nommee('Etat', 'Prise frigo') && !$A::nommee('Batterie faible', 'Lampe'), 'lumières d’après le nom');
 echo "découverte OK\n";
+$rp = $A::reponses(['5' => ['r' => 'oui'], '6' => ['r' => 'doublon', 'de' => '5'], '7' => ['r' => 'doublon', 'de' => 7], '8' => ['r' => 'peut-être'], 'x' => ['r' => 'oui']]);
+$ok($rp == [5 => ['r' => 'oui'], 6 => ['r' => 'doublon', 'de' => 5], 7 => ['r' => 'doublon']], 'réponses : ' . json_encode($rp));
+$rg = $A::regles(['5' => ['jamais' => 1], '6' => ['plages' => [['k' => 'exclue', 'j' => 'tous', 'de' => '23:00', 'a' => '07:00'], ['k' => 'marche', 'j' => 'S', 'de' => '24:00', 'a' => '07:00'], ['k' => 'x', 'j' => 'S', 'de' => '01:00', 'a' => '02:00']]], '7' => ['plages' => []]]);
+$ok($rg == [5 => ['jamais' => 1, 'plages' => []], 6 => ['jamais' => 0, 'plages' => [['k' => 'exclue', 'j' => 'tous', 'de' => '23:00', 'a' => '07:00']]]], 'règles : ' . json_encode($rg));
+echo "mode guidé OK\n";
 
 // journée 04:00 → 04:00 : dim. 22 h = semaine, sam. 01 h = soir du vendredi = week-end, lun. 01 h = soir du dimanche = semaine
 $ok($A::cle(7, 22) == 'S' && $A::cle(6, 1) == 'W' && $A::cle(1, 1) == 'S' && $A::cle(5, 22) == 'W' && $A::cle(5, 10) == 'S' && $A::cle(7, 10) == 'W', 'journée 04:00');

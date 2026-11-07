@@ -7,6 +7,31 @@ class presencehabituelle_analyse {
   const RARE = 10;     // % : heure allumée au plus ce % des jours = exception
   const ECART = 30;    // min : écart minimal à la moitié centrale pour parler d'exception
 
+  /* Mode guidé. Réponses {cmdId: {r: oui|non|doublon|groupe, de: cmdId}} ; règles {cmdId: {jamais: 0|1, plages: [{k: marche|exclue, j: tous|S|W, de: HH:MM, a: HH:MM}]}}.
+     Plage : de > a passe minuit, de = a = toute la journée. Ce qui est illisible est écarté. */
+  public static function reponses($x) {
+    $r = [];
+    foreach (is_array($x) ? $x : [] as $id => $v) {
+      if (!(int)$id || !is_array($v) || !in_array($v['r'] ?? '', ['oui', 'non', 'doublon', 'groupe'], true)) continue;
+      $r[(int)$id] = ['r' => $v['r']];
+      if ($v['r'] == 'doublon' && (int)($v['de'] ?? 0) && (int)$v['de'] != (int)$id) $r[(int)$id]['de'] = (int)$v['de'];
+    }
+    return $r;
+  }
+  public static function regles($x) {
+    $r = []; $h = '/^([01]\d|2[0-3]):[0-5]\d$/';
+    foreach (is_array($x) ? $x : [] as $id => $v) {
+      if (!(int)$id || !is_array($v)) continue;
+      $p = [];
+      foreach (array_slice((array)($v['plages'] ?? []), 0, 10) as $q)
+        if (is_array($q) && in_array($q['k'] ?? '', ['marche', 'exclue'], true) && in_array($q['j'] ?? '', ['tous', 'S', 'W'], true)
+          && preg_match($h, (string)($q['de'] ?? '')) && preg_match($h, (string)($q['a'] ?? '')))
+          $p[] = ['k' => $q['k'], 'j' => $q['j'], 'de' => $q['de'], 'a' => $q['a']];
+      if (!empty($v['jamais']) || $p) $r[(int)$id] = ['jamais' => empty($v['jamais']) ? 0 : 1, 'plages' => $p];
+    }
+    return $r;
+  }
+
   // Lampe : intervalles allumés [début, fin, exact], valeur > 0 = allumée ; la dernière session est coupée à $fin
   public static function intervalles(array $ev, $fin) {
     $r = []; $deb = null;

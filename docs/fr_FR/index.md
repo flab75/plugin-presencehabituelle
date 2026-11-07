@@ -6,6 +6,17 @@ Simulation de présence **tirée de vos historiques**. Le plugin relève quand v
 
 Tout est calculé sur la box. Le plugin ne fait **aucun appel réseau** (le contrôle automatique `tests/selftest.php` le vérifie), n'utilise aucun service en ligne ni aucune « IA ». Les changements d'état sont gardés dans une table de la base de Jeedom (`presencehabituelle_event`) et les tendances calculées dans `data/habitudes.json`, le plan dans `data/plan.json` et ses images dans `data/plan_*.jpg` (inaccessibles depuis le Web). Seuls les administrateurs les voient. Comme le reste de la base, elles font partie des **sauvegardes de Jeedom**, y compris une sauvegarde envoyée dans le cloud si vous en avez réglé une. Le bouton **Tout effacer** (onglet Tendances) supprime les relevés et les tendances (le plan, lui, s'efface en supprimant ses étages) ; elles sont aussi effacées quand le plugin est réinstallé après une désinstallation. **Avant de désinstaller, cliquez Tout effacer** : la désinstallation seule laisse la table en base.
 
+## Guide (quatre questions)
+
+Le plugin ne sait rien de votre maison. L'onglet **Guide** lit vos équipements et leurs historiques, puis vous pose quatre questions ; vos réponses remplissent les « Commandes suivies » et préparent la future simulation.
+
+1. **Est-ce une lampe ou un volet de la maison ?** Pour chaque lumière, volet, prise (une par équipement) ou commande signalée par la découverte : **Oui, à suivre**, **Non** (une prise de frigo, une LED d'état), **Doublon de…** (la même lampe vue par une autre commande : celle choisie est gardée) ou **Groupe de lampes** (une commande qui allume plusieurs lampes déjà listées). **Identifier en allumant** affiche ce qui change pendant que vous allumez ou éteignez une lampe : si plusieurs commandes changent ensemble (à 5 secondes près), gardez celle qui la représente, les autres deviennent ses doublons.
+2. **Où sont-elles ?** (facultatif) Les commandes suivies pas encore placées : un clic ouvre l'onglet Plan pour les placer.
+3. **Des règles ?** (facultatif) Par lampe ou volet : **Ne jamais la simuler** (ni pendant l'absence), ou des plages : « peut s'allumer » (seulement dans ces plages) ou « jamais allumée » (jamais dans celles-ci), tous les jours, en semaine (lundi-vendredi) ou le week-end. De 23:00 à 07:00 passe minuit ; de 00:00 à 00:00 = toute la journée.
+4. **Pas encore assez de données** : les commandes suivies relevées depuis moins de 10 jours (une commande non historisée ne l'est qu'à partir de l'enregistrement). Attendez, ou donnez-leur une plage « peut s'allumer ».
+
+Le **bilan** dit, pour chaque commande suivie : habitudes (10 jours de relevés ou plus), plages données, jamais simulée, ou à compléter. Quand plus rien n'est à compléter : « Simulation proposable » — rien n'est lancé pour l'instant. **Enregistrer** garde ensemble les réponses, les règles et le choix des commandes ; **Revenir au choix d'avant** les reprend aussi.
+
 ## Pour l'instant : analyse seule
 
 Le plugin **n'agit encore sur rien** : il analyse vos historiques et montre ce qu'il en tire.

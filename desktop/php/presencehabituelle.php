@@ -10,12 +10,18 @@ sendVarToJS('eqType', $plugin->getId());
 		<i class="fas fa-user-shield"></i> {{Tout est calculé sur cette box : le plugin n'envoie rien à personne, et seuls les administrateurs voient les tendances (elles font partie des sauvegardes de Jeedom, comme le reste de la base). Pour l'instant, le plugin tire de vos historiques les tendances, les exceptions et ce qui n'arrive jamais : il n'allume ni ne ferme encore rien.}}
 	</div>
 	<ul class="nav nav-tabs" role="tablist">
-		<li role="presentation" class="active"><a href="#ph_suivi" role="tab" data-toggle="tab"><i class="fas fa-list-check"></i> {{Commandes suivies}}</a></li>
+		<li role="presentation" class="active"><a href="#ph_guide" role="tab" data-toggle="tab"><i class="fas fa-route"></i> {{Guide}}</a></li>
+		<li role="presentation"><a href="#ph_suivi" role="tab" data-toggle="tab"><i class="fas fa-list-check"></i> {{Commandes suivies}}</a></li>
 		<li role="presentation"><a href="#ph_hab" role="tab" data-toggle="tab"><i class="fas fa-chart-bar"></i> {{Tendances}}</a></li>
 		<li role="presentation"><a href="#ph_plan" role="tab" data-toggle="tab"><i class="fas fa-map"></i> {{Plan}}</a></li>
 	</ul>
 	<div class="tab-content">
-		<div role="tabpanel" class="tab-pane active" id="ph_suivi" style="padding-top:10px">
+		<div role="tabpanel" class="tab-pane active" id="ph_guide" style="padding-top:10px">
+			<p>{{Le plugin ne sait rien de votre maison : il lit vos équipements et leurs historiques, puis vous pose quatre questions. Vos réponses servent à la future simulation ; pour l'instant, rien n'est allumé ni fermé.}}</p>
+			<div id="ph_gcontenu"></div>
+			<p style="margin-top:10px"><a class="btn btn-sm btn-success" id="ph_genregistrer"><i class="fas fa-check-circle"></i> {{Enregistrer}}</a> <small class="text-muted">{{Les réponses, les règles et le choix des commandes (onglet suivant) sont enregistrés ensemble.}}</small></p>
+		</div>
+		<div role="tabpanel" class="tab-pane" id="ph_suivi" style="padding-top:10px">
 			<p>{{Cochez les lumières et les volets à analyser. Les prises et les médias sont proposés décochés : une prise peut alimenter un frigo ou une box, ce n'est pas une présence. Les sondes ne servent pas : elles ne disent rien de vos gestes.}}</p>
 			<p>{{Groupe : les lampes d'un même groupe sont analysées ensemble (une pièce). Vide = la lampe seule.}}</p>
 			<div style="margin-bottom:8px">
