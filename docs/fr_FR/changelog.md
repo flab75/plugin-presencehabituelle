@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6
+- Onglet **Plan** : un plan par étage (nom, ordre, image gardée sur la box), lumières et volets placés à la souris (ou repris d'un design Jeedom), pièces qui groupent les lampes qu'elles contiennent, passages entre pièces (porte, couloir, escalier, y compris d'un étage à l'autre) avec les enchaînements relevés, zones à exclure de l'analyse ; les pastilles montrent la tendance à l'heure choisie.
+- Corrections après la 6e revue : part des passages éclair et des scènes affichée 100 % sans l'être toujours, lissage qui arrondissait 99 % à 100 %, « à confirmer » absent de la notice pour les lumières.
+
 ## 0.5.1
 - Corrections après la 5e revue : volet rouvert après une fermeture contre la chaleur pris pour une ouverture du matin, « à confirmer » compté en jours au lieu des valeurs relevées, deux équipements de même nom dans deux pièces confondus (la pièce les départage), 100 % ou 0 % affichés alors que ce n'est ni toujours ni jamais, notice inexacte sur la nuit avant une absence ; les lumières suivent la même journée (04 h → 04 h) et le même week-end que les volets.
 

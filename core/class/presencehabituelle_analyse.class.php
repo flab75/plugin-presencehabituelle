@@ -88,7 +88,7 @@ class presencehabituelle_analyse {
   // Lissage 1-2-1 sur 24 h (minuit relié à 23 h) ; une heure jamais allumée reste à 0
   public static function lisser(array $p) {
     $r = [];
-    for ($h = 0; $h < 24; $h++) $r[$h] = $p[$h] ? (int)round(($p[($h + 23) % 24] + 2 * $p[$h] + $p[($h + 1) % 24]) / 4) : 0;
+    for ($h = 0; $h < 24; $h++) $r[$h] = $p[$h] ? min($p[$h] < 100 ? 99 : 100, (int)round(($p[($h + 23) % 24] + 2 * $p[$h] + $p[($h + 1) % 24]) / 4)) : 0; // 100 seulement si vraiment toujours
     return $r;
   }
 
@@ -114,7 +114,7 @@ class presencehabituelle_analyse {
     $d = []; $pas = 0;
     foreach ($sessions as [$a, $b, $x]) if ($x && isset($ok[date('Y-m-d', $a)])) $d[date('Y-m-d H:i:s', $a)] = ($b - $a) / 60; // à la seconde : deux allumages dans la même minute restent deux
     foreach ($d as $v) if ($v * 60 < self::PASSAGE) $pas++;
-    return self::stats($d, 1) + ($d ? ['passages' => (int)round(100 * $pas / count($d))] : []);
+    return self::stats($d, 1) + ($d ? ['passages' => self::pc($pas, count($d))] : []);
   }
 
   // Scènes : combinaisons de lampes allumées ensemble au début des sessions exactes → [« A + B » => %]
@@ -123,7 +123,7 @@ class presencehabituelle_analyse {
     $n = [];
     foreach ($sessions as $s) if ($s[2] && isset($ok[date('Y-m-d', $s[0])])) { $l = $s[3]; sort($l); $k = implode(' + ', $l); $n[$k] = ($n[$k] ?? 0) + 1; }
     arsort($n); $t = array_sum($n);
-    return array_map(fn($v) => (int)round(100 * $v / $t), $n);
+    return array_map(fn($v) => self::pc($v, $t), $n);
   }
 
   /* Volet : journée de 04:00 à 04:00. Matin = 1re ouverture entre 04:00 et 16:00 d'un volet fermé à 04:00 (rouvrir après une fermeture contre la chaleur n'est pas un lever) ; soir = dernière fermeture entre 16:00 et 04:00.
@@ -145,7 +145,7 @@ class presencehabituelle_analyse {
         if ($t >= $a && $t < $b && $ferme !== null && $f != $ferme) {
           if (!$f && $t < $mid && $mat === null && $f4) $mat = $t;
           if ($f && $t >= $mid) $soir = $t;
-          if (!$f && $t >= $mid) $soir = null; // rouvert ensuite : la fermeture du soir est la dernière
+          if (!$f && $t >= $mid) $soir = null; // rouvert ensuite : la fermeture du soir est la dernière (ponytail: rouvert avant 04:00 = nuit « pas fermée », limite de la journée 04:00 → 04:00 ; le plus souvent un départ, déjà exclu)
         }
         if ($t >= $b) break;
         $ferme = $f;
@@ -183,6 +183,35 @@ class presencehabituelle_analyse {
     foreach (preg_split('/\R/', (string)$texte) as $l)
       if (preg_match('/^\s*(\d{4}-\d\d-\d\d(?:[ T]\d\d?:\d\d)?)\s*(?:→|->|>|;|\s-\s|\s)\s*(\d{4}-\d\d-\d\d(?:[ T]\d\d?:\d\d)?)\s*$/u', $l, $m)
         && ($a = strtotime($m[1])) && ($b = strtotime(strlen($m[2]) == 10 ? $m[2] . ' 23:59:59' : $m[2])) && $b > $a) $r[] = [$a, $b];
+    return $r;
+  }
+
+  // Point (x, y) dans le polygone [[x, y], …] (coordonnées en % de l'image ; règle du rayon pair-impair)
+  public static function dans($x, $y, array $pts) {
+    $in = false; $n = count($pts);
+    for ($i = 0, $j = $n - 1; $i < $n; $j = $i++) {
+      [$xi, $yi] = $pts[$i]; [$xj, $yj] = $pts[$j];
+      if (($yi > $y) != ($yj > $y) && $x < ($xj - $xi) * ($y - $yi) / ($yj - $yi) + $xi) $in = !$in;
+    }
+    return $in;
+  }
+
+  /* Enchaînements par les passages du plan : une lumière de A s'éteint, une de B s'allume moins de PASSAGE s après.
+     $parPiece = [pièce => intervalles allumés (toutes ses lampes)], $passages = [[a, b]] ; hors périodes exclues.
+     → [clé du passage => [a, b, ab, ba]] (ab = fois A → B, ba = fois B → A)
+     ponytail: un seul passage entre deux pièces compte ; un trajet A → C → B sans lumière en C n'est pas vu */
+  public static function enchainements(array $parPiece, array $passages, array $excl = []) {
+    $hors = function ($t) use ($excl) { foreach ($excl as [$a, $b]) if ($t >= $a && $t < $b) return false; return true; };
+    $fois = function ($de, $vers) use ($parPiece, $hors) {
+      $on = array_column($parPiece[$vers] ?? [], 0); sort($on); $n = 0;
+      foreach ($parPiece[$de] ?? [] as $i) {
+        if (!$i[2] || !$hors($i[1])) continue; // extinction connue seulement
+        foreach ($on as $t) if ($t >= $i[1] && $t - $i[1] <= self::PASSAGE) { $n++; break; } elseif ($t > $i[1]) break;
+      }
+      return $n;
+    };
+    $r = [];
+    foreach ($passages as $k => [$a, $b]) if ($a !== $b) $r[$k] = [$a, $b, $fois($a, $b), $fois($b, $a)]; // clé gardée : celle du passage
     return $r;
   }
 }

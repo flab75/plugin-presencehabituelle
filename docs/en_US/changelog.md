@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6
+- **Plan** tab: one plan per floor (name, order, image kept on the box), lights and shutters placed with the mouse (or taken from a Jeedom design), rooms that group the lamps inside them, passages between rooms (door, corridor, staircase, including from one floor to another) with the observed sequences, zones excluded from the analysis; the markers show the trend at the chosen hour.
+- Fixes after the 6th review: share of quick passages and scenes shown as 100 % when not always, smoothing that rounded 99 % to 100 %, "to be confirmed" missing from the documentation for lights.
+
 ## 0.5.1
 - Fixes after the 5th review: shutter reopened after closing it against the heat taken for a morning opening, "to be confirmed" counted in days instead of noted values, two devices with the same name in two rooms mixed up (the room tells them apart), 100 % or 0 % shown when it is neither always nor never, inaccurate notice about the night before an absence; lights follow the same day (04:00 → 04:00) and weekend as shutters.
 

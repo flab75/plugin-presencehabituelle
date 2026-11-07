@@ -1,6 +1,6 @@
 <?php
 /* Présence habituelle : tire des historiques (lumières, volets) les tendances, les exceptions et ce qui n'arrive jamais, sans rien envoyer hors de la box.
-   0.5.1 : analyse seule (aucune action sur les équipements). */
+   0.6 : analyse seule (aucune action sur les équipements), plan de la maison par étage. */
 require_once __DIR__ . '/../../../../core/php/core.inc.php';
 require_once __DIR__ . '/presencehabituelle_analyse.class.php';
 
@@ -207,6 +207,104 @@ class presencehabituelle extends eqLogic {
     return $p;
   }
 
+  /* Plan de la maison : data/plan.json + une image par étage data/plan_<étage>.jpg (refusés au web par data/.htaccess).
+     Coordonnées en % de l'image. {etages: [{id, nom}] (dans l'ordre), marqueurs: {cmdId: {e, x, y}}, pieces: [{id, e, nom, pts}],
+     passages: [{id, e, a, b, t, pts}], zones: [{id, e, pts}]} */
+  const VIDE = ['etages' => [], 'marqueurs' => [], 'pieces' => [], 'passages' => [], 'zones' => []];
+  public static function planFichier() { return __DIR__ . '/../../data/plan.json'; }
+  public static function planImage($e) { return __DIR__ . '/../../data/plan_' . $e . '.jpg'; }
+  private static function idPlan($v) { return is_string($v) && preg_match('/^[a-z0-9]{1,16}$/', $v) ? $v : null; }
+  public static function plan() {
+    $p = is_file($f = self::planFichier()) ? json_decode((string)file_get_contents($f), true) : null;
+    $p = (is_array($p) ? $p : []) + self::VIDE;
+    $p['marqueurs'] = (object)$p['marqueurs']; // {} et non [] pour le JS
+    return $p;
+  }
+
+  // Valide tout ce qui vient de la page (jamais pris tel quel) puis enregistre ; les images des étages retirés partent
+  public static function planEnregistrer(array $p) {
+    $pc = fn($v) => is_numeric($v) ? round(max(0, min(100, (float)$v)), 2) : null;
+    $pts = function ($l, $min, $max) use ($pc) {
+      if (!is_array($l) || count($l) < $min || count($l) > $max) return null;
+      $r = []; foreach ($l as $q) { if (!is_array($q) || ($x = $pc($q[0] ?? null)) === null || ($y = $pc($q[1] ?? null)) === null) return null; $r[] = [$x, $y]; }
+      return $r;
+    };
+    $nom = fn($v) => is_scalar($v) ? mb_substr(trim((string)$v), 0, 40) : '';
+    $r = self::VIDE; $et = [];
+    foreach (array_slice((array)($p['etages'] ?? []), 0, 20) as $e)
+      if (($id = self::idPlan($e['id'] ?? null)) && !isset($et[$id]) && ($n = $nom($e['nom'] ?? '')) !== '') { $et[$id] = 1; $r['etages'][] = ['id' => $id, 'nom' => $n]; }
+    $etage = fn($v) => ($e = self::idPlan($v)) && isset($et[$e]) ? $e : null; // après les étages : fn capture $et par valeur
+    $suivi = self::suivi();
+    foreach ((array)($p['marqueurs'] ?? []) as $id => $m)
+      if (isset($suivi[(int)$id]) && is_array($m) && $etage($m['e'] ?? null) && ($x = $pc($m['x'] ?? null)) !== null && ($y = $pc($m['y'] ?? null)) !== null)
+        $r['marqueurs'][(int)$id] = ['e' => $m['e'], 'x' => $x, 'y' => $y];
+    $vus = [];
+    foreach (['pieces' => [3, 200], 'zones' => [3, 200], 'passages' => [2, 2]] as $k => [$min, $max])
+      foreach (array_slice((array)($p[$k] ?? []), 0, 300) as $o) {
+        if (!is_array($o) || !($id = self::idPlan($o['id'] ?? null)) || isset($vus[$id]) || !$etage($o['e'] ?? null) || !($l = $pts($o['pts'] ?? null, $min, $max))) continue;
+        $x = ['id' => $id, 'e' => $o['e'], 'pts' => $l];
+        if ($k == 'pieces') { if (($x['nom'] = $nom($o['nom'] ?? '')) === '') continue; }
+        if ($k == 'passages') {
+          $x['t'] = in_array($o['t'] ?? '', ['porte', 'couloir', 'escalier'], true) ? $o['t'] : 'porte';
+          $x['a'] = self::idPlan($o['a'] ?? null); $x['b'] = self::idPlan($o['b'] ?? null); // pièces vérifiées plus bas (définies après)
+        }
+        $vus[$id] = 1; $r[$k][] = $x;
+      }
+    $pieces = array_flip(array_column($r['pieces'], 'id'));
+    $r['passages'] = array_values(array_filter($r['passages'], fn($x) => $x['a'] && $x['b'] && isset($pieces[$x['a']], $pieces[$x['b']]) && $x['a'] !== $x['b']));
+    file_put_contents(self::planFichier(), json_encode($r));
+    foreach (glob(__DIR__ . '/../../data/plan_*.jpg') ?: [] as $f)
+      if (!isset($et[substr(basename($f, '.jpg'), 5)])) unlink($f);
+    return self::plan();
+  }
+
+  // Image d'un étage, réduite et convertie en JPEG par la page (data:image/jpeg;base64,…) : vérifiée avant d'être gardée
+  public static function planImageEnregistrer($e, $data) {
+    if (!($e = self::idPlan($e))) throw new Exception(__('Étage inconnu', __FILE__));
+    if (!preg_match('#^data:image/jpeg;base64,([A-Za-z0-9+/=]+)$#', (string)$data, $m) || ($b = base64_decode($m[1], true)) === false
+      || strlen($b) > 6000000 || !($i = @getimagesizefromstring($b)) || $i[2] != IMAGETYPE_JPEG || $i[0] > 4000 || $i[1] > 4000)
+      throw new Exception(__('Image refusée : JPEG de 4000 × 4000 pixels au plus', __FILE__));
+    file_put_contents(self::planImage($e), $b);
+  }
+  public static function planImageLire($e) {
+    return ($e = self::idPlan($e)) && is_file($f = self::planImage($e)) ? 'data:image/jpeg;base64,' . base64_encode((string)file_get_contents($f)) : '';
+  }
+
+  // Où est chaque commande placée : {cmdId: {zone: exclue ?, piece: id de pièce ou null}}
+  public static function lieux(array $plan) {
+    $A = 'presencehabituelle_analyse'; $r = [];
+    foreach ((array)$plan['marqueurs'] as $id => $m) {
+      $z = false; $pc = null;
+      foreach ($plan['zones'] as $o) if ($o['e'] == $m['e'] && $A::dans($m['x'], $m['y'], $o['pts'])) $z = true;
+      foreach ($plan['pieces'] as $o) if ($o['e'] == $m['e'] && $A::dans($m['x'], $m['y'], $o['pts'])) { $pc = $o; break; } // ponytail: pièces qui se chevauchent : la première dessinée l'emporte
+      $r[(int)$id] = ['zone' => $z, 'piece' => $pc];
+    }
+    return $r;
+  }
+
+  // Designs Jeedom : positions des commandes suivies (centre du widget, en % du design) ; un équipement placé donne ses commandes suivies
+  public static function designs() {
+    return array_map(fn($h) => ['id' => $h->getId(), 'nom' => $h->getName()], planHeader::all());
+  }
+  public static function designPositions($hid) {
+    if (!is_object($h = planHeader::byId((int)$hid))) throw new Exception(__('Design introuvable', __FILE__));
+    $W = max(1, (float)$h->getConfiguration('desktopSizeX', 1280)); $H = max(1, (float)$h->getConfiguration('desktopSizeY', 1000));
+    $suivi = self::suivi(); $parEq = [];
+    foreach (array_keys($suivi) as $id) if (is_object($c = cmd::byId($id))) $parEq[$c->getEqLogic_id()][] = (int)$id;
+    $axe = function ($v, $taille, $dim) { // « 12% » ou des pixels ; + la moitié du widget
+      if (is_string($v) && substr(trim($v), -1) == '%') return (float)$v;
+      return ((float)$v + (is_numeric($dim) ? (float)$dim / 2 : 0)) / $taille * 100;
+    };
+    $r = [];
+    foreach (plan::byPlanHeaderId($h->getId()) as $q) {
+      $ids = $q->getLink_type() == 'cmd' ? (isset($suivi[(int)$q->getLink_id()]) ? [(int)$q->getLink_id()] : []) : ($q->getLink_type() == 'eqLogic' ? $parEq[(int)$q->getLink_id()] ?? [] : []);
+      $x = $axe($q->getPosition('left', 0), $W, $q->getDisplay('width')); $y = $axe($q->getPosition('top', 0), $H, $q->getDisplay('height'));
+      if ($x < 0 || $x > 100 || $y < 0 || $y > 100) continue; // hors du design
+      foreach ($ids as $id) $r[$id] = ['x' => round($x, 2), 'y' => round($y, 2)];
+    }
+    return (object)$r;
+  }
+
   // Habitudes calculées : fichier sous data/ (refusé au web par data/.htaccess), trop gros pour une clé de configuration
   public static function fichier() { return __DIR__ . '/../../data/habitudes.json'; }
   public static function habitudes() {
@@ -217,28 +315,33 @@ class presencehabituelle extends eqLogic {
   public static function analyser() {
     $A = 'presencehabituelle_analyse'; $fin = time(); $excl = self::exclusions();
     $max = 3600 * (($h = (float)config::byKey('session_max', __CLASS__, 18)) > 0 ? max(1, $h) : 18); // 0 ou illisible : 18 h, comme jours()
-    $groupes = []; $volets = [];
+    $groupes = []; $volets = []; $plan = self::plan(); $lieux = self::lieux($plan); $piece = [];
     foreach (self::suivi() as $id => $s) {
+      $l = $lieux[$id] ?? ['zone' => false, 'piece' => null];
+      if ($l['zone']) continue; // zone à exclure du plan : ni analysée ni simulée
+      if ($l['piece']) $piece[$id] = $l['piece']['id'];
       if ($s['t'] == 'volet') { $volets[$id] = $s; continue; }
+      if ($s['g'] === '' && $l['piece']) $s['g'] = $l['piece']['nom']; // pièce du plan = groupe, sauf groupe saisi
       $groupes[$s['g'] !== '' ? $s['g'] : "\0" . $id][] = (int)$id; // \0 : une lampe seule, jamais confondue avec un groupe saisi « #12 » ; un groupe « 12 » devient la clé entière 12 : (string) plus bas
     }
-    $res = ['date' => date('Y-m-d H:i:s'), 'groupes' => [], 'volets' => []];
+    $res = ['date' => date('Y-m-d H:i:s'), 'groupes' => [], 'volets' => [], 'passages' => []]; $parPiece = [];
     foreach ($groupes as $g => $ids) {
       $iv = []; $debut = null; $exG = $excl; $noms = [];
       foreach ($ids as $id) {
         if (!$ev = self::evs($id)) continue;
         $debut = min($debut ?? PHP_INT_MAX, $ev[0][0]); // ponytail: avant sa 1re ligne, une lampe ajoutée plus tard compte éteinte ; le groupe garde l'historique des autres
         [$iv[$id], $x] = $A::longues($A::intervalles($ev, $fin), $max);
+        if (isset($piece[$id])) $parPiece[$piece[$id]][$id] = $iv[$id];
         foreach ($x as $p) $exG[] = $p; // extinction manquée : jours touchés non comptés pour tout le groupe
         $noms[$id] = self::nom($id);
       }
       $dbl = array_count_values($noms); // deux lampes de même nom : l'id les distingue
       foreach ($noms as $id => $n) if ($dbl[$n] > 1) $noms[$id] = $n . ' #' . $id;
       $g = (string)$g; $seule = $g[0] === "\0" ? (int)substr($g, 1) : 0; $nom = $seule ? self::nom($seule) : $g;
-      if (!$iv) { $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'jours' => 0]; continue; }
+      if (!$iv) { $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'ids' => $ids, 'jours' => 0]; continue; }
       $parNom = []; foreach ($iv as $id => $i) $parNom[$noms[$id]] = $i;
       $j = $A::jours($debut, $fin, $exG); $se = $A::sessions($parNom); $p = $A::profil($se, $j);
-      $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'lampes' => array_values($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
+      $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'ids' => $ids, 'lampes' => array_values($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
         'S' => $p['S'], 'W' => $p['W'], 'cS' => $p['cS'], 'cW' => $p['cW'], 'lS' => $A::lisser($p['S']), 'lW' => $A::lisser($p['W']),
         'ex' => $p['ex'], 'durees' => $A::durees($se, $j), 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmerS' => $p['nS'] < self::FIABLE, 'confirmerW' => $p['nW'] < self::FIABLE];
     }
@@ -253,6 +356,11 @@ class presencehabituelle extends eqLogic {
       }
       $res['volets'][] = ['nom' => $nom, 'id' => $id, 'groupe' => $s['g'], 'jours' => count($j)] + $v;
     }
+    $noms = array_column($plan['pieces'], 'nom', 'id'); // enchaînements par les passages du plan (lumières seulement)
+    $se = array_map(fn($p) => $A::sessions($p), $parPiece); // allumée tant qu'une de ses lampes l'est
+    $pa = array_map(fn($p) => [$p['a'], $p['b']], $plan['passages']);
+    foreach ($A::enchainements($se, $pa, $excl) as $i => [$a, $b, $ab, $ba])
+      $res['passages'][] = ['a' => $noms[$a], 'b' => $noms[$b], 't' => $plan['passages'][$i]['t'], 'ab' => $ab, 'ba' => $ba];
     foreach (['groupes', 'volets'] as $t) { // même nom dans deux pièces : la pièce les départage (un groupe saisi garde son nom)
       $n = array_count_values(array_column($res[$t], 'nom'));
       foreach ($res[$t] as $i => $x) if ($n[$x['nom']] > 1 && $x['id']) $res[$t][$i]['nom'] = self::nom($x['id'], true);

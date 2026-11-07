@@ -4,7 +4,7 @@ Presence simulation **drawn from your history**. The plugin records when your li
 
 ## Privacy
 
-Everything is computed on the box. The plugin makes **no network call** (checked by `tests/selftest.php`), uses no online service and no "AI". State changes are kept in a table of the Jeedom database (`presencehabituelle_event`) and computed trends in `data/habitudes.json` (not reachable from the Web). Only administrators can see them. Like the rest of the database, they are part of the **Jeedom backups**, including a cloud backup if you set one up. The **Erase all** button (Trends tab) deletes them; they are also erased when the plugin is reinstalled after being removed. **Before uninstalling, click Erase all**: uninstalling alone leaves the table in the database.
+Everything is computed on the box. The plugin makes **no network call** (checked by `tests/selftest.php`), uses no online service and no "AI". State changes are kept in a table of the Jeedom database (`presencehabituelle_event`) and computed trends in `data/habitudes.json`, the plan in `data/plan.json` and its images in `data/plan_*.jpg` (not reachable from the Web). Only administrators can see them. Like the rest of the database, they are part of the **Jeedom backups**, including a cloud backup if you set one up. The **Erase all** button (Trends tab) deletes the records and the trends (the plan is erased by deleting its floors); they are also erased when the plugin is reinstalled after being removed. **Before uninstalling, click Erase all**: uninstalling alone leaves the table in the database.
 
 ## For now: analysis only
 
@@ -27,6 +27,8 @@ The **Trends** tab shows, for each lamp or group:
 - how long it stays on: average, median, half of the switch-ons between two values, shortest and longest, the share of passes shorter than 3 minutes, and unusual durations;
 - lamps switched on together.
 
+A row (weekdays or weekend) taken from fewer than 10 days is marked "to be confirmed".
+
 A switch-on longer than 18 hours (adjustable) is taken as a missed switch-off (box stopped, bridge offline): it is discarded, and the days it touches do not count for its group (or the lamp alone).
 
 For each shutter, on weekdays and at the weekend: morning opening and evening closing time (median, average, earliest, latest), the share of nights it is closed ("never" or "always" when so) and exceptions. An exception is a day far from the middle half of the values: by more than 30 minutes and by more than one and a half times the spread of that half (whichever is larger, Tukey's rule); at least 4 values are needed. A time taken from fewer than 10 values, or a share of nights taken from fewer than 10 nights, is marked "to be confirmed", separately for weekdays and the weekend. A morning opening is only noted if the shutter was closed at 04:00: reopening it after closing it against the heat is not getting up. A night (16:00 → 04:00) touched by an absence is not counted.
@@ -34,6 +36,18 @@ For each shutter, on weekdays and at the weekend: morning opening and evening cl
 The day runs from 04:00 to 04:00, for lights as for shutters. The weekend means Saturday and Sunday mornings (04:00-16:00) and Friday and Saturday evenings (16:00-04:00): a lamp switched on on Sunday at 22:00 counts as a weekday, just as an hour between 00:00 and 04:00 counts for the previous evening.
 
 It is recomputed every night; changes older than 90 days are deleted (adjustable in the plugin configuration), to follow the season.
+
+## House plan (optional)
+
+The **Plan** tab draws the house, one plan per floor:
+
+1. **＋ Floor**: name it ("Ground floor", "First floor"…); the arrows change the order. **Image…** uploads the floor plan: a photo of a paper plan, a screenshot, a software export (PNG, JPEG…). It is reduced to 2,000 pixels and kept on the box; without an image, you draw on a grid.
+2. **Place**: click a light or a shutter under "Not on the plan", then the spot on the plan. Drag a marker to move it; the **Delete** tool sends it back to the list. If you already have a Jeedom design with your lights placed, **Take the positions from a design** reuses them (centre of each widget, in proportion to the design: use the design's background as the floor image).
+3. **Room**: click the corners, then "Finish the shape", and name it. The lamps of a room are analysed together, like a group; a group typed under "Followed commands" takes precedence. Two rooms with the same name form a single group.
+4. **Passage**: click both ends (a door, a corridor, the top of a staircase), then choose the two linked rooms and the type; for a staircase, the second room may be on another floor. The plugin counts the **sequences**: the times a light of the second room turns on less than 3 minutes after a light of the first one turns off (and the other way round). They will be used for the simulation route.
+5. **Zone to exclude**: a part of the house you want neither analysed nor simulated (a guest room, a rented flat): the commands placed inside are ignored.
+
+**Save the plan** keeps everything and recomputes the trends. Each marker shows the trend at the chosen hour ("Trend at", on weekdays or at the weekend): the fuller it is, the more often the lamp is on at that hour; for a shutter, full if it is usually open. Hover over it for details.
 
 ## Light sensor
 

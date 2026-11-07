@@ -12,6 +12,7 @@ sendVarToJS('eqType', $plugin->getId());
 	<ul class="nav nav-tabs" role="tablist">
 		<li role="presentation" class="active"><a href="#ph_suivi" role="tab" data-toggle="tab"><i class="fas fa-list-check"></i> {{Commandes suivies}}</a></li>
 		<li role="presentation"><a href="#ph_hab" role="tab" data-toggle="tab"><i class="fas fa-chart-bar"></i> {{Tendances}}</a></li>
+		<li role="presentation"><a href="#ph_plan" role="tab" data-toggle="tab"><i class="fas fa-map"></i> {{Plan}}</a></li>
 	</ul>
 	<div class="tab-content">
 		<div role="tabpanel" class="tab-pane active" id="ph_suivi" style="padding-top:10px">
@@ -43,6 +44,41 @@ sendVarToJS('eqType', $plugin->getId());
 			<a class="btn btn-sm btn-danger pull-right" id="ph_effacer"><i class="fas fa-eraser"></i> {{Tout effacer}}</a>
 			<span id="ph_date" style="margin-left:10px"></span>
 			<div id="ph_resultats" style="margin-top:10px"></div>
+		</div>
+		<div role="tabpanel" class="tab-pane" id="ph_plan" style="padding-top:10px">
+			<p>{{Facultatif. Un plan par étage : déposez-en l'image, placez-y les lumières et les volets suivis, dessinez les pièces (elles groupent les lampes qu'elles contiennent, sauf groupe saisi), les passages entre pièces (portes, couloirs, escaliers, y compris d'un étage à l'autre) et les zones à exclure (ni analysées ni simulées). L'image reste sur la box, visible des administrateurs seulement.}}</p>
+			<div class="form-inline" style="margin-bottom:6px">
+				<select class="form-control input-sm" id="ph_etage" style="min-width:160px"></select>
+				<a class="btn btn-sm btn-default" id="ph_etage_plus" title="{{Ajouter un étage}}"><i class="fas fa-plus"></i> {{Étage}}</a>
+				<a class="btn btn-sm btn-default ph_etage_op" id="ph_etage_nom" title="{{Renommer l'étage}}"><i class="fas fa-pen"></i></a>
+				<a class="btn btn-sm btn-default ph_etage_op" id="ph_etage_haut" title="{{Monter dans la liste}}"><i class="fas fa-arrow-up"></i></a>
+				<a class="btn btn-sm btn-default ph_etage_op" id="ph_etage_bas" title="{{Descendre dans la liste}}"><i class="fas fa-arrow-down"></i></a>
+				<label class="btn btn-sm btn-default ph_etage_op" style="margin:0"><i class="fas fa-image"></i> {{Image…}}<input type="file" id="ph_image" accept="image/*" style="display:none"></label>
+				<a class="btn btn-sm btn-danger ph_etage_op" id="ph_etage_moins" title="{{Supprimer l'étage}}"><i class="fas fa-trash"></i></a>
+				<select class="form-control input-sm ph_etage_op" id="ph_design" style="max-width:280px"></select>
+				<a class="btn btn-sm btn-success pull-right" id="ph_plan_enregistrer"><i class="fas fa-check-circle"></i> {{Enregistrer le plan}}</a>
+			</div>
+			<div class="form-inline" style="margin-bottom:6px">
+				<div class="btn-group" id="ph_outils">
+					<a class="btn btn-sm btn-primary" data-outil="deplacer"><i class="fas fa-arrows-alt"></i> {{Déplacer}}</a>
+					<a class="btn btn-sm btn-default" data-outil="piece"><i class="fas fa-draw-polygon"></i> {{Pièce}}</a>
+					<a class="btn btn-sm btn-default" data-outil="passage"><i class="fas fa-door-open"></i> {{Passage}}</a>
+					<a class="btn btn-sm btn-default" data-outil="zone"><i class="fas fa-ban"></i> {{Zone à exclure}}</a>
+					<a class="btn btn-sm btn-default" data-outil="effacer"><i class="fas fa-eraser"></i> {{Supprimer}}</a>
+				</div>
+				<a class="btn btn-sm btn-default" id="ph_finir" style="display:none"><i class="fas fa-check"></i> {{Terminer la forme}}</a>
+				<span id="ph_aide" style="margin-left:8px"></span>
+				<span class="pull-right">{{Tendance à}} <select class="form-control input-sm" id="ph_heure"></select>
+					<select class="form-control input-sm" id="ph_jour"><option value="S">{{en semaine}}</option><option value="W">{{le week-end}}</option></select></span>
+			</div>
+			<div class="row">
+				<div class="col-md-9"><div id="ph_carte" style="position:relative;user-select:none;border:1px solid var(--al-border-color,#ccc)"></div></div>
+				<div class="col-md-3">
+					<legend style="font-size:1em">{{Pas sur le plan}}</legend><div id="ph_hors"></div>
+					<legend style="font-size:1em;margin-top:10px">{{Pièces}}</legend><div id="ph_pieces"></div>
+					<legend style="font-size:1em;margin-top:10px">{{Passages}}</legend><div id="ph_passages"></div>
+				</div>
+			</div>
 		</div>
 	</div>
 </div>

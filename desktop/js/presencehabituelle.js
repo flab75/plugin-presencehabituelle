@@ -55,7 +55,7 @@
       D = r
       if (r.jamais) D.candidats.forEach(function (c) { if (c.coche && c.actif) D.suivi[c.id] = { g: '', t: c.type } }) // première fois : préconisation
       $('#ph_exclure').val(r.exclure); $('#ph_exclusions').val(r.exclusions)
-      liste()
+      liste(); dessiner()
     })
   }
   function lire() { // reporte les cases et les groupes de l'écran dans D.suivi
@@ -75,6 +75,7 @@
     return h + '</tr>'
   }
   function habitudes(r) {
+    H = r; dessiner() // pastilles du plan
     $('#ph_date').text(r.date ? '{{Calculé le}} ' + r.date : '')
     var h = ''
     ;(r.groupes || []).forEach(function (g) {
@@ -117,6 +118,222 @@
     if (h) h += '<p><small>{{Journée de 04 h à 04 h. Week-end : matins (04 h-16 h) du samedi et du dimanche, soirs (16 h-04 h) du vendredi et du samedi.}}</small></p>'
     $('#ph_resultats').html(h || '<p>{{Aucune commande suivie.}}</p>')
   }
+
+  /* ---- Plan : un par étage, coordonnées en % de l'image ---- */
+  var PL = null, H = null, ET = null, IMG = {}, OUTIL = 'deplacer', TRACE = [], PLACER = null, DESIGNS = [], GLISSE = false
+  var AIDE = {
+    deplacer: '{{Glissez une pastille pour la déplacer ; cliquez une commande de « Pas sur le plan », puis le plan, pour la placer ; cliquez une pièce pour la renommer.}}',
+    piece: '{{Cliquez les coins de la pièce, puis « Terminer la forme ».}}',
+    passage: '{{Cliquez les deux bouts du passage (une porte, un couloir, le haut d’un escalier).}}',
+    zone: '{{Cliquez les coins de la zone (ex. une chambre d’amis), puis « Terminer la forme ».}}',
+    effacer: '{{Cliquez une pastille (elle retourne dans « Pas sur le plan »), une pièce, un passage ou une zone pour le retirer.}}'
+  }
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) } // 12 caractères (≤ 16 côté box)
+  function libelle(id) { var c = D && D.candidats.find(function (x) { return x.id == id }); return c ? c.eq + (c.nom != 'Etat' && c.nom != 'État' ? ' ' + c.nom : '') : '#' + id }
+  function etage(id) { return PL.etages.find(function (e) { return e.id == id }) }
+  function piece(id) { return PL.pieces.find(function (x) { return x.id == id }) }
+  function pieceNom(id) { var p = piece(id), e = p && etage(p.e); return p ? (PL.etages.length > 1 && e ? e.nom + ' – ' : '') + p.nom : '?' }
+  function dans(x, y, pts) { // même règle que presencehabituelle_analyse::dans
+    var r = false
+    for (var i = 0, j = pts.length - 1; i < pts.length; j = i++)
+      if ((pts[i][1] > y) != (pts[j][1] > y) && x < (pts[j][0] - pts[i][0]) * (y - pts[i][1]) / (pts[j][1] - pts[i][1]) + pts[i][0]) r = !r
+    return r
+  }
+  function pieceDe(e, x, y) { var p = PL.pieces.find(function (o) { return o.e == e && dans(x, y, o.pts) }); return p ? p.id : '' }
+  function pos(ev) {
+    var r = $('#ph_carte')[0].getBoundingClientRect(), f = function (v) { return Math.round(Math.max(0, Math.min(100, v)) * 100) / 100 }
+    return [f((ev.clientX - r.left) / r.width * 100), f((ev.clientY - r.top) / r.height * 100)]
+  }
+  function tendance(id) { // [texte, intensité 0..1] à l'heure choisie
+    if (!H) return ['', 0]
+    var h = +$('#ph_heure').val(), k = $('#ph_jour').val()
+    if (D.suivi[id].t == 'volet') {
+      var v = (H.volets || []).find(function (x) { return x.id == id }), m = v && v.matin && v.matin[k], s = v && v.soir && v.soir[k]
+      if (!v || !v.jours) return ['{{Pas encore assez de données.}}', 0]
+      var mn = h * 60 + 30 + (h < 4 ? 1440 : 0), ouvert = m && m.n && s && s.n ? mn >= m.med && mn < s.med : null
+      return ['{{Ouverture}} ' + (m && m.n ? hm(m.med) : '–') + ', {{fermeture}} ' + (s && s.n ? hm(s.med) : '–') + ' ({{médianes}})'
+        + (ouvert === null ? '' : ' — ' + (ouvert ? '{{d’habitude ouvert à cette heure}}' : '{{d’habitude fermé à cette heure}}')), ouvert ? 1 : 0]
+    }
+    var g = (H.groupes || []).find(function (x) { return (x.ids || []).indexOf(+id) >= 0 })
+    if (!g || !g.jours) return ['{{Pas encore assez de données.}}', 0]
+    return [(g.ids.length > 1 ? g.nom + ' : ' : '') + '{{allumée}} ' + g[k][h] + ' % {{des jours vers}} ' + h + ' h', g[k][h] / 100]
+  }
+  function dessiner() {
+    if (!PL || !D) return
+    if (ET && !etage(ET)) ET = null
+    if (!ET && PL.etages.length) ET = PL.etages[0].id
+    $('#ph_etage').html(PL.etages.map(function (e) { return '<option value="' + esc(e.id) + '">' + esc(e.nom) + '</option>' }).join('') || '<option value="">{{Aucun étage}}</option>').val(ET || '')
+    $('.ph_etage_op').toggle(!!ET)
+    $('#ph_finir').toggle((OUTIL == 'piece' || OUTIL == 'zone') && TRACE.length >= 3)
+    $('#ph_aide').text(AIDE[OUTIL] || '')
+    var img = ET && IMG[ET]
+    var h = img ? '<img src="' + esc(img) + '" style="width:100%;display:block;pointer-events:none" draggable="false">'
+      : '<div style="aspect-ratio:3/2;background:repeating-linear-gradient(0deg,transparent 0 39px,rgba(128,128,128,.15) 39px 40px),repeating-linear-gradient(90deg,transparent 0 39px,rgba(128,128,128,.15) 39px 40px)"><p style="padding:20px;opacity:.7">'
+        + (ET ? '{{Pas d’image pour cet étage : « Image… » pour en déposer une (photo, capture), ou dessinez sur la grille.}}' : '{{Ajoutez un étage pour commencer.}}') + '</p></div>'
+    function pts(l) { return l.map(function (p) { return p[0] + ',' + p[1] }).join(' ') }
+    var trait = ' vector-effect="non-scaling-stroke" style="cursor:pointer"'
+    h += '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%">'
+    PL.pieces.forEach(function (o, i) { if (o.e == ET) h += '<polygon data-k="pieces" data-i="' + i + '" points="' + pts(o.pts) + '" fill="rgba(91,192,222,.12)" stroke="#5bc0de" stroke-width="2"' + trait + '/>' })
+    PL.zones.forEach(function (o, i) { if (o.e == ET) h += '<polygon data-k="zones" data-i="' + i + '" points="' + pts(o.pts) + '" fill="rgba(217,83,79,.25)" stroke="#d9534f" stroke-width="2" stroke-dasharray="6 3"' + trait + '/>' })
+    PL.passages.forEach(function (o, i) { if (o.e == ET) h += '<polyline data-k="passages" data-i="' + i + '" points="' + pts(o.pts) + '" stroke="#5cb85c" stroke-width="5"' + (o.t == 'escalier' ? ' stroke-dasharray="3 3"' : '') + trait + '/>' })
+    if (TRACE.length) h += '<polyline points="' + pts(TRACE) + '" fill="none" stroke="#f0ad4e" stroke-width="2" vector-effect="non-scaling-stroke"/>'
+    h += '</svg>'
+    PL.pieces.forEach(function (o) { // nom au centre des coins
+      if (o.e != ET) return
+      var x = 0, y = 0; o.pts.forEach(function (p) { x += p[0] / o.pts.length; y += p[1] / o.pts.length })
+      h += '<div style="position:absolute;left:' + x + '%;top:' + y + '%;transform:translate(-50%,-50%);pointer-events:none;font-weight:bold;text-shadow:0 0 3px var(--bg-color,#fff)">' + esc(o.nom) + '</div>'
+    })
+    Object.keys(PL.marqueurs).forEach(function (id) {
+      var m = PL.marqueurs[id]; if (m.e != ET || !D.suivi[id]) return
+      var t = tendance(id), vol = D.suivi[id].t == 'volet', c = vol ? '51,122,183' : '240,173,78'
+      h += '<div class="ph_m" data-id="' + esc(id) + '" title="' + esc(libelle(id) + (t[0] ? '\n' + t[0] : '')) + '" style="position:absolute;left:' + m.x + '%;top:' + m.y + '%;transform:translate(-50%,-50%);width:26px;height:26px;'
+        + 'border-radius:' + (vol ? '4px' : '50%') + ';border:2px solid rgb(' + c + ');background:rgba(' + c + ',' + (0.15 + 0.85 * t[1]) + ');display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;touch-action:none;cursor:'
+        + (OUTIL == 'deplacer' ? 'move' : OUTIL == 'effacer' ? 'pointer' : 'crosshair') + '"><i class="fas fa-' + (vol ? 'bars' : 'lightbulb') + '"></i></div>'
+    })
+    $('#ph_carte').html(h).css('cursor', OUTIL == 'deplacer' && !PLACER ? 'default' : 'crosshair')
+    var hors = Object.keys(D.suivi).filter(function (id) { return !PL.marqueurs[id] })
+    $('#ph_hors').html(hors.length ? hors.map(function (id) {
+      return '<a class="btn btn-xs ' + (PLACER == id ? 'btn-warning' : 'btn-default') + ' ph_placer" data-id="' + esc(id) + '" style="margin:0 3px 3px 0"><i class="fas fa-' + (D.suivi[id].t == 'volet' ? 'bars' : 'lightbulb') + '"></i> ' + esc(libelle(id)) + '</a>'
+    }).join('') : '<small>{{Tout est placé.}}</small>')
+    $('#ph_pieces').html(PL.pieces.map(function (o, i) {
+      if (o.e != ET) return ''
+      var n = Object.keys(PL.marqueurs).filter(function (id) { var m = PL.marqueurs[id]; return D.suivi[id] && m.e == ET && dans(m.x, m.y, o.pts) }).length
+      return '<div><a class="ph_pnom" data-i="' + i + '" style="cursor:pointer" title="{{Renommer}}"><i class="fas fa-pen"></i></a> ' + esc(o.nom) + ' <small>(' + n + ')</small></div>'
+    }).join('') || '<small>{{Aucune pièce sur cet étage.}}</small>')
+    $('#ph_passages').html(PL.passages.map(function (o) {
+      var a = piece(o.a), b = piece(o.b), r = a && b && (H && H.passages || []).find(function (x) { return x.a == a.nom && x.b == b.nom && x.t == o.t })
+      return '<div>' + esc(pieceNom(o.a)) + ' ↔ ' + esc(pieceNom(o.b)) + ' <small>(' + esc({ porte: '{{porte}}', couloir: '{{couloir}}', escalier: '{{escalier}}' }[o.t]) + ')'
+        + (r ? '<br>→ ' + esc(r.ab) + ' {{fois}}, ← ' + esc(r.ba) + ' {{fois}}' : '') + '</small></div>'
+    }).join('') + (PL.passages.length ? '<p><small>{{Fois où une lumière de la seconde pièce s’allume moins de 3 min après l’extinction d’une lumière de la première.}}</small></p>' : '<small>{{Aucun passage.}}</small>'))
+  }
+  function image() { // image de l'étage, demandée une fois
+    if (ET && IMG[ET] === undefined) ajax('plan_image', { etage: ET }, function (r) { IMG[ET] = r; dessiner() })
+    else dessiner()
+  }
+  function retirer(k, i) {
+    if (k == 'pieces') { var id = PL.pieces[i].id; PL.passages = PL.passages.filter(function (o) { return o.a != id && o.b != id }) } // un passage sans sa pièce ne relie plus rien
+    PL[k].splice(i, 1)
+  }
+  function nomPiece(titre, val, ok) {
+    bootbox.prompt({ title: titre, value: val || '', callback: function (n) {
+      n = n === null ? '' : n.trim().slice(0, 40)
+      if (n && PL.pieces.some(function (o) { return o.nom == n && o.nom != val })) alerte('{{Une autre pièce porte ce nom : leurs lampes seront analysées ensemble.}}', 'warning')
+      if (n) ok(n); dessiner()
+    } })
+  }
+  function finir() {
+    if (TRACE.length < 3) return
+    var l = TRACE; TRACE = []
+    if (OUTIL == 'zone') { PL.zones.push({ id: uid(), e: ET, pts: l }); return dessiner() }
+    nomPiece('{{Nom de la pièce}}', '', function (n) { PL.pieces.push({ id: uid(), e: ET, nom: n, pts: l }) })
+  }
+  function passage() {
+    var a = TRACE[0], b = TRACE[1]; TRACE = []
+    if (PL.pieces.length < 2) { alerte('{{Dessinez d’abord au moins deux pièces.}}', 'warning'); return dessiner() }
+    var o = PL.pieces.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(pieceNom(p.id)) + '</option>' }).join('')
+    bootbox.dialog({ title: '{{Passage}}', message: '<div class="form-group"><label>{{De}}</label><select class="form-control" id="ph_pa">' + o + '</select></div>'
+      + '<div class="form-group"><label>{{Vers}} <small>({{une pièce d’un autre étage pour un escalier}})</small></label><select class="form-control" id="ph_pb">' + o + '</select></div>'
+      + '<div class="form-group"><label>{{Type}}</label><select class="form-control" id="ph_pt"><option value="porte">{{porte}}</option><option value="couloir">{{couloir}}</option><option value="escalier">{{escalier}}</option></select></div>',
+      buttons: { annuler: { label: '{{Annuler}}', className: 'btn-default', callback: dessiner }, ok: { label: '{{Ajouter}}', className: 'btn-success', callback: function () {
+        if ($('#ph_pa').val() == $('#ph_pb').val()) { alerte('{{Un passage relie deux pièces différentes.}}', 'warning'); return false }
+        PL.passages.push({ id: uid(), e: ET, a: $('#ph_pa').val(), b: $('#ph_pb').val(), t: $('#ph_pt').val(), pts: [a, b] }); dessiner()
+      } } } })
+    var pa = pieceDe(ET, a[0], a[1]) || PL.pieces[0].id, pb = pieceDe(ET, b[0], b[1])
+    $('#ph_pa').val(pa); $('#ph_pb').val(pb && pb != pa ? pb : PL.pieces.find(function (p) { return p.id != pa }).id)
+  }
+
+  $('#ph_carte').on('click', function (ev) {
+    if (GLISSE || !ET) return
+    var p = pos(ev), $t = $(ev.target), m = $t.closest('.ph_m'), k = $t.attr('data-k')
+    if (OUTIL == 'effacer') { if (m.length) delete PL.marqueurs[m.attr('data-id')]; else if (k) retirer(k, +$t.attr('data-i')); return dessiner() }
+    if (OUTIL == 'deplacer') {
+      if (PLACER) { PL.marqueurs[PLACER] = { e: ET, x: p[0], y: p[1] }; PLACER = null; return dessiner() }
+      if (k == 'pieces') { var i = +$t.attr('data-i'); nomPiece('{{Nom de la pièce}}', PL.pieces[i].nom, function (n) { PL.pieces[i].nom = n }) }
+      return
+    }
+    TRACE.push(p)
+    if (OUTIL == 'passage' && TRACE.length == 2) return passage()
+    dessiner()
+  })
+  $('#ph_carte').on('pointerdown', '.ph_m', function (ev) {
+    if (OUTIL != 'deplacer' || PLACER) return
+    var id = $(this).attr('data-id'), el = this, bouge = false
+    ev.preventDefault()
+    $(document).on('pointermove.ph', function (e) { bouge = true; var p = pos(e); PL.marqueurs[id].x = p[0]; PL.marqueurs[id].y = p[1]; el.style.left = p[0] + '%'; el.style.top = p[1] + '%' })
+      .on('pointerup.ph pointercancel.ph', function () { $(document).off('.ph'); if (bouge) { GLISSE = true; setTimeout(function () { GLISSE = false; dessiner() }, 0) } }) // le clic qui suit un glissé ne compte pas
+  })
+  $('#ph_hors').on('click', '.ph_placer', function () {
+    var id = String($(this).attr('data-id'))
+    if (!ET) return alerte('{{Ajoutez d’abord un étage.}}', 'warning')
+    PLACER = PLACER == id ? null : id; OUTIL = 'deplacer'; TRACE = []
+    $('#ph_outils a').removeClass('btn-primary').addClass('btn-default').filter('[data-outil=deplacer]').addClass('btn-primary').removeClass('btn-default')
+    dessiner()
+  })
+  $('#ph_pieces').on('click', '.ph_pnom', function () { var i = +$(this).attr('data-i'); nomPiece('{{Nom de la pièce}}', PL.pieces[i].nom, function (n) { PL.pieces[i].nom = n }) })
+  $('#ph_outils a').on('click', function () {
+    OUTIL = $(this).attr('data-outil'); TRACE = []; PLACER = null
+    $('#ph_outils a').removeClass('btn-primary').addClass('btn-default'); $(this).addClass('btn-primary').removeClass('btn-default')
+    dessiner()
+  })
+  $('#ph_finir').on('click', finir)
+  for (var i = 0; i < 24; i++) $('#ph_heure').append('<option value="' + i + '">' + i + ' h</option>')
+  $('#ph_heure').val(new Date().getHours())
+  $('#ph_heure, #ph_jour').on('change', dessiner)
+  $('#ph_etage').on('change', function () { ET = $(this).val(); TRACE = []; PLACER = null; image() })
+  $('#ph_etage_plus').on('click', function () {
+    bootbox.prompt('{{Nom de l’étage (ex. Rez-de-chaussée)}}', function (n) {
+      if (!n || !n.trim()) return
+      if (PL.etages.length >= 20) return alerte('{{20 étages au plus.}}', 'warning')
+      var e = { id: uid(), nom: n.trim().slice(0, 40) }; PL.etages.push(e); ET = e.id; TRACE = []; image()
+    })
+  })
+  $('#ph_etage_nom').on('click', function () { var e = etage(ET); bootbox.prompt({ title: '{{Nom de l’étage}}', value: e.nom, callback: function (n) { if (n && n.trim()) e.nom = n.trim().slice(0, 40); dessiner() } }) })
+  $('#ph_etage_haut, #ph_etage_bas').on('click', function () {
+    var i = PL.etages.indexOf(etage(ET)), j = i + (this.id == 'ph_etage_haut' ? -1 : 1)
+    if (j < 0 || j >= PL.etages.length) return
+    var e = PL.etages[i]; PL.etages[i] = PL.etages[j]; PL.etages[j] = e; dessiner()
+  })
+  $('#ph_etage_moins').on('click', function () {
+    bootbox.confirm('{{Supprimer cet étage, son image, ses pièces, ses passages, ses zones et les positions qui y sont ? (effectif à l’enregistrement du plan)}}', function (oui) {
+      if (!oui) return
+      var e = ET, ids = PL.pieces.filter(function (o) { return o.e == e }).map(function (o) { return o.id })
+      PL.pieces = PL.pieces.filter(function (o) { return o.e != e }); PL.zones = PL.zones.filter(function (o) { return o.e != e })
+      PL.passages = PL.passages.filter(function (o) { return o.e != e && ids.indexOf(o.a) < 0 && ids.indexOf(o.b) < 0 })
+      Object.keys(PL.marqueurs).forEach(function (id) { if (PL.marqueurs[id].e == e) delete PL.marqueurs[id] })
+      PL.etages = PL.etages.filter(function (o) { return o.id != e }); ET = null; TRACE = []; image()
+    })
+  })
+  $('#ph_image').on('change', function () { // réduite à 2000 px et passée en JPEG ici : la box ne garde qu'un JPEG vérifié
+    var f = this.files[0], e = ET; this.value = ''
+    if (!f || !e) return
+    createImageBitmap(f).then(function (b) {
+      var k = Math.min(1, 2000 / Math.max(b.width, b.height)), c = document.createElement('canvas')
+      c.width = Math.round(b.width * k); c.height = Math.round(b.height * k)
+      var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(b, 0, 0, c.width, c.height)
+      var d = c.toDataURL('image/jpeg', 0.85)
+      ajax('plan_image_enregistrer', { etage: e, image: d }, function () { IMG[e] = d; dessiner(); alerte('{{Image enregistrée. Enregistrez le plan pour garder l’étage.}}', 'success') })
+    }).catch(function () { alerte('{{Image illisible (prenez une photo ou une capture : PNG, JPEG…)}}') })
+  })
+  $('#ph_design').on('change', function () {
+    var d = $(this).val(); $(this).val('')
+    if (!d || !ET) return
+    ajax('plan_design', { design: d }, function (r) {
+      var n = Object.keys(r).length
+      if (!n) return alerte('{{Aucune commande suivie dans ce design.}}', 'warning')
+      bootbox.confirm(esc(n) + ' {{commandes suivies trouvées. Les placer sur l’étage}} « ' + esc(etage(ET).nom) + ' » ? {{Leurs positions actuelles sont remplacées. Elles suivent les proportions du design : prenez comme image de l’étage le fond de ce design, ou une image aux mêmes proportions.}}', function (oui) {
+        if (oui) { Object.keys(r).forEach(function (id) { PL.marqueurs[id] = { e: ET, x: r[id].x, y: r[id].y } }); dessiner() }
+      })
+    })
+  })
+  $('#ph_plan_enregistrer').on('click', function () {
+    if (!PL) return
+    ajax('plan_enregistrer', { plan: JSON.stringify(PL) }, function (r) { PL = r.plan; habitudes(r.habitudes); alerte('{{Plan enregistré}}', 'success') })
+  })
+  ajax('plan', {}, function (r) {
+    PL = r.plan; DESIGNS = r.designs
+    $('#ph_design').html('<option value="">{{Reprendre les positions d’un design…}}</option>' + DESIGNS.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.nom) + '</option>' }).join(''))
+    image()
+  })
 
   $('#ph_autres').on('change', function () { lire(); liste() })
   $('#ph_parObjet').on('click', function () { $('#ph_liste tr[data-id]').each(function () { if ($(this).find('.ph_coche').is(':checked')) $(this).find('.ph_groupe').val($(this).attr('data-objet')) }) })

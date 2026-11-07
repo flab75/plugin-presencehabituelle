@@ -85,6 +85,19 @@ $st = $A::stats(['a' => 450, 'b' => 455, 'c' => 445, 'd' => 460, 'e' => 450, 'f'
 $ok($st['min'] == 300 && $st['max'] == 470 && $st['med'] == 450 && $st['moy'] == 437 && $st['ex'] == ['x' => 300], 'stats : ' . json_encode($st));
 $ok($A::stats([1 => 450, 2 => 900])['ex'] == [] && $A::stats([]) == ['n' => 0], 'stats courtes');
 
+// lissage et parts bornés : 99 % lissé n'affiche pas 100 % ; 299 passages sur 300 = 99 %
+$pl = array_fill(0, 24, 100); $pl[5] = 99; $ll = $A::lisser($pl);
+$ok($ll[5] == 99 && $ll[0] == 100, 'lissage borné : ' . json_encode($ll));
+$sp = []; for ($i = 0; $i < 300; $i++) $sp[] = [$jr[$i % 15]['a'] + 36000 + $i * 60, $jr[$i % 15]['a'] + 36000 + $i * 60 + ($i ? 30 : 3000), true];
+$ok($A::durees($sp, $jr)['passages'] == 99, 'passages bornés : ' . json_encode($A::durees($sp, $jr)['passages']));
+
+// plan : point dans une pièce ; enchaînement Salon → Cuisine (éteint 19:30, allumé 19:31), pas l'allumage de 19:40, ni pendant une absence
+$ok($A::dans(5, 5, [[0, 0], [10, 0], [10, 10], [0, 10]]) && !$A::dans(15, 5, [[0, 0], [10, 0], [10, 10], [0, 10]]) && $A::dans(2, 8, [[0, 0], [4, 10], [0, 10]]), 'point dans un polygone');
+$pp = ['S' => [[$t('2026-03-02 19:00'), $t('2026-03-02 19:30'), true], [$t('2026-03-03 19:00'), $t('2026-03-03 19:30'), true], [$t('2026-03-04 20:00'), $t('2026-03-04 21:00'), false]],
+  'C' => [[$t('2026-03-02 19:31'), $t('2026-03-02 19:50'), true], [$t('2026-03-03 19:40'), $t('2026-03-03 19:45'), true], [$t('2026-03-04 21:01'), $t('2026-03-04 21:30'), true]]];
+$ok($A::enchainements($pp, [7 => ['S', 'C']]) == [7 => ['S', 'C', 1, 0]], 'enchaînements : ' . json_encode($A::enchainements($pp, [7 => ['S', 'C']])));
+$ok($A::enchainements($pp, [['S', 'C']], [[$t('2026-03-02 00:00'), $t('2026-03-03 00:00')]])[0][2] == 0, 'enchaînements hors absences');
+
 $ok($A::actif('On') && $A::actif(1) && !$A::actif('0') && !$A::actif('Absent ?') && !$A::actif(''), 'actif');
 $pe = $A::periodes("2026-10-15 15:27 → 2026-10-23 12:42\nn'importe quoi\n2026-11-01 - 2026-11-02");
 $ok(count($pe) == 2 && $pe[0][0] == $t('2026-10-15 15:27') && $pe[1][1] == $t('2026-11-02 23:59:59'), 'périodes : ' . json_encode($pe));

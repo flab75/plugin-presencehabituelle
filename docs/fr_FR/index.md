@@ -4,7 +4,7 @@ Simulation de présence **tirée de vos historiques**. Le plugin relève quand v
 
 ## Confidentialité
 
-Tout est calculé sur la box. Le plugin ne fait **aucun appel réseau** (le contrôle automatique `tests/selftest.php` le vérifie), n'utilise aucun service en ligne ni aucune « IA ». Les changements d'état sont gardés dans une table de la base de Jeedom (`presencehabituelle_event`) et les tendances calculées dans `data/habitudes.json` (inaccessible depuis le Web). Seuls les administrateurs les voient. Comme le reste de la base, elles font partie des **sauvegardes de Jeedom**, y compris une sauvegarde envoyée dans le cloud si vous en avez réglé une. Le bouton **Tout effacer** (onglet Tendances) les supprime ; elles sont aussi effacées quand le plugin est réinstallé après une désinstallation. **Avant de désinstaller, cliquez Tout effacer** : la désinstallation seule laisse la table en base.
+Tout est calculé sur la box. Le plugin ne fait **aucun appel réseau** (le contrôle automatique `tests/selftest.php` le vérifie), n'utilise aucun service en ligne ni aucune « IA ». Les changements d'état sont gardés dans une table de la base de Jeedom (`presencehabituelle_event`) et les tendances calculées dans `data/habitudes.json`, le plan dans `data/plan.json` et ses images dans `data/plan_*.jpg` (inaccessibles depuis le Web). Seuls les administrateurs les voient. Comme le reste de la base, elles font partie des **sauvegardes de Jeedom**, y compris une sauvegarde envoyée dans le cloud si vous en avez réglé une. Le bouton **Tout effacer** (onglet Tendances) supprime les relevés et les tendances (le plan, lui, s'efface en supprimant ses étages) ; elles sont aussi effacées quand le plugin est réinstallé après une désinstallation. **Avant de désinstaller, cliquez Tout effacer** : la désinstallation seule laisse la table en base.
 
 ## Pour l'instant : analyse seule
 
@@ -27,6 +27,8 @@ L'onglet **Tendances** montre, pour chaque lampe ou groupe :
 - la durée d'un allumage : moyenne, médiane, la moitié des allumages entre deux valeurs, la plus courte et la plus longue, la part des passages de moins de 3 minutes, et les durées inhabituelles ;
 - les lampes allumées ensemble.
 
+Une ligne (semaine ou week-end) tirée de moins de 10 jours est marquée « à confirmer ».
+
 Un allumage de plus de 18 heures (réglable) est pris pour une extinction manquée (box arrêtée, pont hors ligne) : il est écarté, et les jours qu'il touche ne comptent pas pour son groupe (ou la lampe seule).
 
 Pour chaque volet, en semaine et le week-end : l'heure d'ouverture du matin et de fermeture du soir (médiane, moyenne, au plus tôt, au plus tard), la part des nuits où il est fermé (« jamais » ou « toujours » le cas échéant) et les exceptions. Une exception est un jour loin de la moitié centrale des valeurs : de plus de 30 minutes et de plus d'une fois et demie l'étendue de cette moitié (le plus grand des deux, règle de Tukey) ; il en faut au moins 4 pour en parler. Une heure tirée de moins de 10 valeurs, ou une part des nuits tirée de moins de 10 nuits, est marquée « à confirmer », séparément en semaine et le week-end. Une ouverture du matin n'est relevée que si le volet était fermé à 04 h : le rouvrir après l'avoir fermé contre la chaleur n'est pas un lever. Une nuit (16 h → 04 h) touchée par une absence n'est pas comptée.
@@ -34,6 +36,18 @@ Pour chaque volet, en semaine et le week-end : l'heure d'ouverture du matin et d
 La journée va de 04 h à 04 h, pour les lumières comme pour les volets. Le week-end, ce sont les matins (04 h-16 h) du samedi et du dimanche et les soirs (16 h-04 h) du vendredi et du samedi : une lampe allumée le dimanche à 22 h compte en semaine, comme une heure entre 0 h et 4 h compte pour le soir de la veille.
 
 Le calcul est refait chaque nuit ; les changements de plus de 90 jours sont effacés (réglable dans la configuration du plugin), pour suivre la saison.
+
+## Plan de la maison (facultatif)
+
+L'onglet **Plan** dessine la maison, un plan par étage :
+
+1. **＋ Étage** : nommez-le (« Rez-de-chaussée », « Étage »…) ; les flèches changent l'ordre. **Image…** dépose le plan de l'étage : une photo d'un plan papier, une capture, un export de logiciel (PNG, JPEG…). Elle est réduite à 2 000 pixels et gardée sur la box ; sans image, on dessine sur une grille.
+2. **Placer** : cliquez une lumière ou un volet de « Pas sur le plan », puis l'endroit du plan. Glissez une pastille pour la déplacer ; l'outil **Supprimer** la renvoie dans la liste. Si vous avez déjà un design Jeedom où vos lumières sont placées, **Reprendre les positions d'un design** les reprend (centre de chaque widget, en proportion du design : prenez comme image de l'étage le fond de ce design).
+3. **Pièce** : cliquez les coins, puis « Terminer la forme », et nommez-la. Les lampes d'une pièce sont analysées ensemble, comme un groupe ; un groupe saisi dans « Commandes suivies » reste prioritaire. Deux pièces de même nom forment un seul groupe.
+4. **Passage** : cliquez les deux bouts (une porte, un couloir, le haut d'un escalier), puis choisissez les deux pièces reliées et le type ; pour un escalier, la seconde pièce peut être sur un autre étage. Le plugin compte les **enchaînements** : les fois où une lumière de la seconde pièce s'allume moins de 3 minutes après l'extinction d'une lumière de la première (et dans l'autre sens). Ils serviront au parcours de la simulation.
+5. **Zone à exclure** : une partie de la maison qu'on ne veut ni analyser ni simuler (une chambre d'amis, un logement loué) : les commandes placées dedans sont ignorées.
+
+**Enregistrer le plan** garde le tout et recalcule les tendances. Chaque pastille montre la tendance à l'heure choisie (« Tendance à », en semaine ou le week-end) : plus elle est pleine, plus la lampe est souvent allumée à cette heure ; pour un volet, pleine s'il est d'habitude ouvert. Survolez-la pour le détail.
 
 ## Capteur de luminosité
 

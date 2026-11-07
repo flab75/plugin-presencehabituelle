@@ -27,6 +27,15 @@ try {
     ajax::success($P::habitudes());
   }
   if (init('action') == 'recalculer') ajax::success($P::analyser());
+  if (init('action') == 'plan') ajax::success(['plan' => $P::plan(), 'designs' => $P::designs()]);
+  if (init('action') == 'plan_image') ajax::success($P::planImageLire((string)init('etage')));
+  if (init('action') == 'plan_image_enregistrer') { $P::planImageEnregistrer((string)init('etage'), (string)init('image')); ajax::success(); }
+  if (init('action') == 'plan_enregistrer') {
+    $p = json_decode((string)init('plan'), true);
+    if (!is_array($p)) throw new Exception(__('Plan illisible : rien n\'a été enregistré', __FILE__));
+    ajax::success(['plan' => $P::planEnregistrer($p), 'habitudes' => $P::analyser()]); // pièces et zones changent les groupes
+  }
+  if (init('action') == 'plan_design') ajax::success($P::designPositions(init('design')));
   if (init('action') == 'effacer') { $P::effacer(); $P::demarrer(); ajax::success($P::analyser()); } // état courant noté à nouveau
 
   throw new Exception(__('Aucune méthode correspondante à', __FILE__) . ' : ' . init('action'));
