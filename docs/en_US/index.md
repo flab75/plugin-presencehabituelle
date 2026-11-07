@@ -53,6 +53,8 @@ The **Trends** tab shows, for each lamp or group:
 - how long it stays on: average, median, half of the switch-ons between two values, shortest and longest, the share of passes shorter than 3 minutes, and unusual durations;
 - lamps switched on together.
 
+In the summary, "mostly on" = at least one day in four; for a room on a sensor, whose brief passes touch almost every hour, at least half the days of its most frequent hour.
+
 A row (weekdays or weekend) taken from fewer than 10 days is marked "to be confirmed".
 
 A switch-on longer than 18 hours (adjustable) is taken as a missed switch-off (box stopped, bridge offline): it is discarded, and the days it touches do not count for its group (or the lamp alone).

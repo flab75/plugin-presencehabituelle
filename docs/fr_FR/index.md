@@ -53,6 +53,8 @@ L'onglet **Tendances** montre, pour chaque lampe ou groupe :
 - la durée d'un allumage : moyenne, médiane, la moitié des allumages entre deux valeurs, la plus courte et la plus longue, la part des passages de moins de 3 minutes, et les durées inhabituelles ;
 - les lampes allumées ensemble.
 
+Dans le résumé, « surtout allumée » = au moins un jour sur quatre ; pour une pièce sur détecteur, dont les passages brefs touchent presque toutes les heures, au moins la moitié des jours de son heure la plus fréquente.
+
 Une ligne (semaine ou week-end) tirée de moins de 10 jours est marquée « à confirmer ».
 
 Un allumage de plus de 18 heures (réglable) est pris pour une extinction manquée (box arrêtée, pont hors ligne) : il est écarté, et les jours qu'il touche ne comptent pas pour son groupe (ou la lampe seule).

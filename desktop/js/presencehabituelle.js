@@ -393,8 +393,9 @@
     m = Math.round(m)
     return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + ('0' + m % 60).slice(-2) : '')
   }
-  function surtout(l) { // heures allumées au moins un jour sur quatre (profil lissé)
-    var hs = []; (l || []).forEach(function (v, i) { if (v >= 25) hs.push(i) })
+  function surtout(l, det) { // heures allumées au moins un jour sur quatre (profil lissé) ; sur détecteur, au moins la moitié des jours de l'heure la plus fréquente (des passages brefs touchent presque toutes les heures)
+    var s = det ? Math.max(25, Math.max.apply(null, (l || []).concat(0)) / 2) : 25
+    var hs = []; (l || []).forEach(function (v, i) { if (v >= s) hs.push(i) })
     return hs.length == 24 ? '{{à toute heure}}' : hs.length ? plages(hs) : '{{rarement}}'
   }
   function habitudes(r) {
@@ -411,7 +412,7 @@
       var sur = DET.filter(function (x) { return x.m.some(function (id) { return (g.ids || []).map(Number).indexOf(+id) >= 0 }) }).map(function (x) { return x.nom })
       if (sur.length) rq.push('<span class="label label-default">{{sur détecteur}} « ' + esc(sur.join(' », « ')) + ' »</span>')
       else if (d.n && d.passages >= 90) rq.push('<span title="{{Presque tous les allumages durent moins de 3 min : sans doute une lampe sur détecteur de mouvement. Déclarez-le dans le Guide (Détecteurs de présence).}}">{{allumages éclair (détecteur ? déclarez-le dans le Guide)}}</span>')
-      res += '<tr><td><a href="#' + ancre + '" class="ph_ouvrir">' + esc(g.nom) + '</a></td><td>' + esc(surtout(g.lS)) + '</td><td>' + esc(surtout(g.lW)) + '</td><td>'
+      res += '<tr><td><a href="#' + ancre + '" class="ph_ouvrir">' + esc(g.nom) + '</a></td><td>' + esc(surtout(g.lS, sur.length)) + '</td><td>' + esc(surtout(g.lW, sur.length)) + '</td><td>'
         + (jamais.length ? esc(plages(jamais)) : '–') + '</td><td>' + (d.n ? esc(duree(d.med)) : '–') + '</td><td>' + rq.join(' ') + '</td></tr>'
       h += '<details id="' + ancre + '" style="margin-bottom:6px"><summary style="cursor:pointer;font-size:1.1em">' + esc(g.nom) + '</summary>'
       if (g.lampes.length > 1) h += '<p><small>' + esc(g.lampes.join(', ')) + '</small></p>'
