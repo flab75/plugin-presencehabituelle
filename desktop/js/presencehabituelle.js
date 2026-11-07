@@ -77,7 +77,7 @@
     h += bloc('{{Lumières sans type générique}}', '{{d’après leur nom : montrées dans la liste comme lumières, décochées}}',
       r.nommees.map(function (n) { return cb('lumiere', n.id, esc(n.nom) + ' — {{type générique à renseigner ?}}', true) }).join(''))
     h += bloc('{{Volets sans type générique}}', '{{d’après leur nom : montrés dans la liste comme volets, décochés}}',
-      (r.volets || []).map(function (n) { return cb('volet', n.id, esc(n.nom) + ' — {{type générique à renseigner ?}}', true) }).join(''))
+      (r.volets || []).map(function (n) { return cb('volet', n.id, esc(n.nom) + ' — ' + (n.verif ? '{{à vérifier : état d’un démon ou d’un plugin, sans doute pas un volet}}' : '{{type générique à renseigner ?}}'), !n.verif) }).join(''))
     h += bloc('{{Jours sans aucune lumière}}', '{{absences possibles (ou journées sans lumière, en été) : à cocher si vous étiez absent ; cochée = ajoutée aux périodes à ne pas analyser}}',
       r.absences.map(function (p) { return cb('absence', p, esc(p), false) }).join(''))
     h += bloc('{{Commande d’absence possible}}', '{{à cocher si elle est vraie pendant vos absences (une alarme activée l’est souvent aussi la nuit)}}',
@@ -107,7 +107,7 @@
       if (k == 'doublon') { var d = R.doublons.filter(function (x) { return x.id == v })[0]; if (repondre(v, 'doublon', String(d.de))) NOTES[v] = '{{doublon de}} ' + d.nomDe }
       if (k == 'groupe') { var g = R.groupes.filter(function (x) { return x.id == v })[0]; garder(g.ids, D.suivi[v]); g.ids.forEach(function (i) { if (D.suivi[i] && !REP[i]) REP[i] = { r: 'oui' } }); repondre(v, 'groupe'); NOTES[v] = '{{groupe de}} ' + g.membres.join(', ') }
       if (k == 'lumiere' && parId[v]) { parId[v].type = 'lumiere'; NOTES[v] = '{{type générique à renseigner ?}}' }
-      if (k == 'volet' && parId[v]) { parId[v].type = parId[v].type0 = 'volet'; NOTES[v] = '{{type générique à renseigner ?}}' } // type0 : reste un volet sur « Oui »
+      if (k == 'volet' && parId[v]) { parId[v].type = parId[v].type0 = 'volet'; NOTES[v] = (R.volets || []).some(function (x) { return x.id == v && x.verif }) ? '{{à vérifier : état d’un démon ou d’un plugin ?}}' : '{{type générique à renseigner ?}}' } // type0 : reste un volet sur « Oui »
       if (k == 'absence' && exc.split('\n').map(function (l) { return l.trim() }).indexOf(v) < 0) exc = (exc.trim() ? exc.trim() + '\n' : '') + v
       if (k == 'exclure') $('#ph_exclure').val(v)
     })

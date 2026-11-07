@@ -251,7 +251,9 @@
 		"ouvert = 0 (valeur basse)": "open = 0 (low value)",
 		"ouvert = valeur haute": "open = high value",
 		"peut s’ouvrir": "may open",
-		"Journée de 04 h à 04 h. Week-end : comme dans la configuration du plugin (par défaut du vendredi 16:00 au lundi 04:00).": "Day from 04:00 to 04:00. Weekend: as in the plugin configuration (by default from Friday 16:00 to Monday 04:00)."
+		"Journée de 04 h à 04 h. Week-end : comme dans la configuration du plugin (par défaut du vendredi 16:00 au lundi 04:00).": "Day from 04:00 to 04:00. Weekend: as in the plugin configuration (by default from Friday 16:00 to Monday 04:00).",
+		"à vérifier : état d’un démon ou d’un plugin, sans doute pas un volet": "to check: state of a daemon or a plugin, probably not a shutter",
+		"à vérifier : état d’un démon ou d’un plugin ?": "to check: state of a daemon or a plugin?"
 	},
 	"plugins/presencehabituelle/desktop/php/presencehabituelle.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",

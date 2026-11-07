@@ -58,6 +58,7 @@ $ok($A::nommee('Lumière', 'PriseLumiereBoite') && $A::nommee('Etat', 'Ruban LED
 // volets sans type d'après le nom (0.9) ; pile, luminosité : non
 $ok($A::voletNomme('Volet', 'Module RTS') && $A::voletNomme('Position', 'Store Salon') && $A::voletNomme('Etat', 'Shutter kitchen') && $A::voletNomme('Rideau', 'Relais')
   && !$A::voletNomme('Batterie', 'Volet Salon') && !$A::voletNomme('Luminosité', 'Store') && !$A::voletNomme('Position', 'Thermostat') && !$A::voletNomme('Restore', 'Box') && !$A::voletNomme('Volet auto', 'Virtuel') && !$A::voletNomme('Mode', 'Volet Salon'), 'volets d’après le nom');
+$ok($A::suspect('Démon Volet proportionel', 'Jeedom interne') && $A::voletNomme('Démon Volet proportionel', 'Jeedom interne') && !$A::suspect('Volet', 'Salon'), 'volet à vérifier (état d’un démon), pas écarté');
 echo "découverte OK\n";
 $rp = $A::reponses(['5' => ['r' => 'oui'], '6' => ['r' => 'doublon', 'de' => '5'], '7' => ['r' => 'doublon', 'de' => 7], '8' => ['r' => 'peut-être'], 'x' => ['r' => 'oui']]);
 $ok($rp == [5 => ['r' => 'oui'], 6 => ['r' => 'doublon', 'de' => 5], 7 => ['r' => 'doublon']], 'réponses : ' . json_encode($rp));

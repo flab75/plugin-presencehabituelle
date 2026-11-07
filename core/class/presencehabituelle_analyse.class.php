@@ -275,6 +275,8 @@ class presencehabituelle_analyse {
   const VOLET = '/(?<![\p{L}\d])(volets?|stores?|shutters?|rollers?|persiennes?|bso|jalousies?|blinds?|rideaux?|covers?|brise-soleil)(?![\p{L}\d])/iu';
   const POSITION = '/^\s*(etat|état|state|statut|status|position|niveau|level|ouverture)\s*$/iu';
   const VNON = '/(auto|mode|programm|calibr|vitesse|speed)/iu'; // « Volet auto » d'un virtuel : un mode, pas un état
+  const SUSPECT = '/(d[ée]mon|daemon|deamon|monitor|moniteur)/iu'; // « Démon Volet proportionnel » de Jeedom interne : état d'un plugin, signalé « à vérifier », pas écarté
+  public static function suspect($cmd, $eq) { return (bool)preg_match(self::SUSPECT, $cmd . ' ' . $eq); }
   public static function voletNomme($cmd, $eq) {
     return !preg_match(self::ANNEXE, $cmd) && !preg_match(self::VNON, $cmd) && (preg_match(self::VOLET, $cmd) || (preg_match(self::POSITION, $cmd) && preg_match(self::VOLET, $eq)));
   }

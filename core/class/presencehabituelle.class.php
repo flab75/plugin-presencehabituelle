@@ -332,7 +332,7 @@ class presencehabituelle extends eqLogic {
           'alarme' => $c['gen'] == 'ALARM_ENABLE_STATE'];
       if (isset($rep[$c['id']]) && !isset($suivi[$c['id']])) continue;
       if ($c['type'] == 'autre' && !isset($suivi[$c['id']]) && in_array($c['gen'], ['', 'GENERIC_INFO'], true) && !isset($eqVolet[$c['eqid']]) && $A::voletNomme($c['nom'], $c['eq'])) {
-        $eqVolet[$c['eqid']] = 1; $volets[] = $c['id']; continue; // une par équipement ; position, binaire ou texte (open / closed)
+        $eqVolet[$c['eqid']] = 1; $volets[$c['id']] = $A::suspect($c['nom'], $c['eq']); continue; // une par équipement ; position, binaire ou texte (open / closed)
       }
       if ($c['type'] == 'autre' && in_array($c['gen'], ['', 'GENERIC_INFO'], true) && $c['sub'] == 'binary' && !isset($eqLampe[$c['eqid']])
         && $A::nommee($c['nom'], $c['eq'])) {
@@ -408,7 +408,7 @@ class presencehabituelle extends eqLogic {
       'groupes' => array_map(function ($g, $m) use ($n, $groupe) { $m = array_values(array_diff($m, array_keys($groupe))) ?: $m;
         return ['id' => $g, 'nom' => $n($g), 'ids' => $m, 'membres' => array_map($n, $m)]; }, array_keys($groupe), $groupe),
       'nommees' => array_map(fn($id) => ['id' => $id, 'nom' => $n($id)], $nommees),
-      'volets' => array_map(fn($id) => ['id' => $id, 'nom' => $n($id)], $volets),
+      'volets' => array_map(fn($id, $v) => ['id' => $id, 'nom' => $n($id), 'verif' => $v], array_keys($volets), $volets), // verif : sans doute l'état d'un démon, proposé décoché
       'sans' => array_map(fn($id) => ['id' => $id, 'nom' => $n($id)], $sans),
       'lisses' => array_map(fn($id) => ['id' => $id, 'nom' => $n($id)], $lisses),
       'observation' => $observees ? self::finObservee() : 0,
