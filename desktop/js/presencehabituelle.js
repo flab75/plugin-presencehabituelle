@@ -344,7 +344,7 @@
   function det(e) { lireDet(); lireRegles(); return DET[$(e).closest('tr').attr('data-i')] }
   $('#ph_gcontenu').on('change', '.ph_dnom', lireDet)
   $('#ph_gcontenu').on('click', '.ph_dplus', function () { lireDet(); lireRegles(); if (DET.length < 30) DET.push({ nom: '{{Détecteur}} ' + (DET.length + 1), cmd: 0, h: '', m: [] }); guide() })
-  function presence(c) { return c.sub == 'binary' && (c.gen == 'PRESENCE' || /pr[ée]sence|presence|mouvement|motion|occupancy|occupation/i.test(c.nom)) && !/interval|sensib|timeout|d[ée]lai|tamper|sabotage|enable|activ/i.test(c.nom) }
+  function presence(c) { return c.det } // règle côté box : presencehabituelle_analyse::estDetecteur
   function detJeedom() { // détecteurs de présence de Jeedom pas encore déclarés, par pièce Jeedom
     var l = D.candidats.filter(function (c) { return presence(c) && !DET.some(function (d) { return d.cmd == c.id }) })
     return l.length ? '<select class="form-control input-sm ph_djeedom" style="display:inline-block;width:auto"><option value="">{{＋ détecteur de Jeedom…}}</option>'

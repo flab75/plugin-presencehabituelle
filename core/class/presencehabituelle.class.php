@@ -276,7 +276,7 @@ class presencehabituelle extends eqLogic {
   public static function candidats() {
     $eqs = []; foreach (eqLogic::all() as $e) $eqs[$e->getId()] = $e;
     $objs = []; foreach (jeeObject::all() as $o) $objs[$o->getId()] = $o->getName();
-    $r = []; $choisi = []; $suivi = self::suivi(); $src = [];
+    $r = []; $choisi = []; $suivi = self::suivi(); $src = []; $gens = [];
     $source = function ($t) use (&$src) { // nom du plugin de l'équipement (Virtuel, Zigbee2MQTT…), lu une fois par type
       if (!isset($src[$t])) { try { $src[$t] = $t == 'virtual' ? __('Virtuel', __FILE__) : plugin::byId($t)->getName(); } catch (Throwable $e) { $src[$t] = $t; } }
       return $src[$t];
@@ -290,7 +290,8 @@ class presencehabituelle extends eqLogic {
       $r[] = ['id' => $c->getId(), 'nom' => $c->getName(), 'eq' => $eq->getName(), 'objet' => $objs[$eq->getObject_id()] ?? '',
         'type' => $t, 'tg' => self::TYPES[$c->getGeneric_type()][0] ?? 'autre', /* type d'après le type générique, sans le choix de la page */ 'coche' => $coche, 'gen' => (string)$c->getGeneric_type(), 'hist' => (int)$c->getIsHistorized(), 'lisse' => (int)self::lisse($c),
         'actif' => (int)$eq->getIsEnable(), 'sub' => (string)$c->getSubType(), 'eqid' => (int)$eq->getId(),
-        'objid' => (int)$eq->getObject_id(), 'src' => $source((string)$eq->getEqType_name()), 'copie' => self::copie($c, $eq)];
+        'objid' => (int)$eq->getObject_id(), 'src' => $source((string)$eq->getEqType_name()), 'copie' => self::copie($c, $eq),
+        'det' => presencehabituelle_analyse::estDetecteur((string)$c->getGeneric_type(), (string)$c->getSubType(), $c->getName(), $eq->getName(), $gens[$eq->getId()] ??= array_map(fn($x) => (string)$x->getGeneric_type(), $eq->getCmd('info')))];
       $k = $eq->getId() . '|' . $t;
       if ($rang && (!isset($choisi[$k]) || $rang > $choisi[$k][0])) $choisi[$k] = [$rang, count($r) - 1];
     }

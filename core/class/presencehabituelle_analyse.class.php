@@ -40,6 +40,16 @@ class presencehabituelle_analyse {
     }
     return $r;
   }
+  /* Commande d'un détecteur de présence, toute marque : type générique PRESENCE de Jeedom, sinon le nom de la commande ou de l'équipement
+     (présence, mouvement, motion, occupancy, PIR, mmWave…) ; binaire ou 0/1 ; pas un réglage (délai, sensibilité, zone…) ni un équipement
+     qui est un capteur d'ouverture, de fumée, d'eau ou de gaz (type générique de l'une de ses commandes). ponytail: liste de mots, à compléter au besoin */
+  const DET_TYPES = ['OPENING', 'OPENING_WINDOW', 'SMOKE', 'FLOOD', 'GAS', 'SABOTAGE_DOOR', 'LOCK_STATE'];
+  public static function estDetecteur($gen, $sub, $nom, $eqNom, array $eqGens) {
+    if ($gen == 'PRESENCE') return true;
+    if (($sub != 'binary' && $sub != 'numeric') || array_intersect($eqGens, self::DET_TYPES)) return false;
+    return (bool)preg_match('/pr[ée]sence|mouvement|motion|occupancy|occupation|occupied|\bpir\b|mmwave|human|personne|person\b|people|bewegung|anwesenheit/iu', $nom . ' ' . $eqNom)
+      && !preg_match('/interval|sensib|sensitiv|timeout|d[ée]lai|delay|tamper|sabotage|enable|activ|distance|lux|lumin|illum|target|fading|cooldown|keep|count|zone|batter|temp|humid|calib|qualit|communic|statut|status|linkq|voltage|tension|puissance|power|consom|\bled\b|identify|reset/iu', $nom);
+  }
   /* Détecteurs de présence : [{nom, cmd (0 = non connecté à Jeedom), m: [cmdId des lampes qu'il allume]}], 30 au plus ; sans nom ni lampe = écarté */
   public static function detecteurs($x) {
     $r = [];

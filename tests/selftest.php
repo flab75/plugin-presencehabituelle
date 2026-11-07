@@ -36,6 +36,8 @@ for ($q = 0; $q < 10; $q++) {
   $LA[] = [$jr($q, 19), $jr($q, 20), true]; $LB[] = [$jr($q, 19) + 3, $jr($q, 20) + 3, true];
   $LC[] = [$jr($q, 19, 30), $jr($q, 21), true]; $LD[] = [$jr($q, 7, $q * 7), $jr($q, 8), true];
 }
+$ok($A::estDetecteur('PRESENCE', 'binary', 'Etat', 'X', []) && $A::estDetecteur('', 'binary', 'occupancy', 'Capteur cuisine', []) && $A::estDetecteur('', 'binary', 'Etat', 'Détecteur de mouvement', [])
+  && !$A::estDetecteur('', 'binary', 'motion', 'Porte', ['OPENING']) && !$A::estDetecteur('', 'numeric', 'motion_sensitivity', 'PIR', []) && !$A::estDetecteur('', 'string', 'presence', 'X', []), 'détecteur de présence reconnu');
 $ok($A::memes($LA, $LB) == 1 && $A::memes($LB, $LA) == 1 && $A::memes($LA, $LC) < .9, 'doublon : ' . $A::memes($LA, $LC));
 $LG = $A::union(['A' => $LA, 'C' => $LC]);
 $ok(count($LG) == 10 && $LG[0][0] == $jr(0, 19) && $LG[0][1] == $jr(0, 21) && $A::inter($LA, $LG) == $A::duree($LA) && $A::memes($LG, $A::union(['A' => $LA, 'C' => $LC])) == 1, 'groupe');
