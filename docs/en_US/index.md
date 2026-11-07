@@ -23,12 +23,13 @@ The plugin **acts on nothing yet**: it analyses your history and shows what it d
    - **Duplicates**: two commands that switch together (within 5 seconds) at least 9 times out of 10 are one lamp seen twice (for example by the device's plugin and by a gateway's), or two lamps always switched together. The historized one is kept; the other is unticked, marked "duplicate of …".
    - **Groups**: a command that is on only when others are, and switches with them (a Hue group, "Whole living room"), is unticked and marked "group of …": its lamps are enough.
    - **Lights without a generic type**: a binary command whose name or device suggests a lamp (lampe, applique, plafonnier, light…) is shown as a light, unticked, "generic type to fill in?".
-   - **Days without any light**: possible absences, to add to the periods not to analyse.
+   - **Days without any light**: possible absences, proposed unticked (a day without light can also be a summer day); tick those when the house was empty to add them to the periods not to analyse.
+   - **Smoothed history**: a lamp whose history is smoothed (beyond a few hours Jeedom keeps only an hourly average) allows no comparison; set its smoothing to "None" or watch it for 3 days.
    - **Possible absence command**: an armed alarm or a command whose name speaks of absence, holidays or simulation (binary, or numeric not smoothed), proposed unticked.
    - **Automatic lights?**: a lamp switched on nearly every day at the same time (within 5 minutes) or at sunset (within 10 minutes, from the box's location) is only flagged: untick it yourself if a program switches it on.
-   - **Without history**: nothing to compare. **Watch for 3 days** records their changes for 3 days (without analysing anything); then run the discovery again. Records of the commands you do not tick are deleted at the end.
+   - **Without history**: nothing to compare. **Watch for 3 days** records their changes for 3 days (without analysing anything); then run the discovery again. Records are kept 7 days after the end of the watch; then those of the commands you did not tick are deleted.
 
-   **Apply to the list** carries the ticked proposals over; nothing is saved before **Save**. **Back to the previous choice** reloads into the list the choice from before the last save (commands, groups, absence command, periods); save to go back to it. The changes of a non-historized command removed then added again are lost; a historized command is imported again from the history.
+   **Apply to the list** carries the ticked proposals over; nothing is saved before **Save**. **Back to the previous choice** reloads into the list the choice from before the last save (commands, groups, absence command, periods); save to go back to it. Before saving a choice that removes commands, the plugin asks for confirmation: the records of a removed command are deleted and do not come back with the previous choice; only the Jeedom history is imported again (usually 90 days, a few hours if smoothed).
 
    Periods when the plugin itself simulates presence will be excluded automatically, like its stops: it will not draw its trends from its own simulation.
 

@@ -215,6 +215,14 @@ class presencehabituelle_analyse {
     return $r;
   }
 
+  const LAMPE = '/(?<![\p{L}\d])(lampes?|lamps?|lights?|appliques?|plafonniers?|plafonds?|lustres?|spots?|suspensions?|ampoules?|bulbs?|leds?|veilleuses?|guirlandes?|lumi\p{L}*|[ée]clairages?|halog[èe]nes?|lampadaires?|chevets?)(?![\p{L}\d])/iu';
+  // Lumière sans type générique, d'après son nom ; commande annexe d'un équipement (voyant, disponibilité, pile, capteur de lumière…) : jamais une lampe
+  const ANNEXE = '/(dispo|availab|online|reachab|batter|(?<![\p{L}\d])piles?(?![\p{L}\d])|update|mise [àa] jour|lumin|indicat|voyant|(?<![\p{L}\d])leds?(?![\p{L}\d]))/iu';
+  const ETAT = '/^\s*(etat|état|state|statut|status|on|marche)\s*$/iu';
+  public static function nommee($cmd, $eq) {
+    return !preg_match(self::ANNEXE, $cmd) && (preg_match(self::LAMPE, $cmd) || (preg_match(self::ETAT, $cmd) && preg_match(self::LAMPE, $eq)));
+  }
+
   /* Découverte : intervalles allumés triés sans chevauchement ([début, fin, …], comme ceux d'intervalles()). */
   public static function duree(array $iv) { $d = 0; foreach ($iv as $i) $d += $i[1] - $i[0]; return $d; }
   public static function coupe(array $iv, $a, $b) { // ramenés à [a, b]
@@ -230,10 +238,11 @@ class presencehabituelle_analyse {
   }
   public static function union(array $listes) { return array_map(fn($s) => [$s[0], $s[1], true], self::sessions($listes)); }
 
-  // Part des bascules de $x (allumages, extinctions) que $y fait aussi, dans le même sens, à $tol s près
-  public static function memes(array $x, array $y, $tol = 5) {
-    $b = function ($iv) { $r = []; foreach ($iv as $i) { $r[] = [$i[0], 1]; $r[] = [$i[1], 0]; } return $r; };
-    $bx = $b($x); $by = $b($y); $m = count($by); $n = 0; $j = 0;
+  /* Part des bascules de $x (allumages, extinctions) que $y fait aussi, dans le même sens, à $tol s près.
+     $a, $b : bornes d'une fenêtre coupée par coupe() ; une bascule posée sur la borne n'en est pas une (déjà allumée, encore allumée) */
+  public static function memes(array $x, array $y, $tol = 5, $a = null, $b = null) {
+    $f = function ($iv) use ($a, $b) { $r = []; foreach ($iv as $i) { if ($a === null || $i[0] != $a) $r[] = [$i[0], 1]; if ($b === null || $i[1] != $b) $r[] = [$i[1], 0]; } return $r; };
+    $bx = $f($x); $by = $f($y); $m = count($by); $n = 0; $j = 0;
     if (!$bx) return 0;
     foreach ($bx as [$t, $s]) {
       while ($j < $m && $by[$j][0] < $t - $tol) $j++;
@@ -263,10 +272,10 @@ class presencehabituelle_analyse {
     $jours = []; foreach ($iv as $i) $jours[date('Y-m-d', $i[0])][] = $i[0];
     if (count($jours) < 7) return null;
     $part = function ($f, $tol) use ($jours) { // valeur partagée par le plus de jours
+      $val = array_map(fn($ts) => array_values(array_filter(array_map($f, $ts), fn($w) => $w !== null)), $jours); // une fois par allumage
       $mieux = [null, 0];
-      foreach ($jours as $ts) foreach ($ts as $t) {
-        if (($c = $f($t)) === null) continue;
-        $n = 0; foreach ($jours as $u) foreach ($u as $v) if (($w = $f($v)) !== null && abs($w - $c) <= $tol) { $n++; break; }
+      foreach ($val as $ws) foreach ($ws as $c) {
+        $n = 0; foreach ($val as $u) foreach ($u as $w) if (abs($w - $c) <= $tol) { $n++; break; }
         if ($n > $mieux[1]) $mieux = [$c, $n];
       }
       return [$mieux[0], $mieux[1] / count($jours)];

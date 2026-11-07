@@ -173,7 +173,14 @@
 		"Sans historique": "Without history",
 		"signalées seulement : à décocher vous-même si un programme les allume": "flagged only: untick them yourself if a program switches them on",
 		"sur les": "over the",
-		"type générique à renseigner ?": "generic type to fill in?"
+		"type générique à renseigner ?": "generic type to fill in?",
+		"commande(s) retirée(s) du suivi": "command(s) removed from tracking",
+		"Leurs relevés seront effacés : si vous les cochez à nouveau, seul l’historique de Jeedom est repris (90 jours, quelques heures pour un historique lissé). Continuer ?": "Their records will be deleted: if you tick them again, only the Jeedom history is imported (90 days, a few hours for a smoothed history). Continue?",
+		"absences possibles (ou journées sans lumière, en été) : à cocher si vous étiez absent ; cochée = ajoutée aux périodes à ne pas analyser": "possible absences (or days without light, in summer): tick if you were away; ticked = added to the periods not to analyse",
+		"Historique lissé": "Smoothed history",
+		"relancez la découverte ensuite (relevés gardés 7 jours après).": "run the discovery again afterwards (records kept 7 days after).",
+		"Rien n’est enregistré tant que vous ne cliquez pas sur Enregistrer. Les relevés des commandes retirées entre-temps ne reviennent pas : seul l’historique de Jeedom est repris.": "Nothing is saved until you click Save. The records of commands removed in the meantime do not come back: only the Jeedom history is imported.",
+		"Jeedom n’en garde qu’une moyenne horaire : rien à comparer. Réglez leur lissage sur « Aucun » (configuration de la commande, onglet Historique), ou observez-les": "Jeedom only keeps an hourly average: nothing to compare. Set their smoothing to \"None\" (command configuration, History tab), or watch them"
 	},
 	"plugins/presencehabituelle/desktop/php/presencehabituelle.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",

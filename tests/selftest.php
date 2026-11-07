@@ -47,6 +47,13 @@ $ok($ab == [['2026-03-04', '2026-03-05']], 'absences : ' . json_encode($ab));
 $cou = []; $LE = [];
 for ($q = 0; $q < 10; $q++) { $cou[date('Y-m-d', $jr($q, 0))] = $jr($q, 18, 2 * $q); $LE[] = [$jr($q, 18, 2 * $q + 2), $jr($q, 23), true]; }
 $ok($A::automatique($LA) == ['heure' => 1140] && $A::automatique($LD) === null && $A::automatique($LE, $cou) == ['soleil' => 2], 'automatique : ' . json_encode([$A::automatique($LD), $A::automatique($LE, $cou)]));
+// bascules aux bords d'une fenêtre coupée : pas de vraies bascules (déjà allumée au début, encore allumée à la fin)
+$X = [[100, 200, true], [500, 1000, true]]; $Y = [[100, 300, true], [500, 1000, true]];
+$ok($A::memes($X, $Y) == .75 && $A::memes($X, $Y, 5, 100, 1000) == .5, 'bornes : ' . $A::memes($X, $Y, 5, 100, 1000));
+// lumières sans type d'après le nom ; voyant, disponibilité, capteur de lumière : non
+$ok($A::nommee('Lumière', 'PriseLumiereBoite') && $A::nommee('Etat', 'Ruban LED') && $A::nommee('Applique', 'Relais 2')
+  && !$A::nommee('Etat LED', 'PriseSerre') && !$A::nommee('Luminosité basse', 'Détecteur') && !$A::nommee('Disponibilité', 'Lampe bureau')
+  && !$A::nommee('Etat', 'Prise frigo') && !$A::nommee('Batterie faible', 'Lampe'), 'lumières d’après le nom');
 echo "découverte OK\n";
 
 // journée 04:00 → 04:00 : dim. 22 h = semaine, sam. 01 h = soir du vendredi = week-end, lun. 01 h = soir du dimanche = semaine

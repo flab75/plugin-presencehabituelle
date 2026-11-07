@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1
+- Découverte : les « Etat LED » et autres voyants d'une prise ne sont plus pris pour des lampes ; un équipement qui a déjà une lumière typée ne propose pas ses autres binaires ; les bascules en bord de période ne comptent plus dans les doublons et groupes ; chaîne de doublons résolue ; latitude à virgule acceptée.
+- Jours sans lumière proposés décochés ; lampes à historique lissé signalées.
+- Observation : relevés gardés 7 jours après la fin, plus d'orphelins quand on observe à nouveau.
+- Le type choisi sur la page est gardé au rechargement ; une seule découverte à la fois.
+- Confirmation avant d'enregistrer un choix qui retire des commandes.
+
 ## 0.7
 - **Découvrir** : propositions tirées des 30 derniers jours, à confirmer : doublons (même lampe vue par deux commandes), groupes (type groupe Hue), lumières sans type générique d'après leur nom, jours sans aucune lumière (absences possibles), commande d'absence possible, lumières allumées à heure fixe ou au coucher du soleil (signalées seulement) ; « Observer 3 jours » pour les commandes sans historique.
 - **Revenir au choix d'avant** : recharge le choix d'avant le dernier enregistrement.

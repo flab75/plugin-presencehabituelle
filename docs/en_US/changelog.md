@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1
+- Discover: "LED state" and other indicators of a plug are no longer taken for lamps; a device that already has a typed light does not offer its other binaries; switches on the period's bounds no longer count in duplicates and groups; duplicate chains resolved; latitude with a comma accepted.
+- Days without light proposed unticked; lamps with smoothed history flagged.
+- Watch: records kept 7 days after the end, no more orphans when watching again.
+- The type chosen on the page is kept on reload; one discovery at a time.
+- Confirmation before saving a choice that removes commands.
+
 ## 0.7
 - **Discover**: proposals drawn from the last 30 days, to be confirmed: duplicates (one lamp seen by two commands), groups (such as Hue groups), lights without a generic type from their name, days without any light (possible absences), possible absence command, lights switched on at a fixed time or at sunset (flagged only); "Watch for 3 days" for commands without history.
 - **Back to the previous choice**: reloads the choice from before the last save.

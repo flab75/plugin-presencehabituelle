@@ -76,6 +76,12 @@ class presencehabituelle extends eqLogic {
     return is_array($o) && (int)($o['fin'] ?? 0) > time() ? array_map('intval', (array)($o['ids'] ?? [])) : [];
   }
 
+  public static function observees() { // observées, y compris celles dont l'observation est finie mais les relevés encore gardés
+    $o = config::byKey('observation', __CLASS__, []);
+    if (is_string($o)) $o = json_decode($o, true);
+    return is_array($o) ? array_map('intval', (array)($o['ids'] ?? [])) : [];
+  }
+
   public static function finObservee() {
     $o = config::byKey('observation', __CLASS__, []);
     if (is_string($o)) $o = json_decode($o, true);
@@ -85,6 +91,9 @@ class presencehabituelle extends eqLogic {
   public static function observer(array $ids, $jours = 3) {
     $ids = array_values(array_filter(array_map('intval', $ids), fn($id) => is_object($c = cmd::byId($id)) && $c->getType() == 'info'));
     if (!$ids) throw new Exception(__('Aucune commande à observer', __FILE__));
+    $o = config::byKey('observation', __CLASS__, []); // observation précédente pas encore nettoyée : ses relevés restent suivis, jamais orphelins
+    if (is_string($o)) $o = json_decode($o, true);
+    if (is_array($o)) $ids = array_values(array_unique(array_merge($ids, array_map('intval', (array)($o['ids'] ?? [])))));
     $ids = array_slice($ids, 0, 500);
     config::save('observation', json_encode(['fin' => $fin = time() + 86400 * $jours, 'ids' => $ids]), __CLASS__);
     foreach ($ids as $id) self::noter($id);
@@ -92,11 +101,13 @@ class presencehabituelle extends eqLogic {
     return $fin;
   }
 
-  // Fin d'observation : les relevés des commandes ni suivies ni d'absence partent
+  /* Fin d'observation : relevés gardés GARDE jours après la fin (le temps de relancer la découverte),
+     puis ceux des commandes ni suivies ni d'absence partent */
+  const GARDE = 7;
   public static function finObservation() {
     $o = config::byKey('observation', __CLASS__, []);
     if (is_string($o)) $o = json_decode($o, true);
-    if (!is_array($o) || !$o || (int)($o['fin'] ?? 0) > time()) return;
+    if (!is_array($o) || !$o || (int)($o['fin'] ?? 0) + 86400 * self::GARDE > time()) return;
     config::remove('observation', __CLASS__);
     $gardes = self::ids(false);
     foreach ((array)($o['ids'] ?? []) as $id) if (!in_array((int)$id, $gardes, true)) DB::Prepare('DELETE FROM ' . self::TABLE . ' WHERE cmd_id = ?', [(int)$id], DB::FETCH_TYPE_ROW);
@@ -184,10 +195,11 @@ class presencehabituelle extends eqLogic {
   public static function candidats() {
     $eqs = []; foreach (eqLogic::all() as $e) $eqs[$e->getId()] = $e;
     $objs = []; foreach (jeeObject::all() as $o) $objs[$o->getId()] = $o->getName();
-    $r = []; $choisi = [];
+    $r = []; $choisi = []; $suivi = self::suivi();
     foreach (cmd::byTypeSubType('info') as $c) {
       if (!($eq = $eqs[$c->getEqLogic_id()] ?? null) || $eq->getEqType_name() == __CLASS__) continue;
       [$t, $coche] = self::TYPES[$c->getGeneric_type()] ?? ['autre', 0];
+      $t = $suivi[$c->getId()]['t'] ?? $t; // type choisi sur la page (ex. lumière sans type générique) : gardé
       // préférée : binaire ou LIGHT_STATE_BOOL (une luminosité peut ne pas retomber à 0 à l'extinction)
       $rang = $coche ? ($c->getSubType() == 'binary' || $c->getGeneric_type() == 'LIGHT_STATE_BOOL' ? 2 : 1) : 0;
       $r[] = ['id' => $c->getId(), 'nom' => $c->getName(), 'eq' => $eq->getName(), 'objet' => $objs[$eq->getObject_id()] ?? '',
@@ -226,7 +238,7 @@ class presencehabituelle extends eqLogic {
     $jours = self::jours('amorcer');
     foreach (array_unique($gardes) as $id) if (!isset($avant[$id]) && $id != $avantX) { $n += self::amorcer(cmd::byId($id), $jours); self::noter($id); }
     $vieux = ['suivi' => $avant, 'exclure' => $avantX, 'exclusions' => (string)config::byKey('exclusions', __CLASS__, '')];
-    if ($vieux != ['suivi' => $propre, 'exclure' => $exclure, 'exclusions' => (string)$exclusions]) // « Revenir au choix d'avant »
+    if (config::byKey('suivi', __CLASS__, '') !== '' && $vieux != ['suivi' => $propre, 'exclure' => $exclure, 'exclusions' => (string)$exclusions]) // « Revenir au choix d'avant »
       config::save('precedent', json_encode($vieux + ['date' => date('Y-m-d H:i')]), __CLASS__);
     config::save('suivi', json_encode($propre), __CLASS__);
     config::save('exclure_cmd', $exclure ?: '', __CLASS__);
@@ -267,7 +279,6 @@ class presencehabituelle extends eqLogic {
 
   /* Découverte : propositions tirées des 30 derniers jours, à confirmer sur la page (rien n'est enregistré ici).
      Aucune connaissance de la maison : types génériques, noms, et comportements dans l'historique. */
-  const LAMPE = '/(?<![\p{L}\d])(lampes?|lamps?|lights?|appliques?|plafonniers?|plafonds?|lustres?|spots?|suspensions?|ampoules?|bulbs?|leds?|veilleuses?|guirlandes?|lumi\p{L}*|[ée]clairages?|halog[èe]nes?|lampadaires?|chevets?)(?![\p{L}\d])/iu';
   const ABSENCE = '/(absen|vacanc|simulation|away|holiday|d[ée]part)/iu';
   const DECOUVERTE = 30; // jours lus
 
@@ -275,43 +286,51 @@ class presencehabituelle extends eqLogic {
     $A = 'presencehabituelle_analyse'; $fin = time(); $debut = $fin - 86400 * self::DECOUVERTE;
     $suivi = self::suivi(); $lampes = []; $eqNomme = []; $nommees = []; $absence = [];
     $sansX = !(int)config::byKey('exclure_cmd', __CLASS__, 0);
-    foreach (self::candidats() as $c) {
+    $cands = self::candidats(); $eqLampe = [];
+    foreach ($cands as $c) if (in_array($c['gen'], ['LIGHT_STATE', 'LIGHT_STATE_BOOL'], true)) $eqLampe[$c['eqid']] = 1; // ses autres binaires sont annexes
+    foreach ($cands as $c) {
       if (!$c['actif']) continue;
       $txt = $c['nom'] . ' ' . $c['eq'];
       // commande d'absence possible : alarme activée, ou nom parlant ; pas de texte, pas de lissé (refusés à l'enregistrement)
       if ($sansX && $c['sub'] != 'string' && !$c['lisse'] && ($c['gen'] == 'ALARM_ENABLE_STATE' || preg_match(self::ABSENCE, $txt)))
         $absence[] = ['h' => cmd::cmdToHumanReadable('#' . $c['id'] . '#'), 'nom' => self::nom($c['id'], true),
           'alarme' => $c['gen'] == 'ALARM_ENABLE_STATE'];
-      if ($c['type'] == 'autre' && in_array($c['gen'], ['', 'GENERIC_INFO'], true) && $c['sub'] == 'binary' && preg_match(self::LAMPE, $txt)) {
+      if ($c['type'] == 'autre' && in_array($c['gen'], ['', 'GENERIC_INFO'], true) && $c['sub'] == 'binary' && !isset($eqLampe[$c['eqid']])
+        && $A::nommee($c['nom'], $c['eq'])) {
         if (isset($eqNomme[$c['eqid']])) continue; // une par équipement
         $eqNomme[$c['eqid']] = 1; $nommees[] = $c['id'];
       } elseif (!($c['type'] == 'lumiere' && ($c['coche'] || isset($suivi[$c['id']])))) continue;
       $lampes[$c['id']] = $c;
     }
-    $observees = self::observes();
-    $iv = []; $deb = []; $sans = [];
+    $observees = self::observes(); $releves = array_flip(array_merge(self::ids(false), self::observees())); // relevés du plugin lus seulement pour celles-ci (jamais des restes)
+    $iv = []; $deb = []; $sans = []; $lisses = [];
     foreach ($lampes as $id => $c) {
-      $ev = self::evs($id); // relevés du plugin (suivie ou observée), sinon historique Jeedom
+      $ev = isset($releves[$id]) ? self::evs($id) : []; // relevés du plugin (suivie ou observée), sinon historique Jeedom
       if ($ev) {
         $av = null; $e = [];
         foreach ($ev as $x) if ($x[0] < $debut) $av = $x; else $e[] = $x;
         if ($av) array_unshift($e, [$debut, $av[1], true]);
         $ev = $e;
       } elseif (is_object($cmd = cmd::byId($id)) && $cmd->getIsHistorized()) $ev = self::historique($cmd, $debut);
-      if (!$ev) { if (!in_array($id, $observees, true)) $sans[] = $id; continue; }
+      $lisse = !isset($releves[$id]) && $c['lisse']; // moyenne horaire : seules les 2 dernières heures sont exactes
+      if (!$ev || ($lisse && $fin - $ev[0][0] < 86400)) { if (!in_array($id, $observees, true)) { if ($lisse) $lisses[] = $id; else $sans[] = $id; } continue; }
       $deb[$id] = $ev[0][0]; $iv[$id] = $A::intervalles($ev, $fin);
     }
     $ids = array_keys($iv);
     $commun = function (...$l) use ($deb) { return max(array_map(fn($x) => $deb[$x], $l)); };
 
     // 1. Doublons : mêmes bascules à 5 s près, 90 % des fois dans les deux sens ; on garde l'historisée exacte
-    $rang = fn($id) => [$lampes[$id]['hist'] && !$lampes[$id]['lisse'], (bool)$lampes[$id]['hist'], $lampes[$id]['sub'] == 'binary', count($iv[$id]), -$id];
+    $rang = fn($id) => [isset($suivi[$id]), $lampes[$id]['hist'] && !$lampes[$id]['lisse'], (bool)$lampes[$id]['hist'], $lampes[$id]['sub'] == 'binary', count($iv[$id]), -$id];
     $doublon = [];
     foreach ($ids as $i => $a) foreach (array_slice($ids, $i + 1) as $b) {
       if (isset($doublon[$a]) || isset($doublon[$b]) || $fin - ($s = $commun($a, $b)) < 86400) continue;
       $x = $A::coupe($iv[$a], $s, $fin); $y = $A::coupe($iv[$b], $s, $fin);
-      if (count($x) < 2 || count($y) < 2 || $A::memes($x, $y) < .9 || $A::memes($y, $x) < .9) continue;
+      if (count($x) < 2 || count($y) < 2 || $A::memes($x, $y, 5, $s, $fin) < .9 || $A::memes($y, $x, 5, $s, $fin) < .9) continue;
       [$g, $p] = $rang($a) >= $rang($b) ? [$a, $b] : [$b, $a];
+      $doublon[$p] = $g;
+    }
+    foreach ($doublon as $p => $g) { // a doublon de b, puis b doublon de c : a doublon de c
+      for ($n = 0; isset($doublon[$g]) && $n < 50; $n++) $g = $doublon[$g];
       $doublon[$p] = $g;
     }
     $canon = array_values(array_diff($ids, array_keys($doublon)));
@@ -328,7 +347,7 @@ class presencehabituelle extends eqLogic {
       if (count($m) < 2 || $fin - ($s = $commun($g, ...$m)) < 86400) continue;
       $x = $A::coupe($iv[$g], $s, $fin);
       $u = $A::union(array_combine($m, array_map(fn($l) => $A::coupe($iv[$l], $s, $fin), $m)));
-      if (count($x) >= 2 && $A::memes($x, $u) >= .8 && $A::memes($u, $x) >= .8) $groupe[$g] = $m;
+      if (count($x) >= 2 && $A::memes($x, $u, 5, $s, $fin) >= .8 && $A::memes($u, $x, 5, $s, $fin) >= .8) $groupe[$g] = $m;
     }
     $seules = array_values(array_diff($canon, array_keys($groupe)));
 
@@ -336,7 +355,8 @@ class presencehabituelle extends eqLogic {
     $absences = $A::absences(array_intersect_key($iv, array_flip($seules)), $deb, $A::jours($debut, $fin, self::exclusions()));
 
     // 6. Allumée à heure fixe ou au coucher du soleil : signalée seulement
-    $lat = (float)config::byKey('info::latitude', 'core', 0); $lon = (float)config::byKey('info::longitude', 'core', 0);
+    $geo = fn($k) => (float)str_replace(',', '.', (string)config::byKey($k, 'core', 0)); // « 48,85 » saisi à la française
+    $lat = $geo('info::latitude'); $lon = $geo('info::longitude');
     $couchers = [];
     if ($lat || $lon) for ($t = strtotime('today', $debut); $t <= $fin; $t = strtotime('+1 day', $t))
       if (is_int($c = date_sun_info($t + 43200, $lat, $lon)['sunset'] ?? null)) $couchers[date('Y-m-d', $t)] = $c;
@@ -346,9 +366,11 @@ class presencehabituelle extends eqLogic {
     $n = fn($id) => self::nom($id, true);
     return ['jours' => self::DECOUVERTE,
       'doublons' => array_map(fn($p, $g) => ['id' => $p, 'nom' => $n($p), 'de' => $g, 'nomDe' => $n($g)], array_keys($doublon), $doublon),
-      'groupes' => array_map(fn($g, $m) => ['id' => $g, 'nom' => $n($g), 'membres' => array_map($n, array_values(array_diff($m, array_keys($groupe))) ?: $m)], array_keys($groupe), $groupe),
+      'groupes' => array_map(function ($g, $m) use ($n, $groupe) { $m = array_values(array_diff($m, array_keys($groupe))) ?: $m;
+        return ['id' => $g, 'nom' => $n($g), 'ids' => $m, 'membres' => array_map($n, $m)]; }, array_keys($groupe), $groupe),
       'nommees' => array_map(fn($id) => ['id' => $id, 'nom' => $n($id)], $nommees),
       'sans' => array_map(fn($id) => ['id' => $id, 'nom' => $n($id)], $sans),
+      'lisses' => array_map(fn($id) => ['id' => $id, 'nom' => $n($id)], $lisses),
       'observation' => $observees ? self::finObservee() : 0,
       'absences' => array_map(fn($p) => $p[0] . ' → ' . $p[1], $absences),
       'automatiques' => $auto, 'absence' => $absence];
