@@ -139,7 +139,8 @@
       return (c.type == 'lumiere' || c.type == 'volet') && c.coche
     })
   }
-  function memeDet(a, b) { return DET.some(function (d) { return d.m.indexOf(+a) >= 0 && d.m.indexOf(+b) >= 0 }) } // comme memeDetecteur côté box
+  function memeDet(a, b) { var x = cand(a), y = cand(b); if (x && x.copie && x.copie == b || y && y.copie && y.copie == a) return false // une recopie reste un doublon
+    return DET.some(function (d) { return d.m.indexOf(+a) >= 0 && d.m.indexOf(+b) >= 0 }) } // comme memeDetecteur côté box
   function repondre(id, r, de) { // false : refusée (doublon d'un doublon)
     var c = cand(id), s = D.suivi[id]
     if (!r) { delete REP[id]; return true }
@@ -352,7 +353,7 @@
   }
   $('#ph_gcontenu').on('change', '.ph_djeedom', function () { // lampes suivies de la même pièce Jeedom pré-cochées, à vérifier avec « Lampes… »
     var c = D.candidats.find(function (x) { return x.id == this.value }, this); if (!c) return; lireDet(); lireRegles(); if (DET.length >= 30) return
-    DET.push({ nom: c.eq, cmd: +c.id, h: '#[' + c.objet + '][' + c.eq + '][' + c.nom + ']#', m: Object.keys(D.suivi).filter(function (id) { var l = D.candidats.find(function (x) { return x.id == id }); return D.suivi[id].t == 'lumiere' && l && l.objid && l.objid == c.objid && !(REP[id] && REP[id].r != 'oui') }).map(Number) })
+    DET.push({ nom: c.eq, cmd: +c.id, h: '#[' + c.objet + '][' + c.eq + '][' + c.nom + ']#', m: Object.keys(D.suivi).filter(function (id) { var l = D.candidats.find(function (x) { return x.id == id }); return D.suivi[id].t == 'lumiere' && l && l.objid && l.objid == c.objid && !(REP[id] && REP[id].r != 'oui') && !(l.copie && D.suivi[l.copie]) }).map(Number) })
     guide()
   })
   function oublier(d) { if (PL && d.cmd && !D.suivi[d.cmd] && DET.filter(function (x) { return x.cmd == d.cmd }).length < 2) delete PL.marqueurs[d.cmd] } // pastille du détecteur retirée avec lui (sinon invisible, impossible à supprimer)
@@ -360,7 +361,7 @@
   $('#ph_gcontenu').on('click', '.ph_dsans', function () { var d = det(this); oublier(d); d.cmd = 0; d.h = ''; guide(); if (PL) dessiner() })
   $('#ph_gcontenu').on('click', '.ph_dcmd', function () { var d = det(this); jeedom.cmd.getSelectModal({ cmd: { type: 'info' } }, function (r) { if (DET.some(function (x) { return x != d && x.cmd == r.cmd.id })) return alerte('{{Cette commande est déjà celle d’un autre détecteur.}}', 'warning'); if (d.cmd != r.cmd.id) oublier(d); d.cmd = +r.cmd.id; d.h = r.human; d.perdu = 0; guide(); if (PL) dessiner() }) })
   $('#ph_gcontenu').on('click', '.ph_dlampes', function () { var d = det(this); lampes('{{Lampes allumées par}} ' + d.nom, 0, d.m, function (v) {
-    lire(); d.m = v; v.forEach(function (x) { var de = REP[x] && REP[x].r == 'doublon' && REP[x].de; if (de === false || de === undefined) return
+    lire(); d.m = v; v.forEach(function (x) { var de = REP[x] && REP[x].r == 'doublon' && REP[x].de; if (de === false || de === undefined || (cand(x) || {}).copie == de) return
       repondre(String(x), 'oui'); delete NOTES[x]; if (D.suivi[x]) D.suivi[x].g = (D.suivi[de] || {}).g || '' }) // une lampe du détecteur n'est le doublon de personne ; elle reprend le groupe de sa jumelle
     changeGuide()
   }, 1) })

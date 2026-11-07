@@ -450,8 +450,8 @@ class presencehabituelle extends eqLogic {
       $doublon[$p] = $g;
     }
     foreach ($doublon as $p => $g) { // par une 3e commande (relais, virtuel) : deux lampes d'un même détecteur jamais fusionnées
-      if ($A::memeDetecteur($det, $p, $g)) { unset($doublon[$p]); continue; }
-      foreach ($doublon as $q => $h) if ($q != $p && $h == $g && isset($doublon[$p]) && $A::memeDetecteur($det, $p, $q)) unset($doublon[$q]);
+      if ($A::memeDetecteur($det, $p, $g) && !isset($copies[$p])) { unset($doublon[$p]); continue; } // une recopie (virtuel) reste un doublon, même sur un détecteur
+      foreach ($doublon as $q => $h) if ($q != $p && $h == $g && isset($doublon[$p]) && !isset($copies[$q]) && $A::memeDetecteur($det, $p, $q)) unset($doublon[$q]);
     }
     $canon = array_values(array_diff($ids, array_keys($doublon)));
 
