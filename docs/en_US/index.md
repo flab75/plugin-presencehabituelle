@@ -53,7 +53,7 @@ The **Trends** tab shows, for each lamp or group:
 - how long it stays on: average, median, half of the switch-ons between two values, shortest and longest, the share of passes shorter than 3 minutes, and unusual durations;
 - lamps switched on together.
 
-In the summary, "mostly on" = at least one day in four; for a room on a sensor, whose brief passes touch almost every hour, at least half the days of its most frequent hour.
+In the summary, "mostly on" = at least one day in four; for a room on a sensor, whose brief passes touch almost every hour, at least one day in four and at least half the days of its most frequent hour.
 
 A row (weekdays or weekend) taken from fewer than 10 days is marked "to be confirmed".
 
@@ -74,7 +74,7 @@ At the top of the page: **Configuration** opens the plugin configuration (histor
 The **Plan** tab draws the house, one plan per floor:
 
 1. **＋ Floor**: name it ("Ground floor", "First floor"…); the arrows change the order. **Image…** uploads the floor plan: a photo of a paper plan, a screenshot, a software export (PNG, JPEG…). It is reduced to 2,000 pixels and kept on the box; without an image, you draw on a grid.
-2. **Place**: click a light or a shutter under "Not on the plan", then the spot on the plan. Drag a marker to move it; the **Delete** tool sends it back to the list. If you already have a Jeedom design with your lights placed, **Take the positions from a design** reuses them (centre of each widget, in proportion to the design: use the design's background as the floor image).
+2. **Place**: click a light or a shutter under "Not on the plan", then the spot on the plan. Drag a marker to move it; the **Delete** tool sends it back to the list. Presence sensors linked to Jeedom (Guide) can be placed too (purple marker, walking icon); they do not count in the trends. A marker placed outside the room given by its Jeedom room or its name ("Bathroom 1st" placed on the ground floor, staircase lamp in the next room) gets an orange dashed outline and its tooltip says why: it is only flagged, it is allowed. If you already have a Jeedom design with your lights placed, **Take the positions from a design** reuses them (centre of each widget, in proportion to the design: use the design's background as the floor image).
 3. **Room**: click the corners, then "Finish the shape", and name it. The lamps of a room are analysed together, like a group; a group typed under "Followed commands" takes precedence. Two rooms with the same name form a single group, separate from a typed group of the same name.
 4. **Passage**: click both ends (a door, a corridor, the top of a staircase), then choose the two linked rooms and the type; for a staircase, the second room may be on another floor. The plugin counts the **sequences**: the times a light of the second room turns on less than 3 minutes after a light of the first one turns off (and the other way round). They will be used for the simulation route.
 5. **Zone to exclude**: a part of the house you want neither analysed nor simulated (a guest room, a rented flat): the commands placed inside are ignored.

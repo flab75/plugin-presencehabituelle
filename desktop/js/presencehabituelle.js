@@ -229,10 +229,10 @@
     })
     if (!vis.length) h += '<tr><td><small>{{Rien avec ces filtres.}}</small></td></tr>'
     h += '</tbody></table>'
-    var hors = PL ? suivis.filter(function (id) { return !PL.marqueurs[id] }) : []
+    var hors = PL ? placables().filter(function (id) { return !PL.marqueurs[id] }) : []
     h += '<legend style="font-size:1.1em">2. {{Où sont-elles ?}} <small>({{facultatif}})</small></legend>'
-      + (hors.length ? '<p>' + hors.map(function (id) { return '<a class="btn btn-xs btn-default ph_gplacer" data-id="' + esc(id) + '" style="margin:0 3px 3px 0"><i class="fas fa-map-marker-alt"></i> ' + esc(libelle(id)) + '</a>' }).join('') + '</p><p><small>{{Cliquez pour la placer sur le plan (pièces et passages se dessinent dans l’onglet Plan).}}</small></p>'
-        : '<p><small>' + (!PL ? '{{Plan pas encore chargé.}}' : suivis.length ? '{{Tout est placé.}}' : '{{Rien à placer.}}') + '</small></p>')
+      + (hors.length ? '<p>' + hors.map(function (id) { return '<a class="btn btn-xs btn-default ph_gplacer" data-id="' + esc(id) + '" style="margin:0 3px 3px 0"><i class="fas fa-' + (estDet(id) ? 'walking' : 'map-marker-alt') + '"></i> ' + esc(libelle(id)) + '</a>' }).join('') + '</p><p><small>{{Cliquez pour la placer sur le plan (pièces et passages se dessinent dans l’onglet Plan).}}</small></p>'
+        : '<p><small>' + (!PL ? '{{Plan pas encore chargé.}}' : placables().length ? '{{Tout est placé.}}' : '{{Rien à placer.}}') + '</small></p>')
     h += '<legend style="font-size:1.1em">3. {{Des règles ?}} <small>({{facultatif}})</small></legend><p><small>{{« Peut s’allumer » : seulement dans ces plages ; « jamais allumée » : jamais dans celles-ci. De 23:00 à 07:00 passe minuit ; de 00:00 à 00:00 = toute la journée. Semaine et week-end : comme dans la configuration du plugin (par défaut, le week-end va du vendredi 16:00 au lundi 04:00).}}</small></p>'
       + '<table class="table table-condensed"><tbody>'
     suivis.forEach(function (id) {
@@ -355,9 +355,10 @@
     DET.push({ nom: c.eq, cmd: +c.id, h: '#[' + c.objet + '][' + c.eq + '][' + c.nom + ']#', m: Object.keys(D.suivi).filter(function (id) { var l = D.candidats.find(function (x) { return x.id == id }); return D.suivi[id].t == 'lumiere' && l && l.objid && l.objid == c.objid && !(REP[id] && REP[id].r != 'oui') }).map(Number) })
     guide()
   })
-  $('#ph_gcontenu').on('click', '.ph_dmoins', function () { var d = det(this); DET.splice(DET.indexOf(d), 1); guide() })
-  $('#ph_gcontenu').on('click', '.ph_dsans', function () { var d = det(this); d.cmd = 0; d.h = ''; guide() })
-  $('#ph_gcontenu').on('click', '.ph_dcmd', function () { var d = det(this); jeedom.cmd.getSelectModal({ cmd: { type: 'info' } }, function (r) { d.cmd = +r.cmd.id; d.h = r.human; d.perdu = 0; guide() }) })
+  function oublier(d) { if (PL && d.cmd && !D.suivi[d.cmd] && DET.filter(function (x) { return x.cmd == d.cmd }).length < 2) delete PL.marqueurs[d.cmd] } // pastille du détecteur retirée avec lui (sinon invisible, impossible à supprimer)
+  $('#ph_gcontenu').on('click', '.ph_dmoins', function () { var d = det(this); oublier(d); DET.splice(DET.indexOf(d), 1); guide(); if (PL) dessiner() })
+  $('#ph_gcontenu').on('click', '.ph_dsans', function () { var d = det(this); oublier(d); d.cmd = 0; d.h = ''; guide(); if (PL) dessiner() })
+  $('#ph_gcontenu').on('click', '.ph_dcmd', function () { var d = det(this); jeedom.cmd.getSelectModal({ cmd: { type: 'info' } }, function (r) { if (DET.some(function (x) { return x != d && x.cmd == r.cmd.id })) return alerte('{{Cette commande est déjà celle d’un autre détecteur.}}', 'warning'); if (d.cmd != r.cmd.id) oublier(d); d.cmd = +r.cmd.id; d.h = r.human; d.perdu = 0; guide(); if (PL) dessiner() }) })
   $('#ph_gcontenu').on('click', '.ph_dlampes', function () { var d = det(this); lampes('{{Lampes allumées par}} ' + d.nom, 0, d.m, function (v) {
     lire(); d.m = v; v.forEach(function (x) { var de = REP[x] && REP[x].r == 'doublon' && REP[x].de; if (de === false || de === undefined) return
       repondre(String(x), 'oui'); delete NOTES[x]; if (D.suivi[x]) D.suivi[x].g = (D.suivi[de] || {}).g || '' }) // une lampe du détecteur n'est le doublon de personne ; elle reprend le groupe de sa jumelle
@@ -468,6 +469,23 @@
   function libelle(id) { var c = D && D.candidats.find(function (x) { return x.id == id }); return c ? c.eq + (c.nom != 'Etat' && c.nom != 'État' ? ' ' + c.nom : '') : '#' + id }
   function etage(id) { return PL.etages.find(function (e) { return e.id == id }) }
   function piece(id) { return PL.pieces.find(function (x) { return x.id == id }) }
+  function estDet(id) { return !D.suivi[id] && DET.some(function (d) { return d.cmd == id }) } // pastille d'un détecteur relié à Jeedom (ponytail: un détecteur non relié n'a pas de commande, donc pas de pastille)
+  function placables() { var l = Object.keys(D.suivi); DET.forEach(function (d) { if (d.cmd && l.indexOf(String(d.cmd)) < 0) l.push(String(d.cmd)) }); return l }
+  function ailleurs(id) { // pastille hors de la pièce que disent sa pièce Jeedom ou son nom : signalé, permis (lampe d'escalier, « SdB 1er » posée au RDC…)
+    var m = PL.marqueurs[id], c = D.candidats.find(function (x) { return x.id == id }); if (!m || !c) return ''
+    var ici = PL.pieces.find(function (o) { return o.e == m.e && dans(m.x, m.y, o.pts) }), L = mots(c.eq + ' ' + c.nom), j = piece(lien(c.objid, c.objet))
+    var meme = function (o) { return ici && norm(o.nom) == norm(ici.nom) } // pièce en L : deux formes de même nom = une pièce
+    if (j && !meme(j)) return '{{pièce Jeedom}} « ' + c.objet + ' » → « ' + j.nom + ' »'
+    var nomme = PL.pieces.filter(function (o) { return contient(L, mots(o.nom)) })
+    nomme = nomme.filter(function (o) { return !nomme.some(function (q) { return norm(q.nom) != norm(o.nom) && contient(mots(q.nom), mots(o.nom)) }) }) // « Chambre 2 » l'emporte sur « Chambre »
+    if (nomme.length && !nomme.some(meme)) return '{{son nom dit}} « ' + nomme.map(function (o) { return o.nom }).join(' », « ') + ' »'
+    var ici_e = mots((etage(m.e) || {}).nom), propre = function (e) { return mots(e.nom).filter(function (w) { return GENERIQUE.indexOf(w) < 0 }) }
+    var autre = PL.etages.filter(function (e) { return e.id != m.e && propre(e).some(function (w) { return L.indexOf(w) >= 0 && ici_e.indexOf(w) < 0 }) })
+    return autre.length ? '{{son nom dit}} « ' + autre[0].nom + ' »' : ''
+  }
+  var GENERIQUE = ['etage', 'niveau', 'level', 'floor', 'de', 'du', 'la', 'le']
+  function mots(s) { return String(s || '').replace(/([a-zà-ÿ])([A-ZÀ-Þ][a-zà-ÿ])/g, '$1 $2').split(/[^\p{L}\p{N}]+/u).map(norm).filter(Boolean) } // mots entiers : « étagère » n'est pas « étage »
+  function contient(L, W) { for (var i = 0; W.length && i + W.length <= L.length; i++) if (W.every(function (w, k) { return L[i + k] == w })) return true; return false }
   function pieceNom(id) { var p = piece(id), e = p && etage(p.e); return p ? (PL.etages.length > 1 && e ? e.nom + ' – ' : '') + p.nom : '?' }
   function dans(x, y, pts) { // même règle que presencehabituelle_analyse::dans
     var r = false
@@ -505,7 +523,7 @@
   }
   function objets() { // pièces Jeedom qui ont une lampe ou un volet
     var r = {}
-    D.candidats.forEach(function (c) { if (c.objid && (D.suivi[c.id] || c.type == 'lumiere' || c.type == 'volet')) r[c.objid] = c.objet })
+    D.candidats.forEach(function (c) { if (c.objid && (D.suivi[c.id] || c.type == 'lumiere' || c.type == 'volet' || DET.some(function (d) { return d.cmd == c.id }))) r[c.objid] = c.objet })
     return r
   }
   function pieceDe(e, x, y) { var p = PL.pieces.find(function (o) { return o.e == e && dans(x, y, o.pts) }); return p ? p.id : '' }
@@ -516,6 +534,7 @@
   function tendance(id) { // [texte, intensité 0..1] à l'heure choisie
     var pm = PL.marqueurs[id]
     if (pm && PL.zones.some(function (o) { return o.e == pm.e && dans(pm.x, pm.y, o.pts) })) return ['{{Zone exclue : ni analysée ni simulée.}}', 0]
+    if (estDet(id)) { var dt = DET.find(function (d) { return d.cmd == id }); return [dt.m.length ? '{{Détecteur : allume}} ' + dt.m.map(libelle).join(', ') : '{{Détecteur : aucune lampe choisie}}', 0.5] }
     if (!H) return ['', 0]
     var h = +$('#ph_heure').val(), k = $('#ph_jour').val()
     if (D.suivi[id].t == 'volet') {
@@ -559,19 +578,19 @@
       h += '<div style="position:absolute;left:' + x + '%;top:' + y + '%;transform:translate(-50%,-50%);pointer-events:none;font-weight:bold;text-shadow:0 0 3px var(--bg-color,#fff)">' + esc(o.nom) + '</div>'
     })
     Object.keys(PL.marqueurs).forEach(function (id) {
-      var m = PL.marqueurs[id]; if (m.e != ET || !D.suivi[id]) return
-      var t = tendance(id), vol = D.suivi[id].t == 'volet', c = vol ? '51,122,183' : '240,173,78'
-      h += '<div class="ph_m" data-id="' + esc(id) + '" title="' + esc(libelle(id) + (t[0] ? '\n' + t[0] : '')) + '" style="position:absolute;left:' + m.x + '%;top:' + m.y + '%;transform:translate(-50%,-50%);width:26px;height:26px;'
+      var m = PL.marqueurs[id], dt = estDet(id); if (m.e != ET || (!D.suivi[id] && !dt)) return
+      var t = tendance(id), vol = !dt && D.suivi[id].t == 'volet', c = dt ? '155,89,182' : vol ? '51,122,183' : '240,173,78', ai = ailleurs(id)
+      h += '<div class="ph_m" data-id="' + esc(id) + '" title="' + esc(libelle(id) + (t[0] ? '\n' + t[0] : '') + (ai ? '\n⚠ {{Placé(e) hors de sa pièce}} : ' + ai + ' ({{permis}})' : '')) + '" style="position:absolute;left:' + m.x + '%;top:' + m.y + '%;transform:translate(-50%,-50%);width:26px;height:26px;'
         + 'border-radius:' + (vol ? '4px' : '50%') + ';border:2px solid rgb(' + c + ');background:rgba(' + c + ',' + (0.15 + 0.85 * t[1]) + ');display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;touch-action:none;cursor:'
-        + (OUTIL == 'deplacer' ? 'move' : OUTIL == 'effacer' ? 'pointer' : 'crosshair') + '"><i class="fas fa-' + (vol ? 'bars' : 'lightbulb') + '"></i></div>'
+        + (OUTIL == 'deplacer' ? 'move' : OUTIL == 'effacer' ? 'pointer' : 'crosshair') + ';outline:' + (ai ? '2px dashed #f0ad4e' : 'none') + '"><i class="fas fa-' + (dt ? 'walking' : vol ? 'bars' : 'lightbulb') + '"></i></div>'
     })
     if (sp) sp[0].forEach(function (q, j) { // coins de l'élément choisi : à glisser
       h += '<div class="ph_coin" data-j="' + j + '" title="{{Glissez ce coin}}" style="position:absolute;left:' + q[0] + '%;top:' + q[1] + '%;transform:translate(-50%,-50%);width:12px;height:12px;background:#f0ad4e;border:2px solid #fff;cursor:move;touch-action:none"></div>'
     })
     $('#ph_carte').html(h).css('cursor', OUTIL == 'deplacer' && !PLACER ? 'default' : 'crosshair')
-    var hors = Object.keys(D.suivi).filter(function (id) { return !PL.marqueurs[id] })
+    var hors = placables().filter(function (id) { return !PL.marqueurs[id] })
     $('#ph_hors').html(hors.length ? hors.map(function (id) {
-      return '<a class="btn btn-xs ' + (PLACER == id ? 'btn-warning' : 'btn-default') + ' ph_placer" data-id="' + esc(id) + '" style="margin:0 3px 3px 0"><i class="fas fa-' + (D.suivi[id].t == 'volet' ? 'bars' : 'lightbulb') + '"></i> ' + esc(libelle(id)) + '</a>'
+      return '<a class="btn btn-xs ' + (PLACER == id ? 'btn-warning' : 'btn-default') + ' ph_placer" data-id="' + esc(id) + '" style="margin:0 3px 3px 0"><i class="fas fa-' + (estDet(id) ? 'walking' : D.suivi[id].t == 'volet' ? 'bars' : 'lightbulb') + '"></i> ' + esc(libelle(id)) + '</a>'
     }).join('') : '<small>{{Tout est placé.}}</small>')
     var ico = function (k, i, f, t) { return ' <a class="ph_act" data-k="' + k + '" data-i="' + i + '" data-f="' + f + '" style="cursor:pointer" title="' + t + '"><i class="fas fa-' + { choisir: 'mouse-pointer', nom: 'pen', modifier: 'pen', suppr: 'trash' }[f] + '"></i></a>' }
     var o = SEL && PL[SEL.k][SEL.i]
@@ -660,13 +679,13 @@
   }
   function placerAuto() { // pastilles pas encore placées → pièce liée à leur pièce Jeedom
     var mis = 0, sans = [], av = JSON.stringify(PL)
-    Object.keys(D.suivi).forEach(function (id) {
+    placables().forEach(function (id) {
       if (PL.marqueurs[id]) return // déjà placée : ne bouge pas
       var c = D.candidats.find(function (x) { return x.id == id }), p = c && piece(lien(c.objid, c.objet))
       if (!p) return sans.push(libelle(id))
       var cx = 0, cy = 0, x0 = 100, x1 = 0, y0 = 100, y1 = 0, best = null
       p.pts.forEach(function (q) { cx += q[0] / p.pts.length; cy += q[1] / p.pts.length; x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]) })
-      var pris = Object.keys(PL.marqueurs).map(function (k) { return PL.marqueurs[k] }).filter(function (m) { return m.e == p.e })
+      var pl = placables(), pris = Object.keys(PL.marqueurs).filter(function (k) { return pl.indexOf(k) >= 0 }).map(function (k) { return PL.marqueurs[k] }).filter(function (m) { return m.e == p.e })
       for (var x = x0 + 1.5; x < x1; x += 3) for (var y = y0 + 1.5; y < y1; y += 3) { // ponytail: grille de 3 %, assez pour quelques lampes par pièce
         if (!dans(x, y, p.pts) || pris.some(function (m) { return Math.abs(m.x - x) < 3 && Math.abs(m.y - y) < 3 })) continue
         var d = (x - cx) * (x - cx) + (y - cy) * (y - cy)

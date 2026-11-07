@@ -53,7 +53,7 @@ L'onglet **Tendances** montre, pour chaque lampe ou groupe :
 - la durée d'un allumage : moyenne, médiane, la moitié des allumages entre deux valeurs, la plus courte et la plus longue, la part des passages de moins de 3 minutes, et les durées inhabituelles ;
 - les lampes allumées ensemble.
 
-Dans le résumé, « surtout allumée » = au moins un jour sur quatre ; pour une pièce sur détecteur, dont les passages brefs touchent presque toutes les heures, au moins la moitié des jours de son heure la plus fréquente.
+Dans le résumé, « surtout allumée » = au moins un jour sur quatre ; pour une pièce sur détecteur, dont les passages brefs touchent presque toutes les heures, au moins un jour sur quatre et au moins la moitié des jours de son heure la plus fréquente.
 
 Une ligne (semaine ou week-end) tirée de moins de 10 jours est marquée « à confirmer ».
 
@@ -74,7 +74,7 @@ En haut de la page : **Configuration** ouvre la configuration du plugin (reprise
 L'onglet **Plan** dessine la maison, un plan par étage :
 
 1. **＋ Étage** : nommez-le (« Rez-de-chaussée », « Étage »…) ; les flèches changent l'ordre. **Image…** dépose le plan de l'étage : une photo d'un plan papier, une capture, un export de logiciel (PNG, JPEG…). Elle est réduite à 2 000 pixels et gardée sur la box ; sans image, on dessine sur une grille.
-2. **Placer** : cliquez une lumière ou un volet de « Pas sur le plan », puis l'endroit du plan. Glissez une pastille pour la déplacer ; l'outil **Supprimer** la renvoie dans la liste. Si vous avez déjà un design Jeedom où vos lumières sont placées, **Reprendre les positions d'un design** les reprend (centre de chaque widget, en proportion du design : prenez comme image de l'étage le fond de ce design).
+2. **Placer** : cliquez une lumière ou un volet de « Pas sur le plan », puis l'endroit du plan. Glissez une pastille pour la déplacer ; l'outil **Supprimer** la renvoie dans la liste. Les détecteurs de présence reliés à Jeedom (Guide) se placent aussi (pastille violette, icône de marcheur) ; ils ne comptent pas dans les tendances. Une pastille posée hors de la pièce que disent sa pièce Jeedom ou son nom (« Salle de bain 1er » placée au RDC, lampe d'escalier dans la pièce voisine) est entourée de pointillés orange et son infobulle dit pourquoi : c'est seulement signalé, c'est permis. Si vous avez déjà un design Jeedom où vos lumières sont placées, **Reprendre les positions d'un design** les reprend (centre de chaque widget, en proportion du design : prenez comme image de l'étage le fond de ce design).
 3. **Pièce** : cliquez les coins, puis « Terminer la forme », et nommez-la. Les lampes d'une pièce sont analysées ensemble, comme un groupe ; un groupe saisi dans « Commandes suivies » reste prioritaire. Deux pièces de même nom forment un seul groupe, distinct d'un groupe saisi de même nom.
 4. **Passage** : cliquez les deux bouts (une porte, un couloir, le haut d'un escalier), puis choisissez les deux pièces reliées et le type ; pour un escalier, la seconde pièce peut être sur un autre étage. Le plugin compte les **enchaînements** : les fois où une lumière de la seconde pièce s'allume moins de 3 minutes après l'extinction d'une lumière de la première (et dans l'autre sens). Ils serviront au parcours de la simulation.
 5. **Zone à exclure** : une partie de la maison qu'on ne veut ni analyser ni simuler (une chambre d'amis, un logement loué) : les commandes placées dedans sont ignorées.
