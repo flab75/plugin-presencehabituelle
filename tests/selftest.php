@@ -20,13 +20,17 @@ $ok(count($se) == 2 && $se[0][1] == $t('2026-03-02 20:00') && $se[0][3] == ['A',
 $j = $A::jours($t('2026-03-01 12:00'), $t('2026-03-07 08:00'), [[$t('2026-03-04 10:00'), $t('2026-03-04 11:00')]]);
 $ok(array_column($j, 'd') == ['2026-03-02', '2026-03-03', '2026-03-05', '2026-03-06'], 'jours : ' . json_encode(array_column($j, 'd')));
 
-// profil : 19 h et 22 h allumés le lundi seulement → 25 % des 4 jours de semaine
+// profil : 19 h et 22 h allumés le lundi seulement → 33 % des 3 soirs de semaine (le vendredi soir est du week-end)
 $p = $A::profil($se, $j);
-$ok($p['nS'] == 4 && $p['nW'] == 0 && $p['S'][19] == 25 && $p['S'][22] == 25 && $p['S'][20] == 0 && $p['S'][21] == 0, 'profil : ' . json_encode($p['S']));
+$ok($p['nS'] == 4 && $p['nW'] == 1 && $p['S'][19] == 33 && $p['S'][22] == 33 && $p['S'][20] == 0 && $p['S'][21] == 0, 'profil : ' . json_encode($p));
 $l = $A::lisser($p['S']);
-$ok($l[19] == 13 && $l[20] == 0 && $l[22] == 13, 'lissage : ' . json_encode($l));
+$ok($l[19] == 17 && $l[20] == 0 && $l[22] == 17, 'lissage : ' . json_encode($l));
 
-$ok($p['ex'] == [], 'aucune heure rare : ' . json_encode($p['ex'])); // 25 % > RARE
+$ok($p['ex'] == [], 'aucune heure rare : ' . json_encode($p['ex'])); // 33 % > RARE
+
+// journée 04:00 → 04:00 : dim. 22 h = semaine, sam. 01 h = soir du vendredi = week-end, lun. 01 h = soir du dimanche = semaine
+$ok($A::cle(7, 22) == 'S' && $A::cle(6, 1) == 'W' && $A::cle(1, 1) == 'S' && $A::cle(5, 22) == 'W' && $A::cle(5, 10) == 'S' && $A::cle(7, 10) == 'W', 'journée 04:00');
+$ok($A::pc(299, 300) == 99 && $A::pc(1, 300) == 1 && $A::pc(300, 300) == 100 && $A::pc(0, 300) == 0 && $A::pc(0, 0) == 0, 'pourcentage borné');
 $d = $A::durees($se, $j);
 $ok($d['n'] == 2 && $d['med'] == 30.5 && $d['min'] == 1 && $d['max'] == 60 && $d['passages'] == 50, 'durées : ' . json_encode($d));
 $sc = $A::scenes($se, $j);
@@ -55,6 +59,10 @@ $ok($vs['soir']['W']['ferme'] === null && $vs['soir']['S']['ferme'] == 100, 'vol
 // soir dont le lendemain matin est une absence (départ le sam. 7 à 02:00) : le soir du vendredi 6 ne compte pas ; comptes bruts des nuits
 $vx = $A::volet($ev, $A::jours($t('2026-03-01 12:00'), $t('2026-03-09 08:00'), []), PHP_INT_MAX, [[$t('2026-03-07 02:00'), $t('2026-03-07 03:00')]]);
 $ok($vx['soir']['W']['n'] == 1 && $vx['soir']['W']['jours'] == 1 && $vx['soir']['W']['nuits'] == 1 && $vx['soir']['W']['fermees'] == 1 && $vx['matin']['W']['jours'] == 2, 'volet soir avant absence : ' . json_encode($vx['soir']['W']));
+// volet ouvert la nuit, fermé contre la chaleur à 13:00, rouvert à 15:30 : pas une ouverture du matin
+$ch = []; foreach (range(2, 6) as $d) { $ch[] = [$t("2026-03-0$d 13:00"), 0, 1]; $ch[] = [$t("2026-03-0$d 15:30"), 100, 1]; }
+$vc = $A::volet(array_merge([[$t('2026-03-01 12:00'), 100, 1]], $ch), $A::jours($t('2026-03-01 12:00'), $t('2026-03-07 08:00'), []));
+$ok($vc['matin']['S']['n'] == 0 && $vc['soir']['S']['ferme'] === 0, 'volet fermé contre la chaleur : ' . json_encode($vc['matin']['S']));
 $ok($v['soir']['S']['nuits'] == $v['soir']['S']['fermees'] && $v['soir']['S']['nuits'] > 0 && $v['matin']['S']['jours'] == 5, 'volet comptes bruts : ' . json_encode($v['soir']['S']));
 $ok($p['cS'][19] == 1 && $p['cS'][20] == 0, 'comptes bruts : ' . json_encode($p['cS']));
 

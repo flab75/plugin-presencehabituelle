@@ -54,20 +54,34 @@ class presencehabituelle_analyse {
     return $r;
   }
 
-  // % des jours (semaine S = lun.-ven., week-end W = sam.-dim.) où le groupe est allumé dans l'heure, 0 h..23 h ; ex = heures exceptionnelles
+  /* Semaine S ou week-end W de l'heure $h d'un jour ISO $n, comme pour les volets : journée de 04:00 à 04:00,
+     matin (04 h-16 h) du sam. et du dim., soir (16 h-04 h) du ven. et du sam. ; 0 h-3 h = fin du soir de la veille */
+  public static function cle($n, $h) {
+    if ($h < 4) $n = $n == 1 ? 7 : $n - 1;
+    return $h >= 4 && $h < 16 ? ($n >= 6 ? 'W' : 'S') : (in_array($n, [5, 6]) ? 'W' : 'S');
+  }
+
+  // % de $a sur $b, jamais arrondi à 0 ou 100 quand ce n'est ni jamais ni toujours
+  public static function pc($a, $b) {
+    return !$b ? 0 : ($a && $a < $b ? max(1, min(99, (int)round(100 * $a / $b))) : ($a ? 100 : 0));
+  }
+
+  /* % des jours où le groupe est allumé dans l'heure, 0 h..23 h, en semaine S / week-end W (cle()) ; ex = heures exceptionnelles.
+     nS / nW = jours comptés (le plus grand des 24 heures : une heure du soir n'a pas tout à fait les mêmes jours qu'une heure du matin) */
   public static function profil(array $sessions, array $jours) {
     $on = [];
     foreach ($sessions as [$a, $b]) // ponytail: heure par heure, coût = durée totale allumée en heures ; suffisant sur 90 j
       for ($t = $a - ($a % 60); $t < $b; $t = strtotime(date('Y-m-d H:00:00', $t)) + 3600) $on[date('Y-m-d G', $t)] = true;
-    $p = ['S' => array_fill(0, 24, 0), 'W' => array_fill(0, 24, 0), 'nS' => 0, 'nW' => 0];
-    foreach ($jours as $j) {
-      $k = $j['n'] >= 6 ? 'W' : 'S'; $p['n' . $k]++;
-      for ($h = 0; $h < 24; $h++) if (isset($on[$j['d'] . ' ' . $h])) $p[$k][$h]++;
+    $z = array_fill(0, 24, 0); $p = ['S' => $z, 'W' => $z]; $d = ['S' => $z, 'W' => $z];
+    foreach ($jours as $j) for ($h = 0; $h < 24; $h++) {
+      $k = self::cle($j['n'], $h); $d[$k][$h]++;
+      if (isset($on[$j['d'] . ' ' . $h])) $p[$k][$h]++;
     }
-    $p['cS'] = $p['S']; $p['cW'] = $p['W']; // comptes bruts : « jamais » se lit sur eux, pas sur un % arrondi à 0
-    foreach (['S', 'W'] as $k) foreach ($p[$k] as $h => $v) $p[$k][$h] = $p['n' . $k] ? (int)round(100 * $v / $p['n' . $k]) : 0;
+    $p['nS'] = max($d['S']); $p['nW'] = max($d['W']);
+    $p['cS'] = $p['S']; $p['cW'] = $p['W']; // comptes bruts : « jamais » se lit sur eux
+    foreach (['S', 'W'] as $k) foreach ($p[$k] as $h => $v) $p[$k][$h] = self::pc($v, $d[$k][$h]);
     $p['ex'] = []; // exceptions : [jour, heure] allumé à une heure où il l'est au plus RARE % des jours
-    foreach ($jours as $j) for ($h = 0, $k = $j['n'] >= 6 ? 'W' : 'S'; $h < 24; $h++) if (isset($on[$j['d'] . ' ' . $h]) && $p[$k][$h] <= self::RARE) $p['ex'][] = [$j['d'], $h];
+    foreach ($jours as $j) for ($h = 0; $h < 24; $h++) if (isset($on[$j['d'] . ' ' . $h]) && $p[self::cle($j['n'], $h)][$h] <= self::RARE) $p['ex'][] = [$j['d'], $h];
     return $p;
   }
 
@@ -112,7 +126,7 @@ class presencehabituelle_analyse {
     return array_map(fn($v) => (int)round(100 * $v / $t), $n);
   }
 
-  /* Volet : journée de 04:00 à 04:00. Matin = 1re ouverture entre 04:00 et 16:00 ; soir = dernière fermeture entre 16:00 et 04:00.
+  /* Volet : journée de 04:00 à 04:00. Matin = 1re ouverture entre 04:00 et 16:00 d'un volet fermé à 04:00 (rouvrir après une fermeture contre la chaleur n'est pas un lever) ; soir = dernière fermeture entre 16:00 et 04:00.
      Fermé = position ≤ 1 % du maximum observé (une position partielle contre le soleil n'est pas une fermeture).
      Semaine / week-end : matins du sam. et dim., soirs du ven. et sam. (on se couche plus tard la veille d'un jour sans travail).
      Une nuit pas encore finie à $fin (le calcul tourne vers minuit), ou qui déborde sur une exclusion (lendemain d'un départ), ne compte pas pour le soir.
@@ -124,18 +138,19 @@ class presencehabituelle_analyse {
     $m = ['S' => [], 'W' => []]; $s = ['S' => [], 'W' => []]; $nsoir = ['S' => 0, 'W' => 0]; $fsoir = ['S' => 0, 'W' => 0]; $jm = ['S' => 0, 'W' => 0]; $js = ['S' => 0, 'W' => 0];
     foreach ($jours as $j) {
       $a = strtotime('04:00', $j['a']); $mid = strtotime('16:00', $j['a']); $b = strtotime('04:00', $j['b']); // heures d'horloge : justes les jours de changement d'heure
-      $ferme = null; $mat = null; $soir = null;
+      $ferme = null; $mat = null; $soir = null; $f4 = null; $vu = false;
       foreach ($ev as [$t, $v]) {
         $f = $v <= $seuil;
+        if ($t >= $a && !$vu) { $vu = true; $f4 = $ferme; } // état à 04:00
         if ($t >= $a && $t < $b && $ferme !== null && $f != $ferme) {
-          if (!$f && $t < $mid && $mat === null) $mat = $t;
+          if (!$f && $t < $mid && $mat === null && $f4) $mat = $t;
           if ($f && $t >= $mid) $soir = $t;
           if (!$f && $t >= $mid) $soir = null; // rouvert ensuite : la fermeture du soir est la dernière
         }
         if ($t >= $b) break;
         $ferme = $f;
       }
-      $km = $j['n'] >= 6 ? 'W' : 'S'; $ks = in_array($j['n'], [5, 6]) ? 'W' : 'S';
+      $km = self::cle($j['n'], 4); $ks = self::cle($j['n'], 16);
       $jm[$km]++; if ($mat !== null) $m[$km][$j['d']] = self::minutes($mat, $j['d']);
       if ($b > $fin) continue; // nuit en cours
       foreach ($excl as [$x, $y]) if ($x < $b && $y > $a) continue 2; // le soir finit le lendemain à 04:00 : absent ce matin-là, la nuit ne dit rien
@@ -147,7 +162,7 @@ class presencehabituelle_analyse {
     foreach (['S', 'W'] as $k) {
       $r['matin'][$k] = self::stats($m[$k]) + ['jours' => $jm[$k]];
       $r['soir'][$k] = self::stats($s[$k]) + ['jours' => $js[$k], 'nuits' => $nsoir[$k], 'fermees' => $fsoir[$k],
-        'ferme' => $nsoir[$k] ? (int)round(100 * $fsoir[$k] / $nsoir[$k]) : null]; // null : aucune nuit observée
+        'ferme' => $nsoir[$k] ? self::pc($fsoir[$k], $nsoir[$k]) : null]; // null : aucune nuit observée
     }
     return $r;
   }

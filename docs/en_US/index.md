@@ -29,7 +29,9 @@ The **Trends** tab shows, for each lamp or group:
 
 A switch-on longer than 18 hours (adjustable) is taken as a missed switch-off (box stopped, bridge offline): it is discarded, and the days it touches do not count for its group (or the lamp alone).
 
-For each shutter, on weekdays and at the weekend: morning opening and evening closing time (median, average, earliest, latest), the share of nights it is closed ("never" or "always" when so) and exceptions. An exception is a day far from the middle half of the values: by more than 30 minutes and by more than one and a half times the spread of that half (whichever is larger, Tukey's rule); at least 4 values are needed. A trend computed on fewer than 10 days is marked "to be confirmed", separately for weekdays and the weekend. The evening of a day whose next morning is an absence is not counted.
+For each shutter, on weekdays and at the weekend: morning opening and evening closing time (median, average, earliest, latest), the share of nights it is closed ("never" or "always" when so) and exceptions. An exception is a day far from the middle half of the values: by more than 30 minutes and by more than one and a half times the spread of that half (whichever is larger, Tukey's rule); at least 4 values are needed. A time taken from fewer than 10 values, or a share of nights taken from fewer than 10 nights, is marked "to be confirmed", separately for weekdays and the weekend. A morning opening is only noted if the shutter was closed at 04:00: reopening it after closing it against the heat is not getting up. A night (16:00 → 04:00) touched by an absence is not counted.
+
+The day runs from 04:00 to 04:00, for lights as for shutters. The weekend means Saturday and Sunday mornings (04:00-16:00) and Friday and Saturday evenings (16:00-04:00): a lamp switched on on Sunday at 22:00 counts as a weekday, just as an hour between 00:00 and 04:00 counts for the previous evening.
 
 It is recomputed every night; changes older than 90 days are deleted (adjustable in the plugin configuration), to follow the season.
 

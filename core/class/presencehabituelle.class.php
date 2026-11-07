@@ -1,6 +1,6 @@
 <?php
 /* Présence habituelle : tire des historiques (lumières, volets) les tendances, les exceptions et ce qui n'arrive jamais, sans rien envoyer hors de la box.
-   0.5 : analyse seule (aucune action sur les équipements). */
+   0.5.1 : analyse seule (aucune action sur les équipements). */
 require_once __DIR__ . '/../../../../core/php/core.inc.php';
 require_once __DIR__ . '/presencehabituelle_analyse.class.php';
 
@@ -192,8 +192,10 @@ class presencehabituelle extends eqLogic {
       DB::Prepare('SELECT ts, valeur FROM ' . self::TABLE . ' WHERE cmd_id = ? ORDER BY ts, id', [$id], DB::FETCH_TYPE_ALL) ?: []);
   }
 
-  private static function nom($id) {
-    return is_object($c = cmd::byId($id)) && is_object($eq = $c->getEqLogic()) ? $eq->getName() . ($c->getName() != 'Etat' && $c->getName() != 'État' ? ' ' . $c->getName() : '') : '#' . $id;
+  // $piece : préfixe « [Objet] », pour départager deux équipements de même nom dans deux pièces
+  private static function nom($id, $piece = false) {
+    if (!is_object($c = cmd::byId($id)) || !is_object($eq = $c->getEqLogic())) return '#' . $id;
+    return ($piece && is_object($o = $eq->getObject()) ? '[' . $o->getName() . '] ' : '') . $eq->getName() . ($c->getName() != 'Etat' && $c->getName() != 'État' ? ' ' . $c->getName() : '');
   }
 
   // Périodes exclues : commande d'exclusion active + périodes saisies + plugin désactivé
@@ -232,21 +234,28 @@ class presencehabituelle extends eqLogic {
       }
       $dbl = array_count_values($noms); // deux lampes de même nom : l'id les distingue
       foreach ($noms as $id => $n) if ($dbl[$n] > 1) $noms[$id] = $n . ' #' . $id;
-      $g = (string)$g; $nom = $g[0] === "\0" ? self::nom((int)substr($g, 1)) : $g;
-      if (!$iv) { $res['groupes'][] = ['nom' => $nom, 'jours' => 0]; continue; }
+      $g = (string)$g; $seule = $g[0] === "\0" ? (int)substr($g, 1) : 0; $nom = $seule ? self::nom($seule) : $g;
+      if (!$iv) { $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'jours' => 0]; continue; }
       $parNom = []; foreach ($iv as $id => $i) $parNom[$noms[$id]] = $i;
       $j = $A::jours($debut, $fin, $exG); $se = $A::sessions($parNom); $p = $A::profil($se, $j);
-      $res['groupes'][] = ['nom' => $nom, 'lampes' => array_values($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
+      $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'lampes' => array_values($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
         'S' => $p['S'], 'W' => $p['W'], 'cS' => $p['cS'], 'cW' => $p['cW'], 'lS' => $A::lisser($p['S']), 'lW' => $A::lisser($p['W']),
         'ex' => $p['ex'], 'durees' => $A::durees($se, $j), 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmerS' => $p['nS'] < self::FIABLE, 'confirmerW' => $p['nW'] < self::FIABLE];
     }
     foreach ($volets as $id => $s) {
       $ev = self::evs($id); $nom = self::nom($id);
-      if (!$ev) { $res['volets'][] = ['nom' => $nom, 'jours' => 0]; continue; }
+      if (!$ev) { $res['volets'][] = ['nom' => $nom, 'id' => $id, 'jours' => 0]; continue; }
       $j = $A::jours($ev[0][0], $fin, $excl);
       $v = $A::volet($ev, $j, $fin, $excl);
-      foreach ($v as $m => $c) foreach ($c as $k => $x) $v[$m][$k]['confirmer'] = $x['jours'] < self::FIABLE; // par colonne : 60 jours de semaine ne confirment pas 4 week-ends
-      $res['volets'][] = ['nom' => $nom, 'groupe' => $s['g'], 'jours' => count($j)] + $v;
+      foreach ($v as $m => $c) foreach ($c as $k => $x) { // par case : 60 jours de semaine ne confirment pas 4 week-ends, 2 ouvertures sur 20 jours non plus
+        $v[$m][$k]['confirmer'] = ($x['n'] ?: $x['jours']) < self::FIABLE; // heures : sur les valeurs relevées (aucune : sur les jours)
+        if ($m == 'soir') $v[$m][$k]['confirmerF'] = $x['nuits'] < self::FIABLE; // % fermé : sur les nuits observées
+      }
+      $res['volets'][] = ['nom' => $nom, 'id' => $id, 'groupe' => $s['g'], 'jours' => count($j)] + $v;
+    }
+    foreach (['groupes', 'volets'] as $t) { // même nom dans deux pièces : la pièce les départage (un groupe saisi garde son nom)
+      $n = array_count_values(array_column($res[$t], 'nom'));
+      foreach ($res[$t] as $i => $x) if ($n[$x['nom']] > 1 && $x['id']) $res[$t][$i]['nom'] = self::nom($x['id'], true);
     }
     file_put_contents(self::fichier(), json_encode($res));
     return $res;

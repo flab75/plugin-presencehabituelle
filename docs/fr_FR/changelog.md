@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.1
+- Corrections après la 5e revue : volet rouvert après une fermeture contre la chaleur pris pour une ouverture du matin, « à confirmer » compté en jours au lieu des valeurs relevées, deux équipements de même nom dans deux pièces confondus (la pièce les départage), 100 % ou 0 % affichés alors que ce n'est ni toujours ni jamais, notice inexacte sur la nuit avant une absence ; les lumières suivent la même journée (04 h → 04 h) et le même week-end que les volets.
+
 ## 0.5
 - Corrections après la 4e revue : soir d'un volet compté alors que le lendemain matin était une absence, « toujours » / « jamais fermé » déduits d'un pourcentage arrondi, durée maximale d'un allumage à 0 prise pour 1 h (18 h désormais), règle des exceptions mal décrite, « à confirmer » donné pour toute la ligne au lieu de la semaine ou du week-end, bouton Enregistrer actif avant le chargement de la liste.
 

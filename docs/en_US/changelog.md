@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.1
+- Fixes after the 5th review: shutter reopened after closing it against the heat taken for a morning opening, "to be confirmed" counted in days instead of noted values, two devices with the same name in two rooms mixed up (the room tells them apart), 100 % or 0 % shown when it is neither always nor never, inaccurate notice about the night before an absence; lights follow the same day (04:00 → 04:00) and weekend as shutters.
+
 ## 0.5
 - Fixes after the 4th review: a shutter's evening counted although the next morning was an absence, "always" / "never closed" inferred from a rounded percentage, a maximum switch-on duration of 0 taken as 1 h (now 18 h), exception rule wrongly described, "to be confirmed" given for the whole row instead of weekdays or weekend, Save button active before the list was loaded.
 
