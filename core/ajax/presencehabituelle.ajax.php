@@ -16,6 +16,7 @@ try {
       'reponses' => (object)$P::cfg('reponses'), 'regles' => (object)$P::cfg('regles'), 'donnees' => (object)$P::donnees(), 'figes' => $P::figes(), 'fiable' => $P::FIABLE]);
   }
   if (init('action') == 'decouverte') ajax::success($P::decouverte());
+  if (init('action') == 'historiques') { $ids = json_decode((string)init('ids'), true); $ids = is_array($ids) ? $ids : []; ajax::success(['h' => (object)$P::historiques($ids), 's' => (object)$P::scenarios($ids)]); }
   if (init('action') == 'observer') {
     $ids = json_decode((string)init('ids'), true);
     ajax::success($P::observer(is_array($ids) ? $ids : []));

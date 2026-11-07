@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10
+- **Plan**: everything can be edited or deleted (click a room, a passage or a zone: Rename / Edit / Delete panel, orange corners to drag; ✎ and 🗑 in the lists), deleting a room lists the passages that go with it, **Undo** button.
+- Passages and staircases with more than two points ("Finish the shape"). A staircase between two floors is saved once and shown on both: on the other floor, first at the same place, pale and dashed "to adjust", until you drag its points. Staircases entered twice (once from each floor) are merged.
+- **Jeedom rooms** (right column): the plan room of each Jeedom room, found from the name (ignoring accents, spaces and case) or chosen. **Place from the Jeedom rooms** button: followed lamps and shutters not yet placed go to their room; markers already placed do not move.
+- Floor order from lowest to highest (numbered; ↑ = one level higher; in 0.9, ↑ moved up the list: check the order).
+- **Guide**: rows grouped by Jeedom room (in plan order), source of each command (Virtual, Zigbee2MQTT…), filters by type and source; a virtual that copies another command is proposed as "Duplicate of" the original (kept); "Group of lamps": the lamps it switches on are ticked in a list, pre-filled by the discovery (list kept for the simulation, not yet used by the analysis).
+- Guide: history of each command (📈 values kept over 90 days, Jeedom chart on click, "rich history" filter) and scenarios that control it (⚙, actions noted in their log) to help you choose; nothing is ticked for you.
+- Fixes after review: a copying virtual no longer overrides a "No" nor the history of a followed virtual (proposed unticked, "to check"), "Undo" after saving no longer brings back a floor whose image was deleted, the lamps list of a group no longer offers those answered No or Duplicate, a duplicate of a group is refused, "Place from the Jeedom rooms" no longer puts a marker outside an L-shaped room, confirmation before erasing a staircase shown on both floors, plan edit made during saving kept; then history window title escaped, copy judged on exact records (not only logged), ranges being typed kept when histories load, smoothed history never "rich", "Duplicate of" button as strict as the discovery, markers of a full room kept inside.
+
 ## 0.9
 - **Shutters of any brand**: text states (open / closed, up / down, ouvert / fermé; stop and my ignored instead of being taken as "closed"); direction set per shutter in the Guide (open = 0); shutters without generic type recognised by name by the discovery; shutter without state feedback (Somfy RTS…) flagged by the Guide after 3 days without change.
 - "Identify by switching on or opening"; "may open" / "never open" ranges for a shutter.

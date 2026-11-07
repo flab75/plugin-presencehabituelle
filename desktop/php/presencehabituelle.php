@@ -57,11 +57,11 @@ sendVarToJS('eqType', $plugin->getId());
 		<div role="tabpanel" class="tab-pane" id="ph_plan" style="padding-top:10px">
 			<p>{{Facultatif. Un plan par étage : déposez-en l'image, placez-y les lumières et les volets suivis, dessinez les pièces (elles groupent les lampes qu'elles contiennent, sauf groupe saisi), les passages entre pièces (portes, couloirs, escaliers, y compris d'un étage à l'autre) et les zones à exclure (ni analysées ni simulées). L'image reste sur la box, visible des administrateurs seulement.}}</p>
 			<div class="form-inline" style="margin-bottom:6px">
-				<select class="form-control input-sm" id="ph_etage" style="min-width:160px"></select>
+				<select class="form-control input-sm" id="ph_etage" style="min-width:160px" title="{{Étages du plus bas au plus haut}}"></select>
 				<a class="btn btn-sm btn-default" id="ph_etage_plus" title="{{Ajouter un étage}}"><i class="fas fa-plus"></i> {{Étage}}</a>
 				<a class="btn btn-sm btn-default ph_etage_op" id="ph_etage_nom" title="{{Renommer l'étage}}"><i class="fas fa-pen"></i></a>
-				<a class="btn btn-sm btn-default ph_etage_op" id="ph_etage_haut" title="{{Monter dans la liste}}"><i class="fas fa-arrow-up"></i></a>
-				<a class="btn btn-sm btn-default ph_etage_op" id="ph_etage_bas" title="{{Descendre dans la liste}}"><i class="fas fa-arrow-down"></i></a>
+				<a class="btn btn-sm btn-default ph_etage_op" id="ph_etage_haut" title="{{Un niveau plus haut (l’ordre va du plus bas au plus haut)}}"><i class="fas fa-arrow-up"></i></a>
+				<a class="btn btn-sm btn-default ph_etage_op" id="ph_etage_bas" title="{{Un niveau plus bas}}"><i class="fas fa-arrow-down"></i></a>
 				<label class="btn btn-sm btn-default ph_etage_op" style="margin:0"><i class="fas fa-image"></i> {{Image…}}<input type="file" id="ph_image" accept="image/*" style="display:none"></label>
 				<a class="btn btn-sm btn-danger ph_etage_op" id="ph_etage_moins" title="{{Supprimer l'étage}}"><i class="fas fa-trash"></i></a>
 				<select class="form-control input-sm ph_etage_op" id="ph_design" style="max-width:280px"></select>
@@ -76,6 +76,8 @@ sendVarToJS('eqType', $plugin->getId());
 					<a class="btn btn-sm btn-default" data-outil="effacer"><i class="fas fa-eraser"></i> {{Supprimer}}</a>
 				</div>
 				<a class="btn btn-sm btn-default" id="ph_finir" style="display:none"><i class="fas fa-check"></i> {{Terminer la forme}}</a>
+				<a class="btn btn-sm btn-default" id="ph_annuler" title="{{Annuler le dernier changement du plan}}"><i class="fas fa-undo"></i> {{Annuler}}</a>
+				<a class="btn btn-sm btn-default" id="ph_placer_auto" title="{{Place chaque lampe ou volet suivi pas encore sur le plan dans la pièce liée à sa pièce Jeedom. Les pastilles déjà placées ne bougent pas.}}"><i class="fas fa-magic"></i> {{Placer d’après les pièces Jeedom}}</a>
 				<span id="ph_aide" style="margin-left:8px"></span>
 				<span class="pull-right">{{Tendance à}} <select class="form-control input-sm" id="ph_heure"></select>
 					<select class="form-control input-sm" id="ph_jour"><option value="S">{{en semaine}}</option><option value="W">{{le week-end}}</option></select></span>
@@ -83,9 +85,13 @@ sendVarToJS('eqType', $plugin->getId());
 			<div class="row">
 				<div class="col-md-9"><div id="ph_carte" style="position:relative;user-select:none;border:1px solid var(--al-border-color,#ccc)"></div></div>
 				<div class="col-md-3">
+					<div id="ph_sel"></div>
 					<legend style="font-size:1em">{{Pas sur le plan}}</legend><div id="ph_hors"></div>
 					<legend style="font-size:1em;margin-top:10px">{{Pièces}}</legend><div id="ph_pieces"></div>
 					<legend style="font-size:1em;margin-top:10px">{{Passages}}</legend><div id="ph_passages"></div>
+					<legend style="font-size:1em;margin-top:10px">{{Zones à exclure}}</legend><div id="ph_zones"></div>
+					<legend style="font-size:1em;margin-top:10px">{{Pièces Jeedom}}</legend>
+					<p><small>{{Pièce du plan de chaque pièce Jeedom : sert à « Placer d’après les pièces Jeedom » et à grouper le Guide.}}</small></p><div id="ph_liens"></div>
 				</div>
 			</div>
 		</div>

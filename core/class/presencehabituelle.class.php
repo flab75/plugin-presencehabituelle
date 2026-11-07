@@ -83,6 +83,56 @@ class presencehabituelle extends eqLogic {
   }
   /* Volets suivis restés sur une seule valeur (ou sans aucune : « stop », « my » seulement) pendant 3 jours hors absences :
      sans retour d'état (Somfy RTS, radio sans retour) ? Départ : premier relevé, sinon date où il a été suivi (d). */
+  /* Historique Jeedom des 90 derniers jours : {cmdId: {n: points, j: jours depuis le premier}} (lecture seule ; ponytail: deux GROUP BY sur les ids demandés) */
+  public static function historiques(array $ids) {
+    $ids = array_slice(array_values(array_unique(array_filter(array_map('intval', $ids), fn($x) => $x > 0))), 0, 2000);
+    if (!$ids) return [];
+    $r = []; $d = date('Y-m-d H:i:s', time() - 90 * 86400);
+    foreach (['history', 'historyArch'] as $t)
+      foreach (DB::Prepare('SELECT cmd_id, COUNT(*) AS n, MIN(datetime) AS d FROM ' . $t . ' WHERE cmd_id IN (' . implode(',', $ids) . ') AND datetime >= ? GROUP BY cmd_id', [$d], DB::FETCH_TYPE_ALL) ?: [] as $l) {
+        $id = (int)$l['cmd_id']; $j = round((time() - strtotime($l['d'])) / 86400, 1);
+        $r[$id] = ['n' => ($r[$id]['n'] ?? 0) + (int)$l['n'], 'j' => max($r[$id]['j'] ?? 0, $j)];
+      }
+    return $r;
+  }
+  public static function scenarios(array $ids) { // {cmdId: [[scénario, nom, actions notées dans son journal, 1re, dernière, actif]]} : scénarios qui lancent une action de son équipement (lecture seule)
+    $ids = array_slice(array_values(array_unique(array_filter(array_map('intval', $ids), fn($x) => $x > 0))), 0, 2000);
+    $par = []; $sc = []; $acts = []; $connus = [];
+    foreach ($ids as $id) {
+      $c = cmd::byId($id); if (!is_object($c)) continue;
+      $eq = (int)$c->getEqLogic_id();
+      if (!isset($acts[$eq])) { // ponytail: un scénario qui appelle la commande dans un bloc code (cmd::byId) n'est pas vu
+        $acts[$eq] = [];
+        foreach (cmd::byEqLogicId($eq, 'action') ?: [] as $a)
+          foreach (scenarioExpression::searchExpression('#' . $a->getId() . '#', '#' . $a->getId() . '#', false) ?: [] as $e) {
+            try { $x = $e->getSubElement(); $x = is_object($x) ? $x->getElement() : null; $x = is_object($x) ? $x->getScenario() : null; }
+            catch (Throwable $t) { continue; } // bloc orphelin d'un scénario abîmé : passé
+            if (!is_object($x)) continue;
+            $acts[$eq][] = [$x->getId(), $a->getHumanName(), (int)$a->getValue()]; $sc[$x->getId()] = $x;
+          }
+      }
+      $l = array_filter($acts[$eq], fn($a) => $a[2] == $id); // équipement à plusieurs sorties : les actions liées à cette info, sinon toutes
+      foreach ($l ?: $acts[$eq] as [$sid, $h]) { $par[$id][$sid][$h] = 1; $connus[$sid][$h] = 1; }
+    }
+    $journal = [];
+    foreach ($connus as $sid => $noms) { // « [date][SCENARIO] Exécution de la commande [Pièce][Équipement][Commande] … », libellé dans la langue de la box
+      $journal[$sid] = [];
+      foreach (@file(log::getPathToLog('scenarioLog/scenario' . (int)$sid . '.log'), FILE_IGNORE_NEW_LINES) ?: [] as $ligne) {
+        if (!preg_match('/^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\]\[SCENARIO\] [^\[]*(\[.*)$/u', $ligne, $m)) continue;
+        foreach ($noms as $n => $_) if (strpos($m[2], $n) === 0) {
+          $t = strtotime($m[1]); $j = &$journal[$sid][$n]; $j = [($j[0] ?? 0) + 1, min($j[1] ?? $t, $t), max($j[2] ?? $t, $t)]; unset($j); break;
+        }
+      }
+    }
+    $r = [];
+    foreach ($par as $id => $l)
+      foreach ($l as $sid => $noms) {
+        $n = 0; $d0 = 0; $d1 = 0;
+        foreach (array_keys($noms) as $h) if ($j = $journal[$sid][$h] ?? null) { $n += $j[0]; $d0 = $d0 ? min($d0, $j[1]) : $j[1]; $d1 = max($d1, $j[2]); }
+        $r[$id][] = [$sid, $sc[$sid]->getName(), $n, $d0, $d1, (int)$sc[$sid]->getIsActive()];
+      }
+    return $r;
+  }
   public static function figes() {
     $v = array_filter(self::suivi(), fn($s) => ($s['t'] ?? '') == 'volet');
     if (!$v) return [];
@@ -222,7 +272,11 @@ class presencehabituelle extends eqLogic {
   public static function candidats() {
     $eqs = []; foreach (eqLogic::all() as $e) $eqs[$e->getId()] = $e;
     $objs = []; foreach (jeeObject::all() as $o) $objs[$o->getId()] = $o->getName();
-    $r = []; $choisi = []; $suivi = self::suivi();
+    $r = []; $choisi = []; $suivi = self::suivi(); $src = [];
+    $source = function ($t) use (&$src) { // nom du plugin de l'équipement (Virtuel, Zigbee2MQTT…), lu une fois par type
+      if (!isset($src[$t])) { try { $src[$t] = $t == 'virtual' ? __('Virtuel', __FILE__) : plugin::byId($t)->getName(); } catch (Throwable $e) { $src[$t] = $t; } }
+      return $src[$t];
+    };
     foreach (cmd::byTypeSubType('info') as $c) {
       if (!($eq = $eqs[$c->getEqLogic_id()] ?? null) || $eq->getEqType_name() == __CLASS__) continue;
       [$t, $coche] = self::TYPES[$c->getGeneric_type()] ?? ['autre', 0];
@@ -231,13 +285,21 @@ class presencehabituelle extends eqLogic {
       $rang = $coche ? ($c->getSubType() == 'binary' || $c->getGeneric_type() == 'LIGHT_STATE_BOOL' ? 2 : 1) : 0;
       $r[] = ['id' => $c->getId(), 'nom' => $c->getName(), 'eq' => $eq->getName(), 'objet' => $objs[$eq->getObject_id()] ?? '',
         'type' => $t, 'tg' => self::TYPES[$c->getGeneric_type()][0] ?? 'autre', /* type d'après le type générique, sans le choix de la page */ 'coche' => $coche, 'gen' => (string)$c->getGeneric_type(), 'hist' => (int)$c->getIsHistorized(), 'lisse' => (int)self::lisse($c),
-        'actif' => (int)$eq->getIsEnable(), 'sub' => (string)$c->getSubType(), 'eqid' => (int)$eq->getId()];
+        'actif' => (int)$eq->getIsEnable(), 'sub' => (string)$c->getSubType(), 'eqid' => (int)$eq->getId(),
+        'objid' => (int)$eq->getObject_id(), 'src' => $source((string)$eq->getEqType_name()), 'copie' => self::copie($c, $eq)];
       $k = $eq->getId() . '|' . $t;
       if ($rang && (!isset($choisi[$k]) || $rang > $choisi[$k][0])) $choisi[$k] = [$rang, count($r) - 1];
     }
     $garde = array_flip(array_column($choisi, 1));
     foreach ($r as $i => $c) if ($c['coche'] && !isset($garde[$i])) $r[$i]['coche'] = 0;
     return $r;
+  }
+
+  // Virtuel qui recopie une seule commande (calcul « #123# », éventuellement dans une formule) : l'id de l'originale, sinon 0
+  public static function copie($c, $eq) {
+    if ($eq->getEqType_name() != 'virtual' || !preg_match_all('/#(\d+)#/', (string)$c->getConfiguration('calcul'), $m)) return 0;
+    $ids = array_values(array_unique(array_map('intval', $m[1])));
+    return count($ids) == 1 && $ids[0] != $c->getId() ? $ids[0] : 0;
   }
 
   /* Enregistre le choix de la page. $suivi = {cmdId: {g, t}} ; renvoie le nombre de changements repris de l'historique. */
@@ -320,9 +382,11 @@ class presencehabituelle extends eqLogic {
     $A = 'presencehabituelle_analyse'; $fin = time(); $debut = $fin - 86400 * self::DECOUVERTE;
     $suivi = self::suivi(); $lampes = []; $eqNomme = []; $nommees = []; $absence = []; $volets = []; $eqVolet = [];
     $sansX = !(int)config::byKey('exclure_cmd', __CLASS__, 0);
-    $cands = self::candidats(); $eqLampe = []; $rep = self::cfg('reponses'); // déjà répondue dans le Guide (« Non » compris) : plus reproposée
+    $cands = self::candidats(); $eqLampe = []; $rep = self::cfg('reponses'); $copies = [];
+    $parId = array_column($cands, null, 'id'); // déjà répondue dans le Guide (« Non » compris) : plus reproposée
     foreach ($cands as $c) if (in_array($c['gen'], ['LIGHT_STATE', 'LIGHT_STATE_BOOL'], true)) $eqLampe[$c['eqid']] = 1; // ses autres binaires sont annexes
       elseif (in_array($c['gen'], ['FLAP_STATE', 'FLAP_BSO_STATE'], true)) $eqVolet[$c['eqid']] = 1; // volet déjà typé : sa « Position » n'est pas un 2e volet
+    $bon = fn($x) => isset($suivi[$x['id']]) || ($x['hist'] && !$x['lisse']); // relevés exacts : suivie par le plugin, ou historisée sans lissage
     foreach ($cands as $c) {
       if (!$c['actif']) continue;
       $txt = $c['nom'] . ' ' . $c['eq'];
@@ -331,6 +395,8 @@ class presencehabituelle extends eqLogic {
         $absence[] = ['h' => cmd::cmdToHumanReadable('#' . $c['id'] . '#'), 'nom' => self::nom($c['id'], true),
           'alarme' => $c['gen'] == 'ALARM_ENABLE_STATE'];
       if (isset($rep[$c['id']]) && !isset($suivi[$c['id']])) continue;
+      if ($c['copie'] && ($o = $parId[$c['copie']] ?? null) && in_array($o['type'], ['lumiere', 'volet'], true) && $o['actif'] && ($rep[$o['id']]['r'] ?? 'oui') == 'oui') // virtuel qui recopie une lampe ou un volet active, pas refusée : doublon, on garde l'originale
+        $copies[$c['id']] = $bon($c) && !$bon($o) ? -$o['id'] : $o['id']; // la copie a de meilleurs relevés que l'originale : proposé décoché
       if ($c['type'] == 'autre' && !isset($suivi[$c['id']]) && in_array($c['gen'], ['', 'GENERIC_INFO'], true) && !isset($eqVolet[$c['eqid']]) && $A::voletNomme($c['nom'], $c['eq'])) {
         $eqVolet[$c['eqid']] = 1; $volets[$c['id']] = $A::suspect($c['nom'], $c['eq']); continue; // une par équipement ; position, binaire ou texte (open / closed)
       }
@@ -368,6 +434,8 @@ class presencehabituelle extends eqLogic {
       [$g, $p] = $rang($a) >= $rang($b) ? [$a, $b] : [$b, $a];
       $doublon[$p] = $g;
     }
+    $verif = [];
+    foreach ($copies as $p => $g) { if ($g < 0) $verif[$p] = 1; $g = abs($g); if (($doublon[$g] ?? null) == $p) unset($doublon[$g]); $doublon[$p] = $g; } // l'originale gardée, jamais doublon de sa copie
     foreach ($doublon as $p => $g) { // a doublon de b, puis b doublon de c : a doublon de c
       for ($n = 0; isset($doublon[$g]) && $n < 50; $n++) $g = $doublon[$g];
       $doublon[$p] = $g;
@@ -404,7 +472,7 @@ class presencehabituelle extends eqLogic {
 
     $n = fn($id) => self::nom($id, true);
     return ['jours' => self::DECOUVERTE,
-      'doublons' => array_map(fn($p, $g) => ['id' => $p, 'nom' => $n($p), 'de' => $g, 'nomDe' => $n($g)], array_keys($doublon), $doublon),
+      'doublons' => array_map(fn($p, $g) => ['id' => $p, 'nom' => $n($p), 'de' => $g, 'nomDe' => $n($g), 'copie' => isset($copies[$p]), 'verif' => isset($verif[$p])], array_keys($doublon), $doublon),
       'groupes' => array_map(function ($g, $m) use ($n, $groupe) { $m = array_values(array_diff($m, array_keys($groupe))) ?: $m;
         return ['id' => $g, 'nom' => $n($g), 'ids' => $m, 'membres' => array_map($n, $m)]; }, array_keys($groupe), $groupe),
       'nommees' => array_map(fn($id) => ['id' => $id, 'nom' => $n($id)], $nommees),
@@ -418,8 +486,9 @@ class presencehabituelle extends eqLogic {
 
   /* Plan de la maison : data/plan.json + une image par étage data/plan_<étage>.jpg (refusés au web par data/.htaccess).
      Coordonnées en % de l'image. {etages: [{id, nom}] (dans l'ordre), marqueurs: {cmdId: {e, x, y}}, pieces: [{id, e, nom, pts}],
-     passages: [{id, e, a, b, t, pts}], zones: [{id, e, pts}]} */
-  const VIDE = ['etages' => [], 'marqueurs' => [], 'pieces' => [], 'passages' => [], 'zones' => []];
+     passages: [{id, e, a, b, t, pts, pts2 (tracé sur l'étage de l'autre bout d'un escalier)}], zones: [{id, e, pts}],
+     liens: {jeeObjectId: id de pièce, ou '' = aucune}} ; étages dans l'ordre, du plus bas au plus haut */
+  const VIDE = ['etages' => [], 'marqueurs' => [], 'pieces' => [], 'passages' => [], 'zones' => [], 'liens' => []];
   public static function planFichier() { return __DIR__ . '/../../data/plan.json'; }
   public static function planImage($e) { return __DIR__ . '/../../data/plan_' . $e . '.jpg'; }
   private static function ecrire($f, $d) { // fichier temporaire puis rename : jamais de fichier à moitié écrit
@@ -430,7 +499,8 @@ class presencehabituelle extends eqLogic {
   public static function plan() {
     $p = is_file($f = self::planFichier()) ? json_decode((string)file_get_contents($f), true) : null;
     $p = (is_array($p) ? $p : []) + self::VIDE;
-    $p['marqueurs'] = (object)$p['marqueurs']; // {} et non [] pour le JS
+    $p['passages'] = presencehabituelle_analyse::fusionner($p['passages'], $p['pieces']); // escalier dessiné sur les deux étages avant la 0.10 : un seul
+    $p['marqueurs'] = (object)$p['marqueurs']; $p['liens'] = (object)$p['liens']; // {} et non [] pour le JS
     return $p;
   }
 
@@ -451,7 +521,7 @@ class presencehabituelle extends eqLogic {
       if (is_object(cmd::byId((int)$id)) && is_array($m) && $etage($m['e'] ?? null) && ($x = $pc($m['x'] ?? null)) !== null && ($y = $pc($m['y'] ?? null)) !== null)
         $r['marqueurs'][(int)$id] = ['e' => $m['e'], 'x' => $x, 'y' => $y];
     $vus = [];
-    foreach (['pieces' => [3, 200], 'zones' => [3, 200], 'passages' => [2, 2]] as $k => [$min, $max])
+    foreach (['pieces' => [3, 200], 'zones' => [3, 200], 'passages' => [2, 200]] as $k => [$min, $max])
       foreach (array_slice((array)($p[$k] ?? []), 0, 300) as $o) {
         if (!is_array($o) || !($id = self::idPlan($o['id'] ?? null)) || isset($vus[$id]) || !$etage($o['e'] ?? null) || !($l = $pts($o['pts'] ?? null, $min, $max))) continue;
         $x = ['id' => $id, 'e' => $o['e'], 'pts' => $l];
@@ -459,11 +529,15 @@ class presencehabituelle extends eqLogic {
         if ($k == 'passages') {
           $x['t'] = in_array($o['t'] ?? '', ['porte', 'couloir', 'escalier'], true) ? $o['t'] : 'porte';
           $x['a'] = self::idPlan($o['a'] ?? null); $x['b'] = self::idPlan($o['b'] ?? null); // pièces vérifiées plus bas (définies après)
+          if ($l2 = $pts($o['pts2'] ?? null, 2, 200)) $x['pts2'] = $l2; // gardé seulement pour un escalier (fusionner)
         }
         $vus[$id] = 1; $r[$k][] = $x;
       }
     $pieces = array_flip(array_column($r['pieces'], 'id'));
     $r['passages'] = array_values(array_filter($r['passages'], fn($x) => $x['a'] && $x['b'] && isset($pieces[$x['a']], $pieces[$x['b']]) && $x['a'] !== $x['b']));
+    $r['passages'] = presencehabituelle_analyse::fusionner($r['passages'], $r['pieces']);
+    foreach (array_slice((array)($p['liens'] ?? []), 0, 500, true) as $o => $pc) // pièce Jeedom → pièce du plan ('' : aucune)
+      if ((int)$o > 0 && is_object(jeeObject::byId((int)$o)) && is_string($pc) && ($pc === '' || isset($pieces[$pc]))) $r['liens'][(int)$o] = $pc;
     $avant = self::plan()['etages'];
     self::ecrire(self::planFichier(), json_encode($r));
     foreach ($avant as $e) if (!isset($et[$e['id']]) && is_file($f = self::planImage($e['id']))) unlink($f); // seulement les étages retirés : un plan illisible n'efface rien

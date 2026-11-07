@@ -7,7 +7,7 @@ class presencehabituelle_analyse {
   const RARE = 10;     // % : heure allumée au plus ce % des jours = exception
   const ECART = 30;    // min : écart minimal à la moitié centrale pour parler d'exception
 
-  /* Mode guidé. Réponses {cmdId: {r: oui|non|doublon|groupe, de: cmdId}} ; règles {cmdId: {jamais: 0|1, plages: [{k: marche|exclue, j: tous|S|W, de: HH:MM, a: HH:MM}]}}.
+  /* Mode guidé. Réponses {cmdId: {r: oui|non|doublon|groupe, de: cmdId, m: [cmdId] (lampes du groupe)}} ; règles {cmdId: {jamais: 0|1, plages: [{k: marche|exclue, j: tous|S|W, de: HH:MM, a: HH:MM}]}}.
      Plage : de > a passe minuit, de = a = toute la journée. Ce qui est illisible est écarté. */
   public static function reponses($x) {
     $r = [];
@@ -15,6 +15,28 @@ class presencehabituelle_analyse {
       if (!(int)$id || !is_array($v) || !in_array($v['r'] ?? '', ['oui', 'non', 'doublon', 'groupe'], true)) continue;
       $r[(int)$id] = ['r' => $v['r']];
       if ($v['r'] == 'doublon' && (int)($v['de'] ?? 0) && (int)$v['de'] != (int)$id) $r[(int)$id]['de'] = (int)$v['de'];
+      if ($v['r'] == 'groupe' && is_array($v['m'] ?? null)) { // lampes que le groupe allume
+        $m = array_filter(array_map('intval', $v['m']), fn($x) => $x > 0 && $x != (int)$id);
+        if ($m = array_slice(array_values(array_unique($m)), 0, 100)) $r[(int)$id]['m'] = $m;
+      }
+    }
+    return $r;
+  }
+  /* Plan : un escalier entre deux étages est un seul passage, tracé sur l'étage e (pts) et sur l'autre (pts2, facultatif).
+     Avant la 0.10, il était dessiné une fois sur chaque étage : les deux deviennent un seul (le 2e tracé passe en pts2). */
+  public static function autreEtage(array $o, array $etageDe) { // étage de l'autre bout, ou null (passage sur un seul étage)
+    $fa = $etageDe[$o['a']] ?? null; $fb = $etageDe[$o['b']] ?? null;
+    if (!$fa || !$fb || $fa === $fb) return null;
+    return $fa === $o['e'] ? $fb : ($fb === $o['e'] ? $fa : null);
+  }
+  public static function fusionner(array $passages, array $pieces) {
+    $etageDe = array_column($pieces, 'e', 'id'); $r = []; $vu = [];
+    foreach ($passages as $o) {
+      $autre = self::autreEtage($o, $etageDe);
+      if (!$autre) { unset($o['pts2']); $r[] = $o; continue; }
+      $k = min($o['a'], $o['b']) . '|' . max($o['a'], $o['b']) . '|' . $o['t'];
+      if (isset($vu[$k]) && !isset($r[$vu[$k]]['pts2']) && $r[$vu[$k]]['e'] === $autre) { $r[$vu[$k]]['pts2'] = $o['pts']; continue; } // même escalier vu de l'autre étage
+      $vu[$k] = count($r); $r[] = $o;
     }
     return $r;
   }

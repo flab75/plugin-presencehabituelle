@@ -55,7 +55,7 @@
 
   function charger() {
     ajax('liste', {}, function (r) {
-      D = r; SAUVE = $.extend({}, r.suivi); REP = $.extend({}, r.reponses); REG = $.extend(true, {}, r.regles)
+      D = r; HIST = null; SAUVE = $.extend({}, r.suivi); REP = $.extend({}, r.reponses); REG = $.extend(true, {}, r.regles)
       D.candidats.forEach(function (c) { c.type0 = c.type == 'volet' ? 'volet' : c.tg }); SENS = {} // rendu sur « Non » après un « Oui » (une prise prise pour une lampe redevient prise)
       if (r.jamais) D.candidats.forEach(function (c) { if (c.coche && c.actif) D.suivi[c.id] = { g: '', t: c.type } }) // première fois : préconisation
       $('#ph_exclure').val(r.exclure); $('#ph_exclusions').val(r.exclusions)
@@ -71,7 +71,7 @@
     function bloc(titre, aide, l) { return l ? '<p style="margin:8px 0 2px"><b>' + titre + '</b> <small class="text-muted">' + aide + '</small></p><ul class="list-unstyled" style="margin-left:10px">' + l + '</ul>' : '' }
     function cb(k, v, txt, oui) { return '<li><label style="font-weight:normal;margin:0"><input type="checkbox" class="ph_dec" data-k="' + k + '" data-v="' + esc(v) + '"' + (oui ? ' checked' : '') + '> ' + txt + '</label></li>' }
     h += bloc('{{Doublons}}', '{{même lampe vue par deux commandes (ou deux lampes toujours commandées ensemble) : cochée = décochée de la liste}}',
-      r.doublons.map(function (d) { return cb('doublon', d.id, esc(d.nom) + ' — {{doublon de}} ' + esc(d.nomDe), true) }).join(''))
+      r.doublons.map(function (d) { return cb('doublon', d.id, esc(d.nom) + ' — ' + (d.copie ? '{{recopie}} ' : '{{doublon de}} ') + esc(d.nomDe) + (d.verif ? ' <span class="text-warning">({{à vérifier : c’est la recopie qui a l’historique}})</span>' : ''), !d.verif) }).join(''))
     h += bloc('{{Groupes}}', '{{allumé seulement quand ses lampes le sont : cochée = décochée de la liste}}',
       r.groupes.map(function (g) { return cb('groupe', g.id, esc(g.nom) + ' — {{groupe de}} ' + esc(g.membres.join(', ')), true) }).join(''))
     h += bloc('{{Lumières sans type générique}}', '{{d’après leur nom : montrées dans la liste comme lumières, décochées}}',
@@ -104,8 +104,8 @@
     var exc = $('#ph_exclusions').val()
     $('#ph_decouverte .ph_dec:checked').each(function () {
       var k = $(this).attr('data-k'), v = $(this).attr('data-v')
-      if (k == 'doublon') { var d = R.doublons.filter(function (x) { return x.id == v })[0]; if (repondre(v, 'doublon', String(d.de))) NOTES[v] = '{{doublon de}} ' + d.nomDe }
-      if (k == 'groupe') { var g = R.groupes.filter(function (x) { return x.id == v })[0]; garder(g.ids, D.suivi[v]); g.ids.forEach(function (i) { if (D.suivi[i] && !REP[i]) REP[i] = { r: 'oui' } }); repondre(v, 'groupe'); NOTES[v] = '{{groupe de}} ' + g.membres.join(', ') }
+      if (k == 'doublon') { var d = R.doublons.filter(function (x) { return x.id == v })[0]; if (repondre(v, 'doublon', String(d.de))) NOTES[v] = (d.copie ? '{{recopie}} ' : '{{doublon de}} ') + d.nomDe }
+      if (k == 'groupe') { var g = R.groupes.filter(function (x) { return x.id == v })[0]; garder(g.ids, D.suivi[v]); g.ids.forEach(function (i) { if (D.suivi[i] && !REP[i]) REP[i] = { r: 'oui' } }); repondre(v, 'groupe'); REP[v].m = g.ids.map(Number); NOTES[v] = '{{groupe de}} ' + g.membres.join(', ') }
       if (k == 'lumiere' && parId[v]) { parId[v].type = 'lumiere'; NOTES[v] = '{{type générique à renseigner ?}}' }
       if (k == 'volet' && parId[v]) { parId[v].type = parId[v].type0 = 'volet'; NOTES[v] = (R.volets || []).some(function (x) { return x.id == v && x.verif }) ? '{{à vérifier : état d’un démon ou d’un plugin ?}}' : '{{type générique à renseigner ?}}' } // type0 : reste un volet sur « Oui »
       if (k == 'absence' && exc.split('\n').map(function (l) { return l.trim() }).indexOf(v) < 0) exc = (exc.trim() ? exc.trim() + '\n' : '') + v
@@ -128,7 +128,7 @@
   }
 
   /* ---- Guide : quatre questions, les réponses remplissent le suivi ---- */
-  var REP = {}, REG = {}, VU = [], SENS = {} // réponses {id: {r, de}}, règles {id: {jamais, plages}}, changements vus en écoutant
+  var REP = {}, REG = {}, VU = [], SENS = {}, FT = '', FS = '', FH = '', HIST = null // réponses {id: {r, de, m}} (m : lampes d'un groupe), filtres type et provenance, règles {id: {jamais, plages}}, changements vus en écoutant
   var JOURS = { tous: '{{tous les jours}}', S: '{{en semaine}}', W: '{{le week-end}}' }
   function aDemander() { // lumières, volets, une prise binaire par équipement, et ce qui est déjà suivi, répondu ou signalé
     var prises = {}
@@ -143,6 +143,7 @@
     var c = cand(id), s = D.suivi[id]
     if (!r) { delete REP[id]; return true }
     if (r == 'doublon' && de && REP[de] && REP[de].r == 'doublon') { alerte(libelle(de) + ' {{est déjà un doublon : choisissez la commande gardée.}}', 'warning'); return false }
+    if (r == 'doublon' && de && REP[de] && REP[de].r == 'groupe') { alerte(libelle(de) + ' {{est un groupe de lampes : un doublon recopie une seule lampe.}}', 'warning'); return false }
     REP[id] = r == 'doublon' && de ? { r: r, de: de } : { r: r }
     if (c) c.type = r == 'oui' && c.type0 != 'volet' ? 'lumiere' : c.type0
     if (r == 'oui') D.suivi[id] = { g: s ? s.g : '', t: c ? c.type : 'lumiere', i: s && s.i }
@@ -180,20 +181,51 @@
   function guide() {
     if (!D) return
     var l = aDemander(), suivis = Object.keys(D.suivi), h = ''
+    if (!HIST) HIST = { vu: {}, sc: {} } // points des 90 derniers jours et scénarios qui la commandent, demandés une fois par commande
+    var neuf = l.filter(function (c) { return !HIST.vu[c.id] }).map(function (c) { return c.id }).slice(0, 2000) // la box n'en lit pas plus à la fois
+    if (neuf.length && !HIST.attente) {
+      HIST.attente = 1
+      ajax('historiques', { ids: JSON.stringify(neuf) }, function (r) { var rh = (r && r.h) || {}, rs = (r && r.s) || {}; neuf.forEach(function (id) { HIST.vu[id] = 1; if (rh[id]) HIST[id] = rh[id]; if (rs[id]) HIST.sc[id] = rs[id] }); HIST.attente = 0; lireRegles(); guide() },
+        function () { neuf.forEach(function (id) { HIST.vu[id] = 1 }); HIST.attente = 0 }) // échec : pas de nouvel essai à chaque clic (rechargez la page)
+    }
+    var riche = function (c) { var x = HIST[c.id]; return !c.lisse && x && x.n >= 30 && x.j >= 30 } // ponytail: seuils fixes (30 points sur 30 j au moins) ; un historique lissé n'est pas riche
     var opts = function (id) { return l.filter(function (c) { return c.id != id }).map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(libelle(c.id)) + '</option>' }).join('') }
     h += '<legend style="font-size:1.1em">1. {{Est-ce une lampe ou un volet de la maison ?}}</legend>'
       + '<p><small>{{Doublon : la même lampe vue par une autre commande (gardez l’autre). Groupe : une commande qui allume plusieurs lampes déjà listées. Non : une prise de frigo, une LED d’état…}}</small></p>'
       + '<p><a class="btn btn-sm btn-default" id="ph_ecoute"><i class="fas fa-' + (ECOUTE ? 'stop' : 'hand-pointer') + '"></i> ' + (ECOUTE ? '{{Arrêter}}' : '{{Identifier en allumant ou en ouvrant}}') + '</a> '
       + '<small class="text-muted">{{allumez ou éteignez une lampe, ouvrez ou fermez un volet : ce qui change s’affiche ici, avec sa valeur}}</small></p><div id="ph_vus"></div>'
       + '<table class="table table-condensed"><tbody>'
-    l.forEach(function (c) {
-      var r = REP[c.id] || {}, note = NOTES[c.id] || (D.suivi[c.id] ? '{{suivie}}' : c.coche ? '{{proposée}}' : '')
-      h += '<tr data-id="' + esc(c.id) + '"' + (c.actif ? '' : ' style="opacity:.5"') + '><td>' + esc(libelle(c.id)) + ' <small class="text-muted">' + esc(c.objet) + ' · ' + esc(NOMS[c.type]) + '</small>'
-        + (note ? ' <span class="label label-info">' + esc(note) + '</span>' : '') + '</td><td style="width:340px" class="form-inline"><select class="form-control input-sm ph_grep">'
+    var srcs = {}; l.forEach(function (c) { if (c.src) srcs[c.src] = 1 })
+    h = h.replace('<table class="table table-condensed"><tbody>', '<p class="form-inline">{{Montrer}} <select class="form-control input-sm" id="ph_gft"><option value="">{{tous les types}}</option>'
+      + Object.keys(NOMS).map(function (k) { return '<option value="' + k + '">' + esc(NOMS[k]) + '</option>' }).join('') + '</select> <select class="form-control input-sm" id="ph_gfs"><option value="">{{toutes les provenances}}</option>'
+      + Object.keys(srcs).sort().map(function (k) { return '<option value="' + esc(k) + '">' + esc(k) + '</option>' }).join('') + '</select> <select class="form-control input-sm" id="ph_gfh"><option value="">{{avec ou sans historique}}</option><option value="riche">{{historique riche}}</option><option value="oui">{{avec historique}}</option><option value="non">{{sans historique}}</option></select>'
+      + ' <small class="text-muted">{{📈 : valeurs gardées sur 90 jours ; ⚙ : scénario qui la commande (son journal ne montre que ce qu’il fait, pas les gestes à la main). Cliquez pour voir. Rien n’est coché pour vous.}}</small></p><table class="table table-condensed"><tbody>')
+    var cle = function (c) { // pièces Jeedom dans l'ordre du plan (étage du bas au haut, puis pièce), les autres par nom, « sans objet » à la fin
+      var p = c.objid && lien(c.objid, c.objet) ? piece(lien(c.objid, c.objet)) : null, e = p ? PL.etages.indexOf(etage(p.e)) : 99
+      return [c.objid ? 0 : 1, p ? 0 : 1, ('0' + e).slice(-2), p ? p.nom : '', c.objet || ''].join('|')
+    }
+    var vis = l.filter(function (c) { return (!FT || c.type == FT) && (!FS || c.src == FS) && (!FH || (FH == 'riche' ? riche(c) : FH == 'oui' ? !!HIST[c.id] : HIST.vu[c.id] && !HIST[c.id])) }), obj = null
+    vis.map(function (c, n) { return [cle(c) + '|' + ('000' + n).slice(-4), c] }).sort(function (a, b) { return a[0] < b[0] ? -1 : 1 }).forEach(function (x) {
+      var c = x[1], r = REP[c.id] || {}, note = NOTES[c.id] || (D.suivi[c.id] ? '{{suivie}}' : c.coche ? '{{proposée}}' : ''), o = c.objid || 0
+      if (o !== obj) { // en-tête de la pièce Jeedom (sans data-id : les boucles du Guide ne le voient pas)
+        obj = o; var pl = o && lien(o, c.objet)
+        h += '<tr class="ph_gobj"><th colspan="2" style="padding-top:10px">' + (o ? esc(c.objet) : '{{Sans objet}}') + (pl ? ' <small class="text-muted">→ {{plan}} : ' + esc(pieceNom(pl)) + '</small>' : '') + '</th></tr>'
+      }
+      var oc = c.copie && cand(c.copie), cp = oc && oc.actif && (oc.type == 'lumiere' || oc.type == 'volet') && (!REP[c.copie] || REP[c.copie].r == 'oui'), mb = (r.m || []).map(libelle)
+      h += '<tr data-id="' + esc(c.id) + '"' + (c.actif ? '' : ' style="opacity:.5"') + '><td>' + esc(libelle(c.id)) + ' <small class="text-muted">' + esc(NOMS[c.type]) + '</small>'
+        + (c.src ? ' <span class="label label-default">' + esc(c.src) + '</span>' : '')
+        + (!HIST.vu[c.id] ? '' : HIST[c.id] ? ' <a class="label label-' + (riche(c) ? 'success' : 'default') + ' ph_ghist" style="cursor:pointer" title="{{Voir l’historique}}">📈 ' + HIST[c.id].n + ' {{valeurs}} / ' + Math.min(90, Math.round(HIST[c.id].j)) + ' {{j}}</a>' : ' <small class="text-muted">' + (c.hist ? '{{historisée, rien sur 90 j}}' : '{{non historisée}}') + '</small>')
+        + (HIST.sc[c.id] || []).slice().sort(function (a, b) { return b[4] - a[4] || b[2] - a[2] }).map(function (x) { return ' <a class="label label-' + (x[2] ? 'primary' : 'default') + ' ph_gsc" data-sc="' + esc(x[0]) + '" style="cursor:pointer' + (x[5] ? '' : ';opacity:.6') + '" title="{{Scénario qui commande cet équipement : journal (seulement ce que fait le scénario, pas les gestes à la main). Journal vide : journal du scénario désactivé, commande renommée depuis, ou pas lancé récemment.}}">⚙ ' + esc(x[1]) + (x[5] ? '' : ' ({{désactivé}})') + (x[2] ? ' : ' + x[2] + ' {{actions}}, {{dernière le}} ' + new Date(x[4] * 1000).toLocaleDateString() : ' : {{rien au journal}}') + '</a>' }).join('')
+        + (cp ? ' <span class="label label-warning">{{recopie}} ' + esc(libelle(c.copie)) + '</span>' : '')
+        + (note ? ' <span class="label label-info">' + esc(note) + '</span>' : '')
+        + (r.r == 'groupe' ? '<br><small>' + (mb.length ? '{{allume}} : ' + esc(mb.join(', ')) : '{{choisissez les lampes qu’il allume}}') + '</small>' : '') + '</td><td style="width:340px" class="form-inline"><select class="form-control input-sm ph_grep">'
         + [['', '{{— à répondre —}}'], ['oui', '{{Oui, à suivre}}'], ['non', '{{Non}}'], ['doublon', '{{Doublon de…}}'], ['groupe', '{{Groupe de lampes}}']].map(function (o) { return '<option value="' + o[0] + '"' + ((r.r || '') == o[0] ? ' selected' : '') + '>' + o[1] + '</option>' }).join('')
         + '</select>' + (r.r == 'doublon' ? ' <select class="form-control input-sm ph_gde"><option value="">{{de…}}</option>' + opts(c.id) + '</select>' : '')
+        + (r.r == 'groupe' ? ' <a class="btn btn-xs btn-default ph_gm"><i class="fas fa-object-group"></i> {{Lampes…}}</a>' : '')
+        + (cp && !(r.r == 'doublon' && r.de == c.copie) ? ' <a class="btn btn-xs btn-warning ph_gcopie" title="{{On garde l’originale}}">{{Doublon de}} ' + esc(libelle(c.copie)) + '</a>' : '')
         + (c.type == 'volet' && D.suivi[c.id] ? ' <select class="form-control input-sm ph_ginv" title="{{Ouvrez le volet en identifiant : la valeur affichée est celle de l’ouvert}}"><option value="">{{ouvert = valeur haute}}</option><option value="1"' + (D.suivi[c.id].i ? ' selected' : '') + '>{{ouvert = 0 (valeur basse)}}</option></select>' : '') + '</td></tr>'
     })
+    if (!vis.length) h += '<tr><td><small>{{Rien avec ces filtres.}}</small></td></tr>'
     h += '</tbody></table>'
     var hors = PL ? suivis.filter(function (id) { return !PL.marqueurs[id] }) : []
     h += '<legend style="font-size:1.1em">2. {{Où sont-elles ?}} <small>({{facultatif}})</small></legend>'
@@ -209,7 +241,7 @@
     h += '</tbody></table>'
     h += '<legend style="font-size:1.1em">4. {{Pas encore assez de données}}</legend><div id="ph_gq4"></div>'
     h += '<legend style="font-size:1.1em">{{Bilan}}</legend><div id="ph_gbilan"></div>'
-    $('#ph_gcontenu').html(h)
+    $('#ph_gcontenu').html(h); $('#ph_gft').val(FT); $('#ph_gfs').val(FS); $('#ph_gfh').val(FH)
     $('#ph_gcontenu tr[data-id]').each(function () { var r = REP[$(this).attr('data-id')]; if (r && r.de) $(this).find('.ph_gde').val(r.de) })
     $('#ph_gcontenu .ph_plage').each(function () { var id = $(this).closest('tr').attr('data-id'), p = REG[id].plages[$(this).index('#ph_gcontenu tr[data-id="' + id + '"] .ph_plage')]; $(this).find('.ph_pk').val(p.k); $(this).find('.ph_pj').val(p.j) })
     vus(); bilan()
@@ -271,6 +303,28 @@
   $('#ph_gcontenu').on('change', '.ph_grep', function () { lire(); var id = $(this).closest('tr').attr('data-id'); repondre(id, $(this).val()); changeGuide() })
   $('#ph_gcontenu').on('change', '.ph_ginv', function () { lire(); var id = $(this).closest('tr').attr('data-id'); SENS[id] = $(this).val() ? 1 : 0; if (D.suivi[id]) D.suivi[id].i = SENS[id] || undefined; changeGuide() })
   $('#ph_gcontenu').on('change', '.ph_gde', function () { lire(); var id = $(this).closest('tr').attr('data-id'); repondre(id, 'doublon', $(this).val()); changeGuide() })
+  $('#ph_gcontenu').on('click', '.ph_ghist', function () { // fenêtre d'historique de Jeedom (lecture seule)
+    var id = $(this).closest('tr').attr('data-id'), u = 'index.php?v=d&modal=cmd.history&id=' + encodeURIComponent(id), t = '{{Historique}} : ' + libelle(id)
+    if (window.jeeDialog) jeeDialog.dialog({ id: 'jee_modal', title: esc(t), contentUrl: u }); else $('#md_modal').dialog({ title: t }).load(u).dialog('open')
+  })
+  $('#ph_gcontenu').on('click', '.ph_gsc', function () { // journal du scénario (lecture seule)
+    var u = 'index.php?v=d&modal=scenario.log.execution&scenario_id=' + encodeURIComponent($(this).attr('data-sc')), t = esc('{{Journal du scénario}} : ' + $(this).text())
+    if (window.jeeDialog) jeeDialog.dialog({ id: 'jee_modal', title: t, contentUrl: u }); else $('#md_modal').dialog({ title: $(this).text() }).load(u).dialog('open')
+  })
+  $('#ph_gcontenu').on('change', '#ph_gft, #ph_gfs, #ph_gfh', function () { FT = $('#ph_gft').val(); FS = $('#ph_gfs').val(); FH = $('#ph_gfh').val(); lireRegles(); guide() })
+  $('#ph_gcontenu').on('click', '.ph_gcopie', function () { lire(); var id = $(this).closest('tr').attr('data-id'); repondre(id, 'doublon', String(cand(id).copie)); changeGuide() })
+  $('#ph_gcontenu').on('click', '.ph_gm', function () { // lampes allumées par un groupe : cochées comme le « de… » d'un doublon
+    lire(); var id = $(this).closest('tr').attr('data-id'), m = (REP[id] || {}).m || []
+    var l = D.candidats.filter(function (c) { return c.id != id && c.type == 'lumiere' && (!REP[c.id] || REP[c.id].r == 'oui') && (c.actif || D.suivi[c.id] || m.indexOf(+c.id) >= 0) })
+    bootbox.dialog({ title: '{{Lampes allumées par}} ' + esc(libelle(id)), message: '<div style="max-height:60vh;overflow:auto">' + l.map(function (c) {
+      return '<div class="checkbox"><label><input type="checkbox" class="ph_gmc" value="' + esc(c.id) + '"' + (m.indexOf(+c.id) >= 0 ? ' checked' : '') + '> ' + esc(libelle(c.id)) + ' <small class="text-muted">' + esc(c.objet) + '</small></label></div>'
+    }).join('') + '</div>', buttons: { annuler: { label: '{{Annuler}}', className: 'btn-default' }, ok: { label: '{{Valider}}', className: 'btn-success', callback: function () {
+      var v = $('.ph_gmc:checked').map(function () { return +this.value }).get().slice(0, 100)
+      if (!REP[id] || REP[id].r != 'groupe') return
+      REP[id].m = v; garder(v.map(String), D.suivi[id]); v.forEach(function (x) { if (D.suivi[x] && !REP[x]) REP[x] = { r: 'oui' } })
+      changeGuide()
+    } } } })
+  })
   $('#ph_gcontenu').on('click', '#ph_ecoute', function () { VU = []; ecouter(!ECOUTE) })
   $('#ph_gcontenu').on('click', '.ph_garder', function () {
     lire(); var id = $(this).attr('data-id')
@@ -341,11 +395,11 @@
   }
 
   /* ---- Plan : un par étage, coordonnées en % de l'image ---- */
-  var PL = null, H = null, ET = null, IMG = {}, OUTIL = 'deplacer', TRACE = [], PLACER = null, DESIGNS = [], GLISSE = false
+  var PL = null, H = null, ET = null, IMG = {}, OUTIL = 'deplacer', TRACE = [], PLACER = null, DESIGNS = [], GLISSE = false, SEL = null, UNDO = []
   var AIDE = {
-    deplacer: '{{Glissez une pastille pour la déplacer ; cliquez une commande de « Pas sur le plan », puis le plan, pour la placer ; cliquez une pièce pour la renommer.}}',
+    deplacer: '{{Glissez une pastille ou un coin pour le déplacer ; cliquez une pièce, un passage ou une zone pour le modifier ou le supprimer ; cliquez une commande de « Pas sur le plan », puis le plan, pour la placer.}}',
     piece: '{{Cliquez les coins de la pièce, puis « Terminer la forme ».}}',
-    passage: '{{Cliquez les deux bouts du passage (une porte, un couloir, le haut d’un escalier).}}',
+    passage: '{{Cliquez les points du passage (deux au moins : une porte, un couloir, un escalier qui tourne), puis « Terminer la forme ».}}',
     zone: '{{Cliquez les coins de la zone (ex. une chambre d’amis), puis « Terminer la forme ».}}',
     effacer: '{{Cliquez une pastille (elle retourne dans « Pas sur le plan »), une pièce, un passage ou une zone pour le retirer.}}'
   }
@@ -358,6 +412,39 @@
     var r = false
     for (var i = 0, j = pts.length - 1; i < pts.length; j = i++)
       if ((pts[i][1] > y) != (pts[j][1] > y) && x < (pts[j][0] - pts[i][0]) * (y - pts[i][1]) / (pts[j][1] - pts[i][1]) + pts[i][0]) r = !r
+    return r
+  }
+  function avant() { UNDO.push(JSON.stringify(PL)); if (UNDO.length > 30) UNDO.shift() } // avant chaque changement du plan : « Annuler »
+  function autre(o) { // étage de l'autre bout d'un escalier, sinon null (même règle que presencehabituelle_analyse::autreEtage)
+    var a = piece(o.a), b = piece(o.b)
+    if (!a || !b || a.e == b.e) return null
+    return a.e == o.e ? b.e : b.e == o.e ? a.e : null
+  }
+  function trace(o) { // tracé d'un passage sur l'étage affiché : [points, clé, provisoire], ou null
+    if (o.e == ET) return [o.pts, 'pts', false]
+    if (autre(o) == ET) return o.pts2 ? [o.pts2, 'pts2', false] : [o.pts, 'pts2', true] // pas encore ajusté : à la même place que sur l'autre étage
+    return null
+  }
+  function selPts() { // élément choisi, s'il est sur cet étage : [points, objet, clé, provisoire]
+    var o = SEL && PL[SEL.k][SEL.i]
+    if (!o) return null
+    if (SEL.k == 'passages') { var t = trace(o); return t ? [t[0], o, t[1], t[2]] : null }
+    return o.e == ET ? [o.pts, o, 'pts', false] : null
+  }
+  function norm(s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '') }
+  function auto(nom) { // pièce du plan au même nom (sans accents, espaces ni majuscules), sinon la seule qui contient l'autre nom
+    var n = norm(nom), l = PL.pieces.filter(function (p) { return norm(p.nom) == n })
+    if (!l.length && n.length >= 3) l = PL.pieces.filter(function (p) { var m = norm(p.nom); return m.length >= 3 && (m.indexOf(n) >= 0 || n.indexOf(m) >= 0) })
+    return l.length == 1 ? l[0].id : ''
+  }
+  function lien(objid, nom) { // pièce du plan d'une pièce Jeedom : choisie dans « Pièces Jeedom », sinon d'après le nom ; '' = aucune
+    if (!PL || !objid) return ''
+    var v = objid in PL.liens ? PL.liens[objid] : auto(nom)
+    return piece(v) ? v : ''
+  }
+  function objets() { // pièces Jeedom qui ont une lampe ou un volet
+    var r = {}
+    D.candidats.forEach(function (c) { if (c.objid && (D.suivi[c.id] || c.type == 'lumiere' || c.type == 'volet')) r[c.objid] = c.objet })
     return r
   }
   function pieceDe(e, x, y) { var p = PL.pieces.find(function (o) { return o.e == e && dans(x, y, o.pts) }); return p ? p.id : '' }
@@ -385,9 +472,11 @@
     if (!PL || !D) return
     if (ET && !etage(ET)) ET = null
     if (!ET && PL.etages.length) ET = PL.etages[0].id
-    $('#ph_etage').html(PL.etages.map(function (e) { return '<option value="' + esc(e.id) + '">' + esc(e.nom) + '</option>' }).join('') || '<option value="">{{Aucun étage}}</option>').val(ET || '')
+    if (SEL && !selPts()) SEL = null // élément retiré, ou sur un autre étage
+    $('#ph_etage').html(PL.etages.map(function (e, i) { return '<option value="' + esc(e.id) + '">' + (i + 1) + '. ' + esc(e.nom) + '</option>' }).join('') || '<option value="">{{Aucun étage}}</option>').val(ET || '')
     $('.ph_etage_op').toggle(!!ET)
-    $('#ph_finir').toggle((OUTIL == 'piece' || OUTIL == 'zone') && TRACE.length >= 3)
+    $('#ph_finir').toggle((OUTIL == 'piece' || OUTIL == 'zone') && TRACE.length >= 3 || OUTIL == 'passage' && TRACE.length >= 2)
+    $('#ph_annuler').toggleClass('disabled', !UNDO.length)
     $('#ph_aide').text(AIDE[OUTIL] || '')
     var img = ET && IMG[ET]
     var h = img ? '<img src="' + esc(img) + '" style="width:100%;display:block;pointer-events:none" draggable="false">'
@@ -398,7 +487,9 @@
     h += '<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;left:0;top:0;width:100%;height:100%">'
     PL.pieces.forEach(function (o, i) { if (o.e == ET) h += '<polygon data-k="pieces" data-i="' + i + '" points="' + pts(o.pts) + '" fill="rgba(91,192,222,.12)" stroke="#5bc0de" stroke-width="2"' + trait + '/>' })
     PL.zones.forEach(function (o, i) { if (o.e == ET) h += '<polygon data-k="zones" data-i="' + i + '" points="' + pts(o.pts) + '" fill="rgba(217,83,79,.25)" stroke="#d9534f" stroke-width="2" stroke-dasharray="6 3"' + trait + '/>' })
-    PL.passages.forEach(function (o, i) { if (o.e == ET) h += '<polyline data-k="passages" data-i="' + i + '" points="' + pts(o.pts) + '" stroke="#5cb85c" stroke-width="5"' + (o.t == 'escalier' ? ' stroke-dasharray="3 3"' : '') + trait + '/>' })
+    PL.passages.forEach(function (o, i) { var t = trace(o); if (t) h += '<polyline data-k="passages" data-i="' + i + '" points="' + pts(t[0]) + '" fill="none" stroke="#5cb85c" stroke-width="5"' + (t[2] ? ' stroke-opacity=".45"' : '') + (o.t == 'escalier' ? ' stroke-dasharray="3 3"' : '') + trait + '/>' })
+    var sp = selPts()
+    if (sp) h += '<' + (SEL.k == 'passages' ? 'polyline' : 'polygon') + ' class="ph_selt" points="' + pts(sp[0]) + '" fill="none" stroke="#f0ad4e" stroke-width="3" vector-effect="non-scaling-stroke" style="pointer-events:none"/>'
     if (TRACE.length) h += '<polyline points="' + pts(TRACE) + '" fill="none" stroke="#f0ad4e" stroke-width="2" vector-effect="non-scaling-stroke"/>'
     h += '</svg>'
     PL.pieces.forEach(function (o) { // nom au centre des coins
@@ -413,21 +504,43 @@
         + 'border-radius:' + (vol ? '4px' : '50%') + ';border:2px solid rgb(' + c + ');background:rgba(' + c + ',' + (0.15 + 0.85 * t[1]) + ');display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;touch-action:none;cursor:'
         + (OUTIL == 'deplacer' ? 'move' : OUTIL == 'effacer' ? 'pointer' : 'crosshair') + '"><i class="fas fa-' + (vol ? 'bars' : 'lightbulb') + '"></i></div>'
     })
+    if (sp) sp[0].forEach(function (q, j) { // coins de l'élément choisi : à glisser
+      h += '<div class="ph_coin" data-j="' + j + '" title="{{Glissez ce coin}}" style="position:absolute;left:' + q[0] + '%;top:' + q[1] + '%;transform:translate(-50%,-50%);width:12px;height:12px;background:#f0ad4e;border:2px solid #fff;cursor:move;touch-action:none"></div>'
+    })
     $('#ph_carte').html(h).css('cursor', OUTIL == 'deplacer' && !PLACER ? 'default' : 'crosshair')
     var hors = Object.keys(D.suivi).filter(function (id) { return !PL.marqueurs[id] })
     $('#ph_hors').html(hors.length ? hors.map(function (id) {
       return '<a class="btn btn-xs ' + (PLACER == id ? 'btn-warning' : 'btn-default') + ' ph_placer" data-id="' + esc(id) + '" style="margin:0 3px 3px 0"><i class="fas fa-' + (D.suivi[id].t == 'volet' ? 'bars' : 'lightbulb') + '"></i> ' + esc(libelle(id)) + '</a>'
     }).join('') : '<small>{{Tout est placé.}}</small>')
+    var ico = function (k, i, f, t) { return ' <a class="ph_act" data-k="' + k + '" data-i="' + i + '" data-f="' + f + '" style="cursor:pointer" title="' + t + '"><i class="fas fa-' + { choisir: 'mouse-pointer', nom: 'pen', modifier: 'pen', suppr: 'trash' }[f] + '"></i></a>' }
+    var o = SEL && PL[SEL.k][SEL.i]
+    $('#ph_sel').html(o ? '<div class="well well-sm" style="margin-bottom:6px"><b>' + esc(SEL.k == 'pieces' ? o.nom : SEL.k == 'zones' ? '{{Zone à exclure}}' : pieceNom(o.a) + ' ↔ ' + pieceNom(o.b)) + '</b><br>'
+      + (SEL.k == 'pieces' ? '<a class="btn btn-xs btn-default ph_act" data-k="pieces" data-i="' + SEL.i + '" data-f="nom"><i class="fas fa-pen"></i> {{Renommer}}</a> ' : '')
+      + (SEL.k == 'passages' ? '<a class="btn btn-xs btn-default ph_act" data-k="passages" data-i="' + SEL.i + '" data-f="modifier"><i class="fas fa-pen"></i> {{Modifier}}</a> ' : '')
+      + '<a class="btn btn-xs btn-danger ph_act" data-k="' + SEL.k + '" data-i="' + SEL.i + '" data-f="suppr"><i class="fas fa-trash"></i> {{Supprimer}}</a>'
+      + (selPts() && selPts()[3] ? '<br><small>{{Escalier tracé sur l’autre étage : glissez ses points pour le mettre à sa place ici.}}</small>' : '<br><small>{{Glissez les coins orange pour modifier la forme.}}</small>') + '</div>' : '')
     $('#ph_pieces').html(PL.pieces.map(function (o, i) {
       if (o.e != ET) return ''
       var n = Object.keys(PL.marqueurs).filter(function (id) { var m = PL.marqueurs[id]; return D.suivi[id] && m.e == ET && dans(m.x, m.y, o.pts) }).length
-      return '<div><a class="ph_pnom" data-i="' + i + '" style="cursor:pointer" title="{{Renommer}}"><i class="fas fa-pen"></i></a> ' + esc(o.nom) + ' <small>(' + n + ')</small></div>'
+      return '<div>' + ico('pieces', i, 'choisir', '{{Choisir}}') + ico('pieces', i, 'nom', '{{Renommer}}') + ico('pieces', i, 'suppr', '{{Supprimer}}') + ' ' + esc(o.nom) + ' <small>(' + n + ')</small></div>'
     }).join('') || '<small>{{Aucune pièce sur cet étage.}}</small>')
-    $('#ph_passages').html(PL.passages.map(function (o) {
-      var a = piece(o.a), b = piece(o.b), r = a && b && (H && H.passages || []).find(function (x) { return x.id == o.id })
-      return '<div>' + esc(pieceNom(o.a)) + ' ↔ ' + esc(pieceNom(o.b)) + ' <small>(' + esc({ porte: '{{porte}}', couloir: '{{couloir}}', escalier: '{{escalier}}' }[o.t]) + ')'
+    $('#ph_passages').html(PL.passages.map(function (o, i) {
+      var r = (H && H.passages || []).find(function (x) { return x.id == o.id }), au = autre(o), t = trace(o)
+      return '<div>' + (t ? ico('passages', i, 'choisir', '{{Choisir}}') : '') + ico('passages', i, 'modifier', '{{Modifier}}') + ico('passages', i, 'suppr', '{{Supprimer}}') + ' '
+        + esc(pieceNom(o.a)) + ' ↔ ' + esc(pieceNom(o.b)) + ' <small>(' + esc({ porte: '{{porte}}', couloir: '{{couloir}}', escalier: '{{escalier}}' }[o.t]) + ')'
+        + (au && !o.pts2 ? ' <span class="text-warning">{{à ajuster sur}} ' + esc((etage(au) || {}).nom) + '</span>' : '')
         + (r ? '<br>→ ' + esc(r.ab) + ' {{fois}}, ← ' + esc(r.ba) + ' {{fois}}' : '') + '</small></div>'
     }).join('') + (PL.passages.length ? '<p><small>{{Fois où une lumière de la seconde pièce s’allume moins de 3 min après l’extinction d’une lumière de la première.}}</small></p>' : '<small>{{Aucun passage.}}</small>'))
+    $('#ph_zones').html(PL.zones.map(function (o, i) { return o.e == ET ? '<div>' + ico('zones', i, 'choisir', '{{Choisir}}') + ico('zones', i, 'suppr', '{{Supprimer}}') + ' {{Zone}} ' + (i + 1) + '</div>' : '' }).join('') || '<small>{{Aucune zone sur cet étage.}}</small>')
+    var ob = objets(), opt = PL.etages.map(function (e) {
+      var l = PL.pieces.filter(function (p) { return p.e == e.id })
+      return l.length ? '<optgroup label="' + esc(e.nom) + '">' + l.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.nom) + '</option>' }).join('') + '</optgroup>' : ''
+    }).join('')
+    $('#ph_liens').html(Object.keys(ob).sort(function (a, b) { return ob[a].localeCompare(ob[b]) }).map(function (o) {
+      var a = auto(ob[o])
+      return '<div style="margin-bottom:3px"><small>' + esc(ob[o]) + '</small><select class="form-control input-sm ph_lien" data-o="' + esc(o) + '"><option value="">' + (a ? '{{d’après le nom}} : ' + esc(pieceNom(a)) : '{{— à lier —}}') + '</option><option value="-">{{aucune}}</option>' + opt + '</select></div>'
+    }).join('') || '<small>{{Aucune pièce Jeedom avec une lampe ou un volet.}}</small>')
+    $('#ph_liens .ph_lien').each(function () { var o = $(this).attr('data-o'); $(this).val(o in PL.liens ? (PL.liens[o] === '' ? '-' : PL.liens[o]) : '') })
   }
   function image() { // image de l'étage, demandée une fois
     if (!ET && PL && PL.etages.length) ET = PL.etages[0].id // à l'ouverture et après « Supprimer l'étage » : le premier
@@ -435,63 +548,137 @@
     dessiner() // tout de suite : grille en attendant l'image, et la carte suit l'étage même si la demande échoue
     if (e && IMG[e] === undefined) ajax('plan_image', { etage: e }, function (r) { IMG[e] = r; dessiner() })
   }
+  function nettoyer() { Object.keys(PL.liens).forEach(function (o) { if (PL.liens[o] !== '' && !piece(PL.liens[o])) delete PL.liens[o] }) } // lien vers une pièce retirée : revient au nom
   function retirer(k, i) {
     if (k == 'pieces') { var id = PL.pieces[i].id; PL.passages = PL.passages.filter(function (o) { return o.a != id && o.b != id }) } // un passage sans sa pièce ne relie plus rien
-    PL[k].splice(i, 1)
+    PL[k].splice(i, 1); SEL = null; nettoyer()
+  }
+  function supprimer(k, i) {
+    var o = PL[k][i], l = k == 'pieces' ? PL.passages.filter(function (x) { return x.a == o.id || x.b == o.id }) : []
+    var go = function () { avant(); retirer(k, i); dessiner() }
+    if (k == 'passages' && autre(o)) return bootbox.confirm('{{Supprimer cet escalier ? Il disparaît des deux étages.}}', function (oui) { if (oui) go() })
+    if (!l.length) return go()
+    bootbox.confirm('{{Supprimer la pièce}} « ' + esc(o.nom) + ' » {{et ses passages}} : ' + esc(l.map(function (x) { return pieceNom(x.a) + ' ↔ ' + pieceNom(x.b) }).join(', ')) + ' ?', function (oui) { if (oui) go() })
   }
   function nomPiece(titre, val, ok) {
     bootbox.prompt({ title: titre, value: val || '', callback: function (n) {
       n = n === null ? '' : n.trim().slice(0, 40)
       if (n && PL.pieces.some(function (o) { return o.nom == n && o.nom != val })) alerte('{{Une autre pièce porte ce nom : leurs lampes seront analysées ensemble.}}', 'warning')
-      if (n) ok(n); dessiner()
+      if (n && n != val) { avant(); ok(n) }
+      dessiner()
     } })
   }
   function finir() {
+    if (OUTIL == 'passage') { if (TRACE.length >= 2) passage(TRACE); return }
     if (TRACE.length < 3) return
     var l = TRACE; TRACE = []
-    if (OUTIL == 'zone') { PL.zones.push({ id: uid(), e: ET, pts: l }); return dessiner() }
+    if (OUTIL == 'zone') { avant(); PL.zones.push({ id: uid(), e: ET, pts: l }); return dessiner() }
     nomPiece('{{Nom de la pièce}}', '', function (n) { PL.pieces.push({ id: uid(), e: ET, nom: n, pts: l }) })
   }
-  function passage() {
-    var a = TRACE[0], b = TRACE[1]; TRACE = []
+  function passage(l, i) { // l : points d'un nouveau passage ; i : passage à modifier
+    var o0 = i === undefined ? null : PL.passages[i], e = o0 ? o0.e : ET; TRACE = []
     if (PL.pieces.length < 2) { alerte('{{Dessinez d’abord au moins deux pièces.}}', 'warning'); return dessiner() }
     var o = PL.pieces.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(pieceNom(p.id)) + '</option>' }).join('')
-    bootbox.dialog({ title: '{{Passage}}', message: '<div class="form-group"><label>{{De}}</label><select class="form-control" id="ph_pa">' + o + '</select></div>'
+    bootbox.dialog({ title: o0 ? '{{Modifier le passage}}' : '{{Passage}}', message: '<div class="form-group"><label>{{De}}</label><select class="form-control" id="ph_pa">' + o + '</select></div>'
       + '<div class="form-group"><label>{{Vers}} <small>({{une pièce d’un autre étage pour un escalier}})</small></label><select class="form-control" id="ph_pb">' + o + '</select></div>'
       + '<div class="form-group"><label>{{Type}}</label><select class="form-control" id="ph_pt"><option value="porte">{{porte}}</option><option value="couloir">{{couloir}}</option><option value="escalier">{{escalier}}</option></select></div>',
-      buttons: { annuler: { label: '{{Annuler}}', className: 'btn-default', callback: dessiner }, ok: { label: '{{Ajouter}}', className: 'btn-success', callback: function () {
-        if ($('#ph_pa').val() == $('#ph_pb').val()) { alerte('{{Un passage relie deux pièces différentes.}}', 'warning'); return false }
-        PL.passages.push({ id: uid(), e: ET, a: $('#ph_pa').val(), b: $('#ph_pb').val(), t: $('#ph_pt').val(), pts: [a, b] }); dessiner()
+      buttons: { annuler: { label: '{{Annuler}}', className: 'btn-default', callback: dessiner }, ok: { label: o0 ? '{{Modifier}}' : '{{Ajouter}}', className: 'btn-success', callback: function () {
+        var n = { a: $('#ph_pa').val(), b: $('#ph_pb').val(), t: $('#ph_pt').val(), e: e }
+        if (n.a == n.b) { alerte('{{Un passage relie deux pièces différentes.}}', 'warning'); return false }
+        if (piece(n.a).e != e && piece(n.b).e != e) { alerte('{{L’une des deux pièces doit être sur l’étage où le passage est tracé.}}', 'warning'); return false }
+        var au = autre(n)
+        if (au && PL.passages.some(function (x, k) { return k !== i && x.t == n.t && (x.a == n.a && x.b == n.b || x.a == n.b && x.b == n.a) })) { alerte('{{Cet escalier existe déjà : il est montré sur les deux étages. Choisissez-le pour l’ajuster.}}', 'warning'); return false }
+        avant()
+        if (o0) { if (au != autre(o0)) delete o0.pts2; o0.a = n.a; o0.b = n.b; o0.t = n.t } // autre étage changé : son tracé est à refaire
+        else PL.passages.push({ id: uid(), e: e, a: n.a, b: n.b, t: n.t, pts: l })
+        dessiner()
       } } } })
-    var pa = pieceDe(ET, a[0], a[1]) || PL.pieces[0].id, pb = pieceDe(ET, b[0], b[1])
+    if (o0) { $('#ph_pa').val(o0.a); $('#ph_pb').val(o0.b); $('#ph_pt').val(o0.t); return }
+    var pa = pieceDe(ET, l[0][0], l[0][1]) || PL.pieces[0].id, pb = pieceDe(ET, l[l.length - 1][0], l[l.length - 1][1])
     $('#ph_pa').val(pa); $('#ph_pb').val(pb && pb != pa ? pb : PL.pieces.find(function (p) { return p.id != pa }).id)
+  }
+  function placerAuto() { // pastilles pas encore placées → pièce liée à leur pièce Jeedom
+    var mis = 0, sans = [], av = JSON.stringify(PL)
+    Object.keys(D.suivi).forEach(function (id) {
+      if (PL.marqueurs[id]) return // déjà placée : ne bouge pas
+      var c = D.candidats.find(function (x) { return x.id == id }), p = c && piece(lien(c.objid, c.objet))
+      if (!p) return sans.push(libelle(id))
+      var cx = 0, cy = 0, x0 = 100, x1 = 0, y0 = 100, y1 = 0, best = null
+      p.pts.forEach(function (q) { cx += q[0] / p.pts.length; cy += q[1] / p.pts.length; x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]) })
+      var pris = Object.keys(PL.marqueurs).map(function (k) { return PL.marqueurs[k] }).filter(function (m) { return m.e == p.e })
+      for (var x = x0 + 1.5; x < x1; x += 3) for (var y = y0 + 1.5; y < y1; y += 3) { // ponytail: grille de 3 %, assez pour quelques lampes par pièce
+        if (!dans(x, y, p.pts) || pris.some(function (m) { return Math.abs(m.x - x) < 3 && Math.abs(m.y - y) < 3 })) continue
+        var d = (x - cx) * (x - cx) + (y - cy) * (y - cy)
+        if (!best || d < best[2]) best = [x, y, d]
+      }
+      if (!best) { // pièce pleine : au plus près du centre, à l'intérieur, en décalant de 1 % des autres
+        var essais = [[cx, cy]]
+        for (var x = x0 + 0.5; x < x1; x += 1) for (var y = y0 + 0.5; y < y1; y += 1) essais.push([x, y])
+        var dedans = essais.filter(function (q) { return dans(q[0], q[1], p.pts) }), libre = dedans.filter(function (q) { return !pris.some(function (m) { return Math.abs(m.x - q[0]) < 1 && Math.abs(m.y - q[1]) < 1 }) })
+        var tri = function (a, b) { return (a[0] - cx) * (a[0] - cx) + (a[1] - cy) * (a[1] - cy) - (b[0] - cx) * (b[0] - cx) - (b[1] - cy) * (b[1] - cy) }
+        best = (libre.length ? libre : dedans).sort(tri)[0] || [cx, cy]
+      }
+      PL.marqueurs[id] = { e: p.e, x: Math.round(best[0] * 100) / 100, y: Math.round(best[1] * 100) / 100 }; mis++
+    })
+    if (mis) { UNDO.push(av); if (UNDO.length > 30) UNDO.shift() }
+    dessiner()
+    alerte(mis + ' {{placée(s)}}' + (sans.length ? ' ; {{sans pièce liée}} : ' + sans.join(', ') + ' ({{voir « Pièces Jeedom »}})' : '') + (mis ? '. {{Enregistrez le plan pour les garder.}}' : ''), sans.length ? 'warning' : 'success')
   }
 
   $('#ph_carte').on('click', function (ev) {
     if (GLISSE || !ET) return
     var p = pos(ev), $t = $(ev.target), m = $t.closest('.ph_m'), k = $t.attr('data-k')
-    if (OUTIL == 'effacer') { if (m.length) delete PL.marqueurs[m.attr('data-id')]; else if (k) retirer(k, +$t.attr('data-i')); return dessiner() }
+    if ($t.hasClass('ph_coin')) return
+    if (OUTIL == 'effacer') { if (m.length) { avant(); delete PL.marqueurs[m.attr('data-id')]; return dessiner() } if (k) supprimer(k, +$t.attr('data-i')); return }
     if (OUTIL == 'deplacer') {
-      if (PLACER) { PL.marqueurs[PLACER] = { e: ET, x: p[0], y: p[1] }; PLACER = null; return dessiner() }
-      if (k == 'pieces') { var i = +$t.attr('data-i'); nomPiece('{{Nom de la pièce}}', PL.pieces[i].nom, function (n) { PL.pieces[i].nom = n }) }
-      return
+      if (PLACER) { avant(); PL.marqueurs[PLACER] = { e: ET, x: p[0], y: p[1] }; PLACER = null; return dessiner() }
+      SEL = k && !m.length ? { k: k, i: +$t.attr('data-i') } : null
+      return dessiner()
     }
     if (TRACE.length >= 200) return alerte('{{200 coins au plus : terminez la forme.}}', 'warning')
     TRACE.push(p)
-    if (OUTIL == 'passage' && TRACE.length == 2) return passage()
     dessiner()
   })
   $('#ph_carte').on('pointerdown', '.ph_m', function (ev) {
     if (OUTIL != 'deplacer' || PLACER) return
     var id = $(this).attr('data-id'), el = this, bouge = false
     ev.preventDefault(); this.setPointerCapture(ev.pointerId) // relâché hors de la fenêtre : le pointerup arrive quand même
-    $(document).on('pointermove.ph', function (e) { bouge = true; var p = pos(e); PL.marqueurs[id].x = p[0]; PL.marqueurs[id].y = p[1]; el.style.left = p[0] + '%'; el.style.top = p[1] + '%' })
+    $(document).on('pointermove.ph', function (e) { if (!bouge) avant(); bouge = true; var p = pos(e); PL.marqueurs[id].x = p[0]; PL.marqueurs[id].y = p[1]; el.style.left = p[0] + '%'; el.style.top = p[1] + '%' })
       .on('pointerup.ph pointercancel.ph', function () { $(document).off('.ph'); if (bouge) { GLISSE = true; setTimeout(function () { GLISSE = false; dessiner() }, 0) } }) // le clic qui suit un glissé ne compte pas
   })
+  $('#ph_carte').on('pointerdown', '.ph_coin', function (ev) { // coin de l'élément choisi
+    var sp = selPts(), j = +$(this).attr('data-j'), el = this, bouge = false
+    if (!sp) return
+    ev.preventDefault(); ev.stopPropagation(); this.setPointerCapture(ev.pointerId)
+    $(document).on('pointermove.ph', function (e) {
+      if (!bouge) { avant(); if (sp[3]) sp[1].pts2 = JSON.parse(JSON.stringify(sp[1].pts)) } // escalier pas encore ajusté sur cet étage : son tracé propre part de celui de l'autre étage
+      bouge = true
+      var p = pos(e), l = sp[1][sp[2]]; l[j] = p; el.style.left = p[0] + '%'; el.style.top = p[1] + '%'
+      var v = l.map(function (q) { return q[0] + ',' + q[1] }).join(' ')
+      $('#ph_carte .ph_selt').attr('points', v); $('#ph_carte [data-k="' + SEL.k + '"][data-i="' + SEL.i + '"]').attr('points', v)
+    }).on('pointerup.ph pointercancel.ph', function () { $(document).off('.ph'); if (bouge) { GLISSE = true; setTimeout(function () { GLISSE = false; dessiner() }, 0) } })
+  })
   $('#ph_hors').on('click', '.ph_placer', function () { placer(String($(this).attr('data-id'))) })
-  $('#ph_pieces').on('click', '.ph_pnom', function () { var i = +$(this).attr('data-i'); nomPiece('{{Nom de la pièce}}', PL.pieces[i].nom, function (n) { PL.pieces[i].nom = n }) })
+  $('#ph_sel, #ph_pieces, #ph_passages, #ph_zones').on('click', '.ph_act', function () {
+    var k = $(this).attr('data-k'), i = +$(this).attr('data-i'), f = $(this).attr('data-f')
+    if (f == 'choisir') { OUTIL = 'deplacer'; $('#ph_outils a').removeClass('btn-primary').addClass('btn-default').filter('[data-outil="deplacer"]').addClass('btn-primary').removeClass('btn-default'); TRACE = []; PLACER = null; SEL = { k: k, i: i }; return dessiner() }
+    if (f == 'nom') return nomPiece('{{Nom de la pièce}}', PL.pieces[i].nom, function (n) { PL.pieces[i].nom = n })
+    if (f == 'modifier') return passage(null, i)
+    if (f == 'suppr') supprimer(k, i)
+  })
+  $('#ph_liens').on('change', '.ph_lien', function () {
+    var o = $(this).attr('data-o'), v = $(this).val()
+    avant()
+    if (v === '') delete PL.liens[o]; else PL.liens[o] = v == '-' ? '' : v
+    dessiner(); guide()
+  })
+  $('#ph_annuler').on('click', function () {
+    if (!UNDO.length) return
+    PL = JSON.parse(UNDO.pop()); SEL = null; TRACE = []; PLACER = null; image(); guide()
+  })
+  $('#ph_placer_auto').on('click', function () { if (PL && D) placerAuto() })
   $('#ph_outils a').on('click', function () {
-    OUTIL = $(this).attr('data-outil'); TRACE = []; PLACER = null
+    OUTIL = $(this).attr('data-outil'); TRACE = []; PLACER = null; SEL = null
     $('#ph_outils a').removeClass('btn-primary').addClass('btn-default'); $(this).addClass('btn-primary').removeClass('btn-default')
     dessiner()
   })
@@ -501,26 +688,27 @@
   $('#ph_heure, #ph_jour').on('change', dessiner)
   $('#ph_etage').on('change', function () { ET = $(this).val(); TRACE = []; PLACER = null; image() })
   $('#ph_etage_plus').on('click', function () {
-    bootbox.prompt('{{Nom de l’étage (ex. Rez-de-chaussée)}}', function (n) {
+    bootbox.prompt('{{Nom de l’étage (ex. Rez-de-chaussée). Il est ajouté en haut : réglez sa place avec les flèches.}}', function (n) {
       if (!n || !n.trim()) return
       if (PL.etages.length >= 20) return alerte('{{20 étages au plus.}}', 'warning')
-      var e = { id: uid(), nom: n.trim().slice(0, 40) }; PL.etages.push(e); ET = e.id; TRACE = []; image()
+      avant(); var e = { id: uid(), nom: n.trim().slice(0, 40) }; PL.etages.push(e); ET = e.id; TRACE = []; image()
     })
   })
-  $('#ph_etage_nom').on('click', function () { var e = etage(ET); bootbox.prompt({ title: '{{Nom de l’étage}}', value: e.nom, callback: function (n) { if (n && n.trim()) e.nom = n.trim().slice(0, 40); dessiner() } }) })
-  $('#ph_etage_haut, #ph_etage_bas').on('click', function () {
-    var i = PL.etages.indexOf(etage(ET)), j = i + (this.id == 'ph_etage_haut' ? -1 : 1)
+  $('#ph_etage_nom').on('click', function () { var e = etage(ET); bootbox.prompt({ title: '{{Nom de l’étage}}', value: e.nom, callback: function (n) { if (n && n.trim() && n.trim() != e.nom) { avant(); e.nom = n.trim().slice(0, 40) } dessiner() } }) })
+  $('#ph_etage_haut, #ph_etage_bas').on('click', function () { // ordre : du plus bas au plus haut
+    var i = PL.etages.indexOf(etage(ET)), j = i + (this.id == 'ph_etage_haut' ? 1 : -1)
     if (j < 0 || j >= PL.etages.length) return
-    var e = PL.etages[i]; PL.etages[i] = PL.etages[j]; PL.etages[j] = e; dessiner()
+    avant(); var e = PL.etages[i]; PL.etages[i] = PL.etages[j]; PL.etages[j] = e; dessiner(); guide()
   })
   $('#ph_etage_moins').on('click', function () {
     bootbox.confirm('{{Supprimer cet étage, son image, ses pièces, ses passages, ses zones et les positions qui y sont ? (effectif à l’enregistrement du plan)}}', function (oui) {
       if (!oui) return
+      avant()
       var e = ET, ids = PL.pieces.filter(function (o) { return o.e == e }).map(function (o) { return o.id })
       PL.pieces = PL.pieces.filter(function (o) { return o.e != e }); PL.zones = PL.zones.filter(function (o) { return o.e != e })
       PL.passages = PL.passages.filter(function (o) { return o.e != e && ids.indexOf(o.a) < 0 && ids.indexOf(o.b) < 0 })
       Object.keys(PL.marqueurs).forEach(function (id) { if (PL.marqueurs[id].e == e) delete PL.marqueurs[id] })
-      PL.etages = PL.etages.filter(function (o) { return o.id != e }); ET = null; TRACE = []; image()
+      PL.etages = PL.etages.filter(function (o) { return o.id != e }); ET = null; TRACE = []; SEL = null; nettoyer(); image()
     })
   })
   $('#ph_image').on('change', function () { // réduite à 2000 px et passée en JPEG ici : la box ne garde qu'un JPEG vérifié
@@ -541,11 +729,11 @@
       var n = Object.keys(r).length
       if (!n) return alerte('{{Aucune commande suivie dans ce design.}}', 'warning')
       bootbox.confirm(esc(n) + ' {{commandes suivies trouvées. Les placer sur l’étage}} « ' + esc(etage(ET).nom) + ' » ? {{Leurs positions actuelles sont remplacées. Elles suivent les proportions du design : prenez comme image de l’étage le fond de ce design, ou une image aux mêmes proportions.}}', function (oui) {
-        if (oui) { Object.keys(r).forEach(function (id) { PL.marqueurs[id] = { e: ET, x: r[id].x, y: r[id].y } }); dessiner() }
+        if (oui) { avant(); Object.keys(r).forEach(function (id) { PL.marqueurs[id] = { e: ET, x: r[id].x, y: r[id].y } }); dessiner() }
       })
     })
   })
-  function planEnr() { ajax('plan_enregistrer', { plan: JSON.stringify(PL) }, function (r) { PL = r.plan; habitudes(r.habitudes); guide(); alerte('{{Plan enregistré}}', 'success') }) }
+  function planEnr() { var env = JSON.stringify(PL); ajax('plan_enregistrer', { plan: env }, function (r) { if (JSON.stringify(PL) != env) return alerte('{{Plan modifié pendant l’enregistrement : enregistrez-le à nouveau.}}', 'warning'); PL = r.plan; SEL = null; UNDO = []; habitudes(r.habitudes); guide(); alerte('{{Plan enregistré}}', 'success') }) }
   $('#ph_plan_enregistrer').on('click', function () { if (PL) planEnr() })
   ajax('plan', {}, function (r) {
     PL = r.plan; DESIGNS = r.designs

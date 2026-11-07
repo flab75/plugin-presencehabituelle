@@ -60,8 +60,8 @@ $ok($A::voletNomme('Volet', 'Module RTS') && $A::voletNomme('Position', 'Store S
   && !$A::voletNomme('Batterie', 'Volet Salon') && !$A::voletNomme('Luminosité', 'Store') && !$A::voletNomme('Position', 'Thermostat') && !$A::voletNomme('Restore', 'Box') && !$A::voletNomme('Volet auto', 'Virtuel') && !$A::voletNomme('Mode', 'Volet Salon'), 'volets d’après le nom');
 $ok($A::suspect('Démon Volet proportionel', 'Jeedom interne') && $A::voletNomme('Démon Volet proportionel', 'Jeedom interne') && !$A::suspect('Volet', 'Salon'), 'volet à vérifier (état d’un démon), pas écarté');
 echo "découverte OK\n";
-$rp = $A::reponses(['5' => ['r' => 'oui'], '6' => ['r' => 'doublon', 'de' => '5'], '7' => ['r' => 'doublon', 'de' => 7], '8' => ['r' => 'peut-être'], 'x' => ['r' => 'oui']]);
-$ok($rp == [5 => ['r' => 'oui'], 6 => ['r' => 'doublon', 'de' => 5], 7 => ['r' => 'doublon']], 'réponses : ' . json_encode($rp));
+$rp = $A::reponses(['5' => ['r' => 'oui'], '6' => ['r' => 'doublon', 'de' => '5'], '7' => ['r' => 'doublon', 'de' => 7], '8' => ['r' => 'peut-être'], 'x' => ['r' => 'oui'], '9' => ['r' => 'groupe', 'm' => ['5', 6, 9, 6, 'z']], '10' => ['r' => 'groupe', 'm' => 'x']]);
+$ok($rp == [5 => ['r' => 'oui'], 6 => ['r' => 'doublon', 'de' => 5], 7 => ['r' => 'doublon'], 9 => ['r' => 'groupe', 'm' => [5, 6]], 10 => ['r' => 'groupe']], 'réponses : ' . json_encode($rp));
 $rg = $A::regles(['5' => ['jamais' => 1], '6' => ['plages' => [['k' => 'exclue', 'j' => 'tous', 'de' => '23:00', 'a' => '07:00'], ['k' => 'marche', 'j' => 'S', 'de' => '24:00', 'a' => '07:00'], ['k' => 'x', 'j' => 'S', 'de' => '01:00', 'a' => '02:00']]], '7' => ['plages' => []]]);
 $ok($rg == [5 => ['jamais' => 1, 'plages' => []], 6 => ['jamais' => 0, 'plages' => [['k' => 'exclue', 'j' => 'tous', 'de' => '23:00', 'a' => '07:00']]]], 'règles : ' . json_encode($rg));
 echo "mode guidé OK\n";
@@ -148,6 +148,15 @@ $pp = ['S' => [[$t('2026-03-02 19:00'), $t('2026-03-02 19:30'), true], [$t('2026
 $ok($A::enchainements($pp, [7 => ['S', 'C']]) == [7 => ['S', 'C', 1, 0]], 'enchaînements : ' . json_encode($A::enchainements($pp, [7 => ['S', 'C']])));
 $ok($A::enchainements($pp, [['S', 'C']], [[$t('2026-03-02 00:00'), $t('2026-03-03 00:00')]])[0][2] == 0, 'enchaînements hors absences');
 
+// 0.10 : escalier dessiné sur chaque étage avant la 0.10 (Palier ↔ Salon Rue, deux fois) = un seul, 2e tracé en pts2 ; porte et escalier Tableau ↔ atelier gardés
+$pcs = [['id' => 'pal', 'e' => 'p1'], ['id' => 'sr', 'e' => 'p0'], ['id' => 'tab', 'e' => 'p0'], ['id' => 'at', 'e' => 'pm'], ['id' => 'en', 'e' => 'pm']];
+$fu = $A::fusionner([['id' => 'x1', 'e' => 'p1', 'a' => 'pal', 'b' => 'sr', 't' => 'escalier', 'pts' => [[1, 1], [2, 2]]],
+  ['id' => 'x2', 'e' => 'p0', 'a' => 'sr', 'b' => 'pal', 't' => 'escalier', 'pts' => [[3, 3], [4, 4], [5, 5]]],
+  ['id' => 'x3', 'e' => 'p0', 'a' => 'tab', 'b' => 'at', 't' => 'escalier', 'pts' => [[6, 6], [7, 7]]],
+  ['id' => 'x4', 'e' => 'pm', 'a' => 'at', 'b' => 'en', 't' => 'couloir', 'pts' => [[8, 8], [9, 9]], 'pts2' => [[1, 1], [1, 2]]],
+  ['id' => 'x5', 'e' => 'pm', 'a' => 'at', 'b' => 'en', 't' => 'couloir', 'pts' => [[8, 1], [9, 1]]]], $pcs);
+$ok(array_column($fu, 'id') == ['x1', 'x3', 'x4', 'x5'] && $fu[0]['pts2'] == [[3, 3], [4, 4], [5, 5]] && !isset($fu[1]['pts2']) && !isset($fu[2]['pts2'])
+  && $A::autreEtage($fu[1], array_column($pcs, 'e', 'id')) === 'pm' && $A::fusionner($fu, $pcs) == $fu, 'escaliers fusionnés : ' . json_encode($fu));
 $ok($A::actif('On') && $A::actif(1) && !$A::actif('0') && !$A::actif('Absent ?') && !$A::actif(''), 'actif');
 // états en texte (0.9) : ouvert / fermé reconnus, stop / my ignorés ; sens inversé (0 = ouvert)
 $ok($A::actif('Open') && $A::actif('ouvert') && $A::actif('UP') && !$A::actif('closed') && !$A::actif('fermé') && $A::neutre('Stop') && $A::neutre('my') && !$A::neutre('closed') && !$A::neutre(0), 'états en texte');
