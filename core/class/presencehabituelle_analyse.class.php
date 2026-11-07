@@ -161,14 +161,14 @@ class presencehabituelle_analyse {
 
   /* Volet : journée de 04:00 à 04:00. Matin = 1re ouverture entre 04:00 et 16:00 d'un volet fermé à 04:00 (rouvrir après une fermeture contre la chaleur n'est pas un lever) ; soir = dernière fermeture entre 16:00 et 04:00.
      Fermé = position ≤ 1 % du maximum observé (une position partielle contre le soleil n'est pas une fermeture).
-     Semaine / week-end : matins du sam. et dim., soirs du ven. et sam. (on se couche plus tard la veille d'un jour sans travail).
+     Semaine / week-end : cle() à l'heure du geste (week-end réglable, par défaut du ven. 16:00 au lun. 04:00 : soirs du ven. au dim., matins du sam. et du dim.).
      Une nuit pas encore finie à $fin (le calcul tourne vers minuit), ou qui déborde sur une exclusion (lendemain d'un départ), ne compte pas pour le soir.
      → ['matin' => ['S' => stats, 'W' => stats], 'soir' => [...]] ; stats() en minutes depuis 00:00 (exceptions par date), jours = jours comptés dans la colonne,
        ferme = % des nuits où il est fermé à 04:00 (null sans nuit observée), nuits / fermees = comptes bruts (« toujours » / « jamais » se lisent sur eux) */
   public static function volet(array $ev, array $jours, $fin = PHP_INT_MAX, array $excl = []) {
     $max = 0; foreach ($ev as $e) $max = max($max, $e[1]);
     $seuil = $max * 0.01;
-    $m = ['S' => [], 'W' => []]; $s = ['S' => [], 'W' => []]; $nsoir = ['S' => 0, 'W' => 0]; $fsoir = ['S' => 0, 'W' => 0]; $jm = ['S' => 0, 'W' => 0]; $js = ['S' => 0, 'W' => 0];
+    $R = []; $m = ['S' => [], 'W' => []]; $s = ['S' => [], 'W' => []]; $nsoir = ['S' => 0, 'W' => 0]; $fsoir = ['S' => 0, 'W' => 0]; $jm = ['S' => 0, 'W' => 0]; $js = ['S' => 0, 'W' => 0];
     foreach ($jours as $j) {
       $a = strtotime('04:00', $j['a']); $mid = strtotime('16:00', $j['a']); $b = strtotime('04:00', $j['b']); // heures d'horloge : justes les jours de changement d'heure
       $ferme = null; $mat = null; $soir = null; $f4 = null; $vu = false;
@@ -183,15 +183,20 @@ class presencehabituelle_analyse {
         if ($t >= $b) break;
         $ferme = $f;
       }
-      // semaine ou week-end à l'heure du geste (week-end réglable), sinon à une heure typique (08:00, 21:00)
-      $km = $mat !== null ? self::cle((int)date('N', $mat), (int)date('G', $mat), (int)date('i', $mat)) : self::cle($j['n'], 8);
-      $ks = $soir !== null ? self::cle((int)date('N', $soir), (int)date('G', $soir), (int)date('i', $soir)) : self::cle($j['n'], 21);
-      $jm[$km]++; if ($mat !== null) $m[$km][$j['d']] = self::minutes($mat, $j['d']);
-      if ($b > $fin) continue; // nuit en cours
-      foreach ($excl as [$x, $y]) if ($x < $b && $y > $a) continue 2; // le soir finit le lendemain à 04:00 : absent ce matin-là, la nuit ne dit rien
-      $js[$ks]++;
+      $nuit = $b <= $fin; // nuit en cours : ne compte pas pour le soir
+      foreach ($excl as [$x, $y]) if ($x < $b && $y > $a) $nuit = false; // le soir finit le lendemain à 04:00 : absent ce matin-là, la nuit ne dit rien
+      $R[] = [$j, $mat === null ? null : self::minutes($mat, $j['d']), $soir === null ? null : self::minutes($soir, $j['d']), $nuit, $ferme];
+    }
+    // semaine ou week-end à l'heure du geste (week-end réglable) ; un jour sans geste, à l'heure médiane des gestes relevés (sinon 08:00, 21:00)
+    $med = function ($i, $def) use ($R) { $x = array_values(array_filter(array_column($R, $i), fn($v) => $v !== null)); sort($x); return $x ? $x[intdiv(count($x), 2)] : $def; };
+    $mm = $med(1, 480); $ms = $med(2, 1260);
+    $k = fn($j, $mn) => self::cle(($j['n'] - 1 + intdiv($mn, 1440)) % 7 + 1, intdiv($mn % 1440, 60), $mn % 60);
+    foreach ($R as [$j, $mat, $soir, $nuit, $ferme]) {
+      $km = $k($j, $mat ?? $mm); $jm[$km]++; if ($mat !== null) $m[$km][$j['d']] = $mat;
+      if (!$nuit) continue;
+      $ks = $k($j, $soir ?? $ms); $js[$ks]++;
       if ($ferme !== null) { $nsoir[$ks]++; if ($ferme) $fsoir[$ks]++; } // fermé à 04:00, même resté fermé toute la journée
-      if ($soir !== null) $s[$ks][$j['d']] = self::minutes($soir, $j['d']);
+      if ($soir !== null) $s[$ks][$j['d']] = $soir;
     }
     $r = ['matin' => [], 'soir' => []];
     foreach (['S', 'W'] as $k) {

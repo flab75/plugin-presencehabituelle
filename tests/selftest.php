@@ -109,6 +109,10 @@ $ok($v['soir']['S']['nuits'] == $v['soir']['S']['fermees'] && $v['soir']['S']['n
 // week-end lu à l'heure de l'événement : réglé du sam. 08:00 au dim. 20:00, le ven. soir compte en semaine, le sam. 09:00 en week-end
 $A::weekEnd(6, '8:00', 7, '20:00'); $vw = $A::volet($ev, $A::jours($t('2026-03-01 12:00'), $t('2026-03-09 08:00'), [])); $A::weekEnd(5, '16:00', 7, '16:00');
 $ok($vw['soir']['S']['n'] == 5 && $vw['matin']['W']['med'] == 540, 'volet week-end à l’heure de l’événement : ' . json_encode($vw));
+// jour sans ouverture rangé à l'heure médiane des ouvertures (07:30) : week-end du sam. 07:45, le samedi resté fermé compte en semaine comme un samedi ouvert à 07:30
+$e2 = []; foreach (range(2, 6) as $d) array_push($e2, [$t("2026-03-0$d 07:30"), 100], [$t("2026-03-0$d 21:00"), 0]); $e2[] = [$t('2026-03-08 07:30'), 100];
+$A::weekEnd(6, '7:45', 7, '20:00'); $vm = $A::volet(array_merge([[$t('2026-03-01 22:00'), 0]], $e2), $A::jours($t('2026-03-01 12:00'), $t('2026-03-09 08:00'), [])); $A::weekEnd(5, '16:00', 7, '16:00');
+$ok($vm['matin']['S']['jours'] == 6 && $vm['matin']['W']['jours'] == 1 && $vm['matin']['W']['n'] == 1, 'volet jour sans geste à l’heure médiane : ' . json_encode($vm['matin']));
 $ok($p['cS'][19] == 1 && $p['cS'][20] == 0, 'comptes bruts : ' . json_encode($p['cS']));
 
 // deux allumages dans la même minute : deux durées, passages ≤ 100 %

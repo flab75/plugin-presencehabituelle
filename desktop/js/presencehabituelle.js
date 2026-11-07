@@ -56,7 +56,7 @@
   function charger() {
     ajax('liste', {}, function (r) {
       D = r; SAUVE = $.extend({}, r.suivi); REP = $.extend({}, r.reponses); REG = $.extend(true, {}, r.regles)
-      D.candidats.forEach(function (c) { c.type0 = c.type }); SENS = {} // rendu sur « Non » après un « Oui »
+      D.candidats.forEach(function (c) { c.type0 = c.type == 'volet' ? 'volet' : c.tg }); SENS = {} // rendu sur « Non » après un « Oui » (une prise prise pour une lampe redevient prise)
       if (r.jamais) D.candidats.forEach(function (c) { if (c.coche && c.actif) D.suivi[c.id] = { g: '', t: c.type } }) // première fois : préconisation
       $('#ph_exclure').val(r.exclure); $('#ph_exclusions').val(r.exclusions)
       $('#ph_precedent').toggle(!!r.precedent).attr('data-date', r.precedent ? r.precedent.date : '')
@@ -595,7 +595,7 @@
       ajax('liste', {}, function (r) {
         if (!r.precedent) return
         D = r; D.suivi = $.extend({}, r.precedent.suivi); NOTES = {}; SENS = {}
-        D.candidats.forEach(function (c) { var s = D.suivi[c.id]; if (s && s.t) c.type = s.t; c.type0 = c.type }) // type du choix d'avant (volet ou lumière reconnus au nom)
+        D.candidats.forEach(function (c) { var s = D.suivi[c.id]; c.type = s && s.t ? s.t : c.tg; c.type0 = c.type == 'volet' ? 'volet' : c.tg }) // type du choix d'avant ; absente de ce choix : type d'après le type générique
         REP = $.extend({}, r.precedent.reponses || r.reponses); REG = $.extend(true, {}, r.precedent.regles || r.regles) // choix d'avant la 0.8 : réponses actuelles gardées
         $('#ph_exclure').val(r.precedent.exclure); $('#ph_exclusions').val(r.precedent.exclusions)
         liste(); dessiner()

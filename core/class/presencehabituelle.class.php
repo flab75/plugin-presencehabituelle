@@ -230,7 +230,7 @@ class presencehabituelle extends eqLogic {
       // préférée : binaire ou LIGHT_STATE_BOOL (une luminosité peut ne pas retomber à 0 à l'extinction)
       $rang = $coche ? ($c->getSubType() == 'binary' || $c->getGeneric_type() == 'LIGHT_STATE_BOOL' ? 2 : 1) : 0;
       $r[] = ['id' => $c->getId(), 'nom' => $c->getName(), 'eq' => $eq->getName(), 'objet' => $objs[$eq->getObject_id()] ?? '',
-        'type' => $t, 'coche' => $coche, 'gen' => (string)$c->getGeneric_type(), 'hist' => (int)$c->getIsHistorized(), 'lisse' => (int)self::lisse($c),
+        'type' => $t, 'tg' => self::TYPES[$c->getGeneric_type()][0] ?? 'autre', /* type d'après le type générique, sans le choix de la page */ 'coche' => $coche, 'gen' => (string)$c->getGeneric_type(), 'hist' => (int)$c->getIsHistorized(), 'lisse' => (int)self::lisse($c),
         'actif' => (int)$eq->getIsEnable(), 'sub' => (string)$c->getSubType(), 'eqid' => (int)$eq->getId()];
       $k = $eq->getId() . '|' . $t;
       if ($rang && (!isset($choisi[$k]) || $rang > $choisi[$k][0])) $choisi[$k] = [$rang, count($r) - 1];
@@ -269,7 +269,8 @@ class presencehabituelle extends eqLogic {
     $reponses = $reponses === null ? self::cfg('reponses') : $A::reponses($reponses); // null : page d'avant 0.8, réponses gardées
     $regles = $regles === null ? self::cfg('regles') : $A::regles($regles);
     $vieux = ['suivi' => $avant, 'exclure' => $avantX, 'exclusions' => (string)config::byKey('exclusions', __CLASS__, ''), 'reponses' => self::cfg('reponses'), 'regles' => self::cfg('regles')];
-    if (config::byKey('suivi', __CLASS__, '') !== '' && $vieux != ['suivi' => $propre, 'exclure' => $exclure, 'exclusions' => (string)$exclusions, 'reponses' => $reponses, 'regles' => $regles]) // « Revenir au choix d'avant »
+    $sansD = fn($x) => array_map(fn($e) => array_diff_key($e, ['d' => 0]), $x); // d (suivie depuis) n'est pas un choix : sans lui, un suivi d'avant 0.9 serait vu changé
+    if (config::byKey('suivi', __CLASS__, '') !== '' && ['suivi' => $sansD($avant)] + $vieux != ['suivi' => $sansD($propre), 'exclure' => $exclure, 'exclusions' => (string)$exclusions, 'reponses' => $reponses, 'regles' => $regles]) // « Revenir au choix d'avant »
       config::save('precedent', json_encode($vieux + ['date' => date('Y-m-d H:i')]), __CLASS__);
     config::save('suivi', json_encode($propre), __CLASS__);
     config::save('exclure_cmd', $exclure ?: '', __CLASS__);
