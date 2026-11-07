@@ -57,7 +57,7 @@ $ok($A::nommee('Lumière', 'PriseLumiereBoite') && $A::nommee('Etat', 'Ruban LED
   && !$A::nommee('Etat', 'Prise frigo') && !$A::nommee('Batterie faible', 'Lampe'), 'lumières d’après le nom');
 // volets sans type d'après le nom (0.9) ; pile, luminosité : non
 $ok($A::voletNomme('Volet', 'Module RTS') && $A::voletNomme('Position', 'Store Salon') && $A::voletNomme('Etat', 'Shutter kitchen') && $A::voletNomme('Rideau', 'Relais')
-  && !$A::voletNomme('Batterie', 'Volet Salon') && !$A::voletNomme('Luminosité', 'Store') && !$A::voletNomme('Position', 'Thermostat') && !$A::voletNomme('Restore', 'Box'), 'volets d’après le nom');
+  && !$A::voletNomme('Batterie', 'Volet Salon') && !$A::voletNomme('Luminosité', 'Store') && !$A::voletNomme('Position', 'Thermostat') && !$A::voletNomme('Restore', 'Box') && !$A::voletNomme('Volet auto', 'Virtuel') && !$A::voletNomme('Mode', 'Volet Salon'), 'volets d’après le nom');
 echo "découverte OK\n";
 $rp = $A::reponses(['5' => ['r' => 'oui'], '6' => ['r' => 'doublon', 'de' => '5'], '7' => ['r' => 'doublon', 'de' => 7], '8' => ['r' => 'peut-être'], 'x' => ['r' => 'oui']]);
 $ok($rp == [5 => ['r' => 'oui'], 6 => ['r' => 'doublon', 'de' => 5], 7 => ['r' => 'doublon']], 'réponses : ' . json_encode($rp));
@@ -106,6 +106,9 @@ $ch = []; foreach (range(2, 6) as $d) { $ch[] = [$t("2026-03-0$d 13:00"), 0, 1];
 $vc = $A::volet(array_merge([[$t('2026-03-01 12:00'), 100, 1]], $ch), $A::jours($t('2026-03-01 12:00'), $t('2026-03-07 08:00'), []));
 $ok($vc['matin']['S']['n'] == 0 && $vc['soir']['S']['ferme'] === 0, 'volet fermé contre la chaleur : ' . json_encode($vc['matin']['S']));
 $ok($v['soir']['S']['nuits'] == $v['soir']['S']['fermees'] && $v['soir']['S']['nuits'] > 0 && $v['matin']['S']['jours'] == 5, 'volet comptes bruts : ' . json_encode($v['soir']['S']));
+// week-end lu à l'heure de l'événement : réglé du sam. 08:00 au dim. 20:00, le ven. soir compte en semaine, le sam. 09:00 en week-end
+$A::weekEnd(6, '8:00', 7, '20:00'); $vw = $A::volet($ev, $A::jours($t('2026-03-01 12:00'), $t('2026-03-09 08:00'), [])); $A::weekEnd(5, '16:00', 7, '16:00');
+$ok($vw['soir']['S']['n'] == 5 && $vw['matin']['W']['med'] == 540, 'volet week-end à l’heure de l’événement : ' . json_encode($vw));
 $ok($p['cS'][19] == 1 && $p['cS'][20] == 0, 'comptes bruts : ' . json_encode($p['cS']));
 
 // deux allumages dans la même minute : deux durées, passages ≤ 100 %
@@ -143,7 +146,7 @@ $ok($A::enchainements($pp, [['S', 'C']], [[$t('2026-03-02 00:00'), $t('2026-03-0
 $ok($A::actif('On') && $A::actif(1) && !$A::actif('0') && !$A::actif('Absent ?') && !$A::actif(''), 'actif');
 // états en texte (0.9) : ouvert / fermé reconnus, stop / my ignorés ; sens inversé (0 = ouvert)
 $ok($A::actif('Open') && $A::actif('ouvert') && $A::actif('UP') && !$A::actif('closed') && !$A::actif('fermé') && $A::neutre('Stop') && $A::neutre('my') && !$A::neutre('closed') && !$A::neutre(0), 'états en texte');
-$ok($A::inverser([[1, 0], [2, 100, true], [3, 40]]) == [[1, 100], [2, 0, true], [3, 60]] && $A::inverser([]) == [], 'sens inversé');
+$ok($A::inverser([[1, 0], [2, 100, true], [3, 40]]) == [[1, 100], [2, 0, true], [3, 60]] && $A::inverser([]) == [] && $A::inverser([[1, 0], [2, 0]]) == [[1, 1], [2, 1]] && $A::inverser([[1, 0], [2, 80]]) == [[1, 100], [2, 20]] && !$A::neutre('unknown'), 'sens inversé (échelle de la commande)');
 $pe = $A::periodes("2026-10-15 15:27 → 2026-10-23 12:42\nn'importe quoi\n2026-11-01 - 2026-11-02");
 $ok(count($pe) == 2 && $pe[0][0] == $t('2026-10-15 15:27') && $pe[1][1] == $t('2026-11-02 23:59:59'), 'périodes : ' . json_encode($pe));
 echo "calcul OK\n";

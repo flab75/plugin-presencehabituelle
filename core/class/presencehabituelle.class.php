@@ -81,13 +81,18 @@ class presencehabituelle extends eqLogic {
       $r[(int)$l['cmd_id']] = round((time() - (int)$l['d']) / 86400, 1);
     return $r;
   }
-  // Volets suivis restés sur une seule valeur après 3 jours de relevés : sans retour d'état (Somfy RTS, commande radio sans retour) ?
+  /* Volets suivis restés sur une seule valeur (ou sans aucune : « stop », « my » seulement) pendant 3 jours hors absences :
+     sans retour d'état (Somfy RTS, radio sans retour) ? Départ : premier relevé, sinon date où il a été suivi (d). */
   public static function figes() {
-    $v = array_map('intval', array_keys(array_filter(self::suivi(), fn($s) => ($s['t'] ?? '') == 'volet')));
+    $v = array_filter(self::suivi(), fn($s) => ($s['t'] ?? '') == 'volet');
     if (!$v) return [];
-    $r = [];
-    foreach (DB::Prepare('SELECT cmd_id, MIN(ts) AS d, COUNT(DISTINCT valeur) AS n FROM ' . self::TABLE . ' WHERE cmd_id IN (' . implode(',', $v) . ') GROUP BY cmd_id', [], DB::FETCH_TYPE_ALL) ?: [] as $l)
-      if ((int)$l['n'] < 2 && time() - (int)$l['d'] > 3 * 86400) $r[] = (int)$l['cmd_id'];
+    $l = DB::Prepare('SELECT cmd_id, MIN(ts) AS d, COUNT(DISTINCT valeur) AS n FROM ' . self::TABLE . ' WHERE cmd_id IN (' . implode(',', array_map('intval', array_keys($v))) . ') GROUP BY cmd_id', [], DB::FETCH_TYPE_ALL) ?: [];
+    $l = array_column($l, null, 'cmd_id'); $excl = self::exclusions(); $r = [];
+    foreach ($v as $id => $s) {
+      if ((int)($l[$id]['n'] ?? 0) >= 2 || !($a = (int)($l[$id]['d'] ?? 0) ?: (int)($s['d'] ?? 0))) continue;
+      $duree = time() - $a; foreach ($excl as [$x, $y]) $duree -= max(0, min($y, time()) - max($x, $a)); // ponytail: périodes qui se chevauchent comptées deux fois
+      if ($duree > 3 * 86400) $r[] = (int)$id;
+    }
     return $r;
   }
   public static function observes() {
@@ -245,7 +250,8 @@ class presencehabituelle extends eqLogic {
     foreach ($suivi as $id => $s) {
       if (!is_object($c = cmd::byId((int)$id)) || $c->getType() != 'info') continue;
       $t = in_array($s['t'] ?? '', ['lumiere', 'volet', 'prise', 'media', 'autre'], true) ? $s['t'] : 'autre';
-      $propre[(int)$id] = ['g' => mb_substr(trim((string)($s['g'] ?? '')), 0, 60), 't' => $t] + ($t == 'volet' && !empty($s['i']) ? ['i' => 1] : []); // i : ouvert = valeur basse
+      $propre[(int)$id] = ['g' => mb_substr(trim((string)($s['g'] ?? '')), 0, 60), 't' => $t] + ($t == 'volet' && !empty($s['i']) ? ['i' => 1] : []) // i : ouvert = valeur basse
+        + ['d' => (int)($avant[(int)$id]['d'] ?? time())]; // d : suivie depuis (volet figé)
     }
     $exclure = (int)$exclure;
     if ($exclure && (!is_object($c = cmd::byId($exclure)) || $c->getType() != 'info')) throw new Exception(__('Commande d\'exclusion introuvable', __FILE__));
@@ -313,8 +319,9 @@ class presencehabituelle extends eqLogic {
     $A = 'presencehabituelle_analyse'; $fin = time(); $debut = $fin - 86400 * self::DECOUVERTE;
     $suivi = self::suivi(); $lampes = []; $eqNomme = []; $nommees = []; $absence = []; $volets = []; $eqVolet = [];
     $sansX = !(int)config::byKey('exclure_cmd', __CLASS__, 0);
-    $cands = self::candidats(); $eqLampe = [];
+    $cands = self::candidats(); $eqLampe = []; $rep = self::cfg('reponses'); // déjà répondue dans le Guide (« Non » compris) : plus reproposée
     foreach ($cands as $c) if (in_array($c['gen'], ['LIGHT_STATE', 'LIGHT_STATE_BOOL'], true)) $eqLampe[$c['eqid']] = 1; // ses autres binaires sont annexes
+      elseif (in_array($c['gen'], ['FLAP_STATE', 'FLAP_BSO_STATE'], true)) $eqVolet[$c['eqid']] = 1; // volet déjà typé : sa « Position » n'est pas un 2e volet
     foreach ($cands as $c) {
       if (!$c['actif']) continue;
       $txt = $c['nom'] . ' ' . $c['eq'];
@@ -322,6 +329,7 @@ class presencehabituelle extends eqLogic {
       if ($sansX && $c['sub'] != 'string' && !$c['lisse'] && ($c['gen'] == 'ALARM_ENABLE_STATE' || preg_match(self::ABSENCE, $txt)))
         $absence[] = ['h' => cmd::cmdToHumanReadable('#' . $c['id'] . '#'), 'nom' => self::nom($c['id'], true),
           'alarme' => $c['gen'] == 'ALARM_ENABLE_STATE'];
+      if (isset($rep[$c['id']]) && !isset($suivi[$c['id']])) continue;
       if ($c['type'] == 'autre' && !isset($suivi[$c['id']]) && in_array($c['gen'], ['', 'GENERIC_INFO'], true) && !isset($eqVolet[$c['eqid']]) && $A::voletNomme($c['nom'], $c['eq'])) {
         $eqVolet[$c['eqid']] = 1; $volets[] = $c['id']; continue; // une par équipement ; position, binaire ou texte (open / closed)
       }

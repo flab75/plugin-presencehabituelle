@@ -183,7 +183,9 @@ class presencehabituelle_analyse {
         if ($t >= $b) break;
         $ferme = $f;
       }
-      $km = self::cle($j['n'], 4); $ks = self::cle($j['n'], 16);
+      // semaine ou week-end à l'heure du geste (week-end réglable), sinon à une heure typique (08:00, 21:00)
+      $km = $mat !== null ? self::cle((int)date('N', $mat), (int)date('G', $mat), (int)date('i', $mat)) : self::cle($j['n'], 8);
+      $ks = $soir !== null ? self::cle((int)date('N', $soir), (int)date('G', $soir), (int)date('i', $soir)) : self::cle($j['n'], 21);
       $jm[$km]++; if ($mat !== null) $m[$km][$j['d']] = self::minutes($mat, $j['d']);
       if ($b > $fin) continue; // nuit en cours
       foreach ($excl as [$x, $y]) if ($x < $b && $y > $a) continue 2; // le soir finit le lendemain à 04:00 : absent ce matin-là, la nuit ne dit rien
@@ -213,12 +215,12 @@ class presencehabituelle_analyse {
   }
   // État en texte qui ne dit ni ouvert ni fermé (arrêté en route, position « my », en mouvement) : ignoré, pas pris pour fermé
   public static function neutre($v) {
-    return !is_numeric($v) && in_array(mb_strtolower(trim((string)$v)), ['stop', 'stopped', 'my', 'moving', 'opening', 'closing', 'unknown', 'inconnu',
+    return !is_numeric($v) && in_array(mb_strtolower(trim((string)$v)), ['stop', 'stopped', 'my', 'moving', 'opening', 'closing',
       'en mouvement', 'partial', 'partiel', 'intermédiaire', 'intermediate'], true);
   }
-  // Volet suivi « ouvert = valeur basse » (0 = ouvert) : remis dans le sens habituel, par rapport à la plus haute valeur relevée
+  // Volet suivi « ouvert = valeur basse » (0 = ouvert) : remis dans le sens habituel, sur son échelle (binaire 0-1, position 0-100 ou plus)
   public static function inverser(array $ev) {
-    $mx = $ev ? max(array_column($ev, 1)) : 0;
+    $mx = $ev ? max(array_column($ev, 1)) : 0; $mx = $mx > 1 ? max(100, $mx) : 1; // pas la plus haute valeur vue : un volet resté ouvert (0) n'est pas fermé
     return array_map(fn($e) => [$e[0], $mx - $e[1]] + $e, $ev);
   }
 
@@ -267,8 +269,9 @@ class presencehabituelle_analyse {
   // Volet sans type générique, d'après son nom (commande, ou équipement si la commande s'appelle Etat / Position…)
   const VOLET = '/(?<![\p{L}\d])(volets?|stores?|shutters?|rollers?|persiennes?|bso|jalousies?|blinds?|rideaux?|covers?|brise-soleil)(?![\p{L}\d])/iu';
   const POSITION = '/^\s*(etat|état|state|statut|status|position|niveau|level|ouverture)\s*$/iu';
+  const VNON = '/(auto|mode|programm|calibr|vitesse|speed)/iu'; // « Volet auto » d'un virtuel : un mode, pas un état
   public static function voletNomme($cmd, $eq) {
-    return !preg_match(self::ANNEXE, $cmd) && (preg_match(self::VOLET, $cmd) || (preg_match(self::POSITION, $cmd) && preg_match(self::VOLET, $eq)));
+    return !preg_match(self::ANNEXE, $cmd) && !preg_match(self::VNON, $cmd) && (preg_match(self::VOLET, $cmd) || (preg_match(self::POSITION, $cmd) && preg_match(self::VOLET, $eq)));
   }
   public static function nommee($cmd, $eq) {
     return !preg_match(self::ANNEXE, $cmd) && (preg_match(self::LAMPE, $cmd) || (preg_match(self::ETAT, $cmd) && preg_match(self::LAMPE, $eq)));

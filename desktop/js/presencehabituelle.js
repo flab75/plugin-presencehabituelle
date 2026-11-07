@@ -56,7 +56,7 @@
   function charger() {
     ajax('liste', {}, function (r) {
       D = r; SAUVE = $.extend({}, r.suivi); REP = $.extend({}, r.reponses); REG = $.extend(true, {}, r.regles)
-      D.candidats.forEach(function (c) { c.type0 = c.type }) // rendu sur « Non » après un « Oui »
+      D.candidats.forEach(function (c) { c.type0 = c.type }); SENS = {} // rendu sur « Non » après un « Oui »
       if (r.jamais) D.candidats.forEach(function (c) { if (c.coche && c.actif) D.suivi[c.id] = { g: '', t: c.type } }) // première fois : préconisation
       $('#ph_exclure').val(r.exclure); $('#ph_exclusions').val(r.exclusions)
       $('#ph_precedent').toggle(!!r.precedent).attr('data-date', r.precedent ? r.precedent.date : '')
@@ -116,19 +116,19 @@
     alerte('{{Propositions reportées dans la liste : vérifiez, puis cliquez sur Enregistrer.}}', 'info')
   }
   function garder(ids, s) { // la lampe gardée d'un doublon, les lampes d'un groupe : suivies (avec le groupe saisi de celle qu'elles remplacent)
-    ids.forEach(function (id) { if (!D.suivi[id] && cand(id)) D.suivi[id] = { g: s ? s.g : '', t: 'lumiere' } })
+    ids.forEach(function (id) { if (!D.suivi[id] && cand(id)) D.suivi[id] = { g: s ? s.g : '', t: cand(id).type0 == 'volet' ? 'volet' : 'lumiere' } })
   }
   function cand(id) { return D.candidats.find(function (c) { return c.id == id }) }
   function lire() { // reporte les cases et les groupes de l'écran dans D.suivi
     $('#ph_liste tr[data-id]').each(function () {
       var id = $(this).data('id')
-      if ($(this).find('.ph_coche').is(':checked')) D.suivi[id] = { g: $(this).find('.ph_groupe').val().trim(), t: $(this).data('type'), i: (D.suivi[id] || {}).i } // i : sens du volet, réglé dans le Guide
+      if ($(this).find('.ph_coche').is(':checked')) D.suivi[id] = { g: $(this).find('.ph_groupe').val().trim(), t: $(this).data('type'), i: id in SENS ? SENS[id] : (D.suivi[id] || {}).i } // i : sens du volet, réglé dans le Guide (gardé si décoché puis recoché)
       else delete D.suivi[id]
     })
   }
 
   /* ---- Guide : quatre questions, les réponses remplissent le suivi ---- */
-  var REP = {}, REG = {}, VU = [] // réponses {id: {r, de}}, règles {id: {jamais, plages}}, changements vus en écoutant
+  var REP = {}, REG = {}, VU = [], SENS = {} // réponses {id: {r, de}}, règles {id: {jamais, plages}}, changements vus en écoutant
   var JOURS = { tous: '{{tous les jours}}', S: '{{en semaine}}', W: '{{le week-end}}' }
   function aDemander() { // lumières, volets, une prise binaire par équipement, et ce qui est déjà suivi, répondu ou signalé
     var prises = {}
@@ -257,7 +257,7 @@
       var l = [].concat(d !== undefined ? d : (e.originalEvent && e.originalEvent.detail) || []), ids = {}, n = 0
       D.candidats.forEach(function (c) { if (c.sub == 'binary' || c.type != 'autre') ids[c.id] = 1 }) // aussi les virtuels et 2es commandes : les doublons cherchés
       l.forEach(function (o) { if (o && ids[o.cmd_id]) { VU.unshift({ id: String(o.cmd_id), v: o.value, t: Date.now() }); n++ } })
-      if (n) { VU = VU.slice(0, 30); guide() } // les nouvelles venues deviennent répondables
+      if (n) { VU = VU.slice(0, 30); lireRegles(); guide() } // les nouvelles venues deviennent répondables ; plages en cours de saisie gardées
     })
     guide()
   }
@@ -269,7 +269,7 @@
   }
   function changeGuide() { liste(); dessiner(); guide() }
   $('#ph_gcontenu').on('change', '.ph_grep', function () { lire(); var id = $(this).closest('tr').attr('data-id'); repondre(id, $(this).val()); changeGuide() })
-  $('#ph_gcontenu').on('change', '.ph_ginv', function () { lire(); var id = $(this).closest('tr').attr('data-id'); if (D.suivi[id]) D.suivi[id].i = $(this).val() ? 1 : undefined; changeGuide() })
+  $('#ph_gcontenu').on('change', '.ph_ginv', function () { lire(); var id = $(this).closest('tr').attr('data-id'); SENS[id] = $(this).val() ? 1 : 0; if (D.suivi[id]) D.suivi[id].i = SENS[id] || undefined; changeGuide() })
   $('#ph_gcontenu').on('change', '.ph_gde', function () { lire(); var id = $(this).closest('tr').attr('data-id'); repondre(id, 'doublon', $(this).val()); changeGuide() })
   $('#ph_gcontenu').on('click', '#ph_ecoute', function () { VU = []; ecouter(!ECOUTE) })
   $('#ph_gcontenu').on('click', '.ph_garder', function () {
@@ -336,7 +336,7 @@
       })
       h += '</table>' + (ex.length ? '<p><b>{{Exceptions}}</b> :<br>' + ex.join('<br>') + '</p>' : '') + '<p><small>{{Exceptions : jours loin de la moitié centrale, de plus de 30 min et de plus de 1,5 fois son étendue (le plus grand des deux).}} {{Ouverture du matin : seulement si le volet était fermé à 04 h. Une fermeture partielle (contre le soleil) ne compte pas.}}</small></p>'
     }
-    if (h) h += '<p><small>{{Journée de 04 h à 04 h. Week-end : matins (04 h-16 h) du samedi et du dimanche, soirs (16 h-04 h) du vendredi et du samedi.}}</small></p>'
+    if (h) h += '<p><small>{{Journée de 04 h à 04 h. Week-end : comme dans la configuration du plugin (par défaut du vendredi 16:00 au lundi 04:00).}}</small></p>'
     $('#ph_resultats').html(h || '<p>{{Aucune commande suivie.}}</p>')
   }
 
@@ -594,7 +594,8 @@
       if (!oui) return
       ajax('liste', {}, function (r) {
         if (!r.precedent) return
-        D = r; D.suivi = $.extend({}, r.precedent.suivi); NOTES = {}; D.candidats.forEach(function (c) { c.type0 = c.type })
+        D = r; D.suivi = $.extend({}, r.precedent.suivi); NOTES = {}; SENS = {}
+        D.candidats.forEach(function (c) { var s = D.suivi[c.id]; if (s && s.t) c.type = s.t; c.type0 = c.type }) // type du choix d'avant (volet ou lumière reconnus au nom)
         REP = $.extend({}, r.precedent.reponses || r.reponses); REG = $.extend(true, {}, r.precedent.regles || r.regles) // choix d'avant la 0.8 : réponses actuelles gardées
         $('#ph_exclure').val(r.precedent.exclure); $('#ph_exclusions').val(r.precedent.exclusions)
         liste(); dessiner()

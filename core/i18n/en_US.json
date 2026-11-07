@@ -96,7 +96,6 @@
 		"Pas encore assez de données.": "Not enough data yet.",
 		"Exceptions : jours loin de la moitié centrale, de plus de 30 min et de plus de 1,5 fois son étendue (le plus grand des deux).": "Exceptions: days far from the middle half, by more than 30 min and by more than 1.5 times its spread (whichever is larger).",
 		"Ouverture du matin : seulement si le volet était fermé à 04 h. Une fermeture partielle (contre le soleil) ne compte pas.": "Morning opening: only if the shutter was closed at 04:00. A partial closing (against the sun) does not count.",
-		"Journée de 04 h à 04 h. Week-end : matins (04 h-16 h) du samedi et du dimanche, soirs (16 h-04 h) du vendredi et du samedi.": "Day from 04:00 to 04:00. Weekend: Saturday and Sunday mornings (04:00-16:00), Friday and Saturday evenings (16:00-04:00).",
 		"Aucune commande suivie.": "No command followed.",
 		"Enregistré": "Saved",
 		"changements repris de l’historique": "changes imported from history",
@@ -251,7 +250,8 @@
 		"jamais ouvert": "never open",
 		"ouvert = 0 (valeur basse)": "open = 0 (low value)",
 		"ouvert = valeur haute": "open = high value",
-		"peut s’ouvrir": "may open"
+		"peut s’ouvrir": "may open",
+		"Journée de 04 h à 04 h. Week-end : comme dans la configuration du plugin (par défaut du vendredi 16:00 au lundi 04:00).": "Day from 04:00 to 04:00. Weekend: as in the plugin configuration (by default from Friday 16:00 to Monday 04:00)."
 	},
 	"plugins/presencehabituelle/desktop/php/presencehabituelle.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",

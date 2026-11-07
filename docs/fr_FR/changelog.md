@@ -3,6 +3,7 @@
 ## 0.9
 - **Volets de toute marque** : états en texte (open / closed, up / down, ouvert / fermé ; stop et my ignorés au lieu d'être pris pour « fermé ») ; sens réglable par volet dans le Guide (ouvert = 0) ; volets sans type générique reconnus à leur nom par la découverte ; volet sans retour d'état (Somfy RTS…) signalé par le Guide après 3 jours sans changement.
 - « Identifier en allumant ou en ouvrant » ; plages « peut s'ouvrir » / « jamais ouvert » pour un volet.
+- Sens inversé calculé sur l'échelle de la commande (0-1 ou 0-100) ; matin et soir d'un volet rangés en semaine ou week-end à l'heure du mouvement ; « 3 jours sans changement » compté hors absences, même pour un volet jamais historisé ; commandes « auto », « mode », « calibration », « vitesse » d'un volet non proposées ; la découverte ne repropose pas un volet déjà refusé.
 
 ## 0.8.1
 - Guide : le × d'une plage retire la bonne ; doublon d'un doublon refusé ; les doublons suivent la commande gardée quand sa réponse change ; « Enregistrer » garde aussi le plan ; la page reprend ce que la box a retenu ; plage sans heure refusée ; la découverte remplit les réponses ; « Non » rend son type à une prise ; question 4 alignée sur le bilan ; « Identifier en allumant » voit toutes les commandes binaires ou typées.

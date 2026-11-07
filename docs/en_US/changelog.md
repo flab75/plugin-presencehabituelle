@@ -3,6 +3,7 @@
 ## 0.9
 - **Shutters of any brand**: text states (open / closed, up / down, ouvert / fermé; stop and my ignored instead of being taken as "closed"); direction set per shutter in the Guide (open = 0); shutters without generic type recognised by name by the discovery; shutter without state feedback (Somfy RTS…) flagged by the Guide after 3 days without change.
 - "Identify by switching on or opening"; "may open" / "never open" ranges for a shutter.
+- Inverted direction computed on the command scale (0-1 or 0-100); morning and evening of a shutter put in week or weekend at the time of the move; "3 days without change" counted outside absences, even for a shutter never logged; "auto", "mode", "calibration", "speed" commands of a shutter not proposed; the discovery no longer proposes a shutter already refused.
 
 ## 0.8.1
 - Guide: the × of a range removes the right one; duplicate of a duplicate refused; duplicates follow the kept command when its answer changes; "Save" also keeps the plan; the page reloads what the box kept; range without a time refused; the discovery fills in the answers; "No" gives a plug its type back; question 4 aligned with the summary; "Identify by switching on" sees every binary or typed command.
