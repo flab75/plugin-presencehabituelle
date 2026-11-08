@@ -186,6 +186,7 @@
     return '<div class="form-inline ph_plage" style="margin:2px 0"><select class="form-control input-sm ph_pk"><option value="marche">' + (v ? '{{peut s’ouvrir}}' : '{{peut s’allumer}}') + '</option><option value="exclue">' + (v ? '{{jamais ouvert}}' : '{{jamais allumée}}') + '</option></select> '
       + '<select class="form-control input-sm ph_pj">' + Object.keys(JOURS).map(function (k) { return '<option value="' + k + '">' + JOURS[k] + '</option>' }).join('') + '</select> '
       + '{{de}} <input type="time" class="form-control input-sm ph_pde" value="' + esc(p.de) + '"> {{à}} <input type="time" class="form-control input-sm ph_pa" value="' + esc(p.a) + '"> '
+      + '<label class="ph_pxl" title="{{Un jour sur 30 environ, tiré au hasard, la plage ne compte pas (oubli, soirée tardive)}}" style="font-weight:normal' + (p.k == 'exclue' ? '' : ';display:none') + '"><input type="checkbox" class="ph_px"' + (p.x ? ' checked' : '') + '> {{sauf exception}}</label> '
       + '<a class="btn btn-xs btn-default ph_pmoins" title="{{Retirer}}"><i class="fas fa-times"></i></a></div>'
   }
   function guide() {
@@ -284,7 +285,7 @@
   function lireRegles() {
     $('#ph_gcontenu tr.ph_rid').each(function () {
       var id = $(this).attr('data-id'), p = []
-      $(this).find('.ph_plage').each(function () { p.push({ k: $(this).find('.ph_pk').val(), j: $(this).find('.ph_pj').val(), de: $(this).find('.ph_pde').val(), a: $(this).find('.ph_pa').val() }) })
+      $(this).find('.ph_plage').each(function () { var q = { k: $(this).find('.ph_pk').val(), j: $(this).find('.ph_pj').val(), de: $(this).find('.ph_pde').val(), a: $(this).find('.ph_pa').val() }; if (q.k == 'exclue' && $(this).find('.ph_px').is(':checked')) q.x = 1; p.push(q) })
       var j = $(this).find('.ph_rjamais').is(':checked') ? 1 : 0
       if (j || p.length) REG[id] = { jamais: j, plages: p }; else delete REG[id]
     })
@@ -387,7 +388,8 @@
     $('a[href="#ph_plan"]').tab('show'); if (!ET) return alerte('{{Ajoutez d’abord un étage dans l’onglet Plan.}}', 'warning')
     PLACER = null; placer(id)
   })
-  $('#ph_gcontenu').on('change', '.ph_rjamais, .ph_pk, .ph_pj, .ph_pde, .ph_pa', function () { lireRegles(); bilan() })
+  $('#ph_gcontenu').on('change', '.ph_rjamais, .ph_pk, .ph_pj, .ph_pde, .ph_pa, .ph_px', function () { lireRegles(); bilan() })
+  $('#ph_gcontenu').on('change', '.ph_pk', function () { $(this).closest('.ph_plage').find('.ph_pxl').toggle($(this).val() == 'exclue') })
   $('#ph_gcontenu').on('click', '.ph_pplus', function () { lireRegles(); var id = $(this).closest('tr').attr('data-id'); REG[id] = REG[id] || { jamais: 0, plages: [] }; if (REG[id].plages.length < 10) REG[id].plages.push({ k: 'marche', j: 'tous', de: '18:00', a: '23:00' }); guide() })
   $('#ph_gcontenu').on('click', '.ph_pmoins', function () { var tr = $(this).closest('tr'), i = tr.find('.ph_plage').index($(this).closest('.ph_plage')); lireRegles(); var g = REG[tr.attr('data-id')]; if (g) { g.plages.splice(i, 1); if (!g.jamais && !g.plages.length) delete REG[tr.attr('data-id')] } guide() })
   $('#ph_genregistrer').on('click', function () { lireRegles(); sauver(function () { if (PL && UNDO.length) planEnr() }) }) // plan après le suivi : ses tendances sur le suivi neuf
@@ -1024,6 +1026,50 @@
       if (!Object.keys(pieces).length) h += '<p>{{Aucune lampe allumée sur ces 24 h.}}</p>'
       $('#ph_sim_journee_res').html(h + '<details><summary>{{Toutes les décisions}}</summary>' + lignes(r.decisions) + '</details>')
     }, function () { b.removeClass('disabled') })
+  })
+
+  // Onglet Calage
+  function calage(r) {
+    var c = r.c, ET = { off: ['default', '{{Désactivé}}'], cours: ['info', '{{Calage en cours}}'], calee: ['success', '{{Calée}}'], change: ['danger', '{{Habitudes changées}}'] }, e = ET[r.actif ? c.etat : 'off'] || ET.off
+    $('#ph_cal_etat').html('<span class="label label-' + e[0] + '">' + e[1] + '</span>'
+      + (r.actif && c.etat == 'cours' ? ' ' + (c.tours || 0) + ' {{tour(s)}}' : '') + (r.actif && c.depuis && c.etat != 'cours' ? ' {{depuis le}} ' + esc(new Date(c.depuis * 1000).toLocaleString()) : '')
+      + (r.actif && c.etat == 'change' ? ' : ' + esc((c.pieces || []).map(nomG).join(', ')) : '') + (c.note ? ' <small>(' + esc(c.note) + ')</small>' : '')
+      + (!r.actif ? ' <small>{{Cochez « Recalage automatique » dans la configuration du plugin.}}</small>' : ''))
+    $('#ph_cal_relancer, #ph_cal_origine').toggleClass('disabled', !r.actif)
+    var n = Object.keys(c.table || {})
+    if (!n.length) { $('#ph_cal_table').html('<p>{{Pas encore de calage.}}</p>'); $('#ph_cal_volets').html(''); return }
+    var pc = function (x) { return (x > 0 ? '+' : '') + Math.round(x * 100) + ' %' }, nb = function (x) { return String(Math.round(x * 10) / 10).replace('.', ',') }
+    var col = function (x, t) { return Math.abs(x) <= t ? 'success' : Math.abs(x) <= 2 * t ? 'warning' : 'danger' }
+    var bande = function (p, coul) { return '<div style="display:flex;height:8px">' + p.map(function (v, h) { return '<div title="' + h + ' h : ' + v + ' %" style="flex:1;background:' + coul + ';opacity:' + (v / 100).toFixed(2) + '"></div>' }).join('') + '</div>' }
+    var ok = n.filter(function (k) { return c.table[k].ok }).length
+    var h = '<p>' + ok + ' / ' + n.length + ' {{pièces dans les tolérances}} (±' + Math.round(r.tol[0] * 100) + ' % {{heures}}, ±' + Math.round(r.tol[1] * 100) + ' % {{allumages}})'
+      + (c.t ? ', {{dernier tour le}} ' + esc(new Date(c.t * 1000).toLocaleString()) : '') + '.</p>'
+      + '<table class="table table-condensed"><thead><tr><th>{{Pièce}}</th><th>{{Heures / jour}}<br><small>{{réel → simulé}}</small></th><th>{{Allumages / jour}}<br><small>{{réel → simulé}}</small></th><th>{{Durée moyenne}}<br><small>{{réel → simulé}}</small></th><th>{{Réglages}}<br><small>{{fréquence × durée}}</small></th><th style="width:30%">{{0 h → 24 h}}<br><small>{{réel (haut) / simulé (bas)}}</small></th></tr></thead><tbody>'
+    n.forEach(function (k) {
+      var x = c.table[k], ctl = ((c.controle || {}).v || {})[k]
+      h += '<tr><td>' + (x.ok ? '<i class="fas fa-circle text-success"></i> ' : x.borne ? '<i class="fas fa-circle text-warning" title="{{au mieux : réglage à sa limite}}"></i> ' : '<i class="fas fa-circle text-danger"></i> ') + esc(nomG(k))
+        + (ctl && !ctl.ok ? ' <i class="fas fa-exclamation-triangle text-warning" title="{{14 derniers jours hors tolérances}} (' + ((c.alertes || {})[k] || 0) + ' {{contrôle(s) de suite}})"></i>' : '') + '</td>'
+        + '<td>' + nb(x.r.h) + ' → ' + nb(x.p.h) + ' <span class="label label-' + col(x.eh, r.tol[0]) + '">' + pc(x.eh) + '</span></td>'
+        + '<td>' + nb(x.r.n) + ' → ' + nb(x.p.n) + ' <span class="label label-' + col(x.en, r.tol[1]) + '">' + pc(x.en) + '</span></td>'
+        + '<td>' + duree(x.r.mn) + ' → ' + duree(x.p.mn) + '</td><td>× ' + nb(x.c.cf) + ' / × ' + nb(x.c.cd) + '</td>'
+        + '<td>' + bande(x.r.p, '#337ab7') + bande(x.p.p, '#f0ad4e') + '</td></tr>'
+    })
+    h += '</tbody></table><p><small>{{Réel : les}} ' + ((c.table[n[0]] || {}).r || {}).j + ' {{derniers jours comptés au plus (absences, Simulation On et extinctions manquées exclues). Les réglages restent entre ÷ 3 et × 3 ; pastille orange : au mieux (réglage à sa limite, ou calage arrêté après 20 tours). Le rejeu suit le soleil seul, même avec un capteur de luminosité. Une fois calée, le contrôle de chaque nuit ne regarde que le nombre d’allumages : les heures allumées suivent la saison.}}</small></p>'
+    $('#ph_cal_table').html(h)
+    var v = Object.keys(c.volets || {}), hv = function (m) { return m === null || m === undefined ? '–' : hm(Math.round(m) % 1440) }
+    var ec = function (a, b) { if (a === null || b === null || a === undefined || b === undefined) return ''; var d = Math.round(b - a); return ' <span class="label label-' + (Math.abs(d) <= r.tol[2] ? 'success' : 'warning') + '">' + (d > 0 ? '+' : '') + d + ' min</span>' }
+    $('#ph_cal_volets').html(v.length ? '<table class="table table-condensed"><thead><tr><th>{{Volet}}</th><th>{{Fermé le soir}}<br><small>{{réel → simulé}}</small></th><th>{{Ouvert le matin}}<br><small>{{réel → simulé}}</small></th></tr></thead><tbody>'
+      + v.map(function (id) { var x = c.volets[id]; return '<tr><td>' + esc(x.nom) + '</td><td>' + hv(x.rf) + ' → ' + hv(x.pf) + ec(x.rf, x.pf) + '</td><td>' + hv(x.ro) + ' → ' + hv(x.po) + ec(x.ro, x.po) + '</td></tr>' }).join('')
+      + '</tbody></table><p><small>{{Heures médianes. Les volets suivent déjà leurs tendances : affichés pour contrôle, sans réglage.}}</small></p>' : '<p>{{Aucun volet suivi.}}</p>')
+  }
+  function calCharger() { ajax('calage', {}, calage) }
+  $('a[href="#ph_cal"]').on('shown.bs.tab', calCharger)
+  $('#ph_cal_maj').on('click', calCharger)
+  $('#ph_cal_relancer, #ph_cal_origine').on('click', function () {
+    if ($(this).hasClass('disabled')) return
+    var b = $('#ph_cal_relancer, #ph_cal_origine').addClass('disabled')
+    $('#ph_cal_etat').append(' <i class="fas fa-spinner fa-spin"></i>')
+    ajax('calage_relancer', { origine: this.id == 'ph_cal_origine' ? 1 : 0 }, function (r) { b.removeClass('disabled'); calage(r) }, function () { b.removeClass('disabled'); calCharger() })
   })
 
   charger()

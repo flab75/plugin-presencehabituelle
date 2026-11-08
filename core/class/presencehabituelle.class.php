@@ -659,9 +659,11 @@ class presencehabituelle extends eqLogic {
       if (!$iv) { $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'piece' => $pi, 'ids' => $ids, 'jours' => 0]; continue; }
       $parNom = []; foreach ($iv as $id => $i) $parNom[$noms[$id]] = $i;
       $j = $A::jours($debut, $fin, $exG); $se = $A::sessions($parNom); $p = $A::profil($se, $j);
+      $jr = array_slice(array_values(array_filter($j, fn($x) => $x['a'] >= $fin - self::CAL_SPAN * 86400)), -self::CAL_JOURS); // recalage : derniers jours comptés
       $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'piece' => $pi, 'ids' => $ids, 'lampes' => array_values($noms), 'lids' => array_keys($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
         'S' => $p['S'], 'W' => $p['W'], 'cS' => $p['cS'], 'cW' => $p['cW'], 'lS' => $A::lisser($p['S']), 'lW' => $A::lisser($p['W']),
-        'ex' => $p['ex'], 'durees' => $A::durees($se, $j), 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmerS' => $p['nS'] < self::FIABLE, 'confirmerW' => $p['nW'] < self::FIABLE, 'bloquees' => $bloq];
+        'ex' => $p['ex'], 'durees' => $A::durees($se, $j), 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmerS' => $p['nS'] < self::FIABLE, 'confirmerW' => $p['nW'] < self::FIABLE, 'bloquees' => $bloq,
+        'jr' => array_column($jr, 'd'), 'reel' => $A::bilan($se, $jr), 'reel14' => $A::bilan($se, array_slice($jr, -14))];
     }
     foreach ($volets as $id => $s) {
       $ev = self::evs($id); $nom = self::nom($id);
@@ -687,7 +689,7 @@ class presencehabituelle extends eqLogic {
         elseif (!empty($x['piece'])) $res[$t][$i]['nom'] .= ' (' . __('pièce', __FILE__) . ')'; // pièce et groupe saisi de même nom
       }
     }
-    self::ecrire(self::fichier(), $res);
+    self::ecrire(self::fichier(), $res); self::$ctx = null; // contexte() relit les tendances
     try { self::majWidget($res); } catch (Throwable $e) { log::add(__CLASS__, 'error', 'widget : ' . $e->getMessage()); } // les tendances sont enregistrées quoi qu'il arrive
     return $res;
   }
@@ -703,7 +705,8 @@ class presencehabituelle extends eqLogic {
      « Allumé d'habitude maintenant » dit quand la maison est vide : rempli seulement si l'option widget_pieces est cochée. */
   const CMDS = ['etat' => ['État', 'info', 'string'], 'maintenant' => ['Allumé d\'habitude maintenant', 'info', 'string'],
     'calcul' => ['Tendances du', 'info', 'string'], 'suivies' => ['Commandes suivies', 'info', 'numeric'], 'recalculer' => ['Recalculer', 'action', 'other'],
-    'mode' => ['Simulation', 'info', 'binary'], 'on' => ['Simulation On', 'action', 'other'], 'off' => ['Simulation Off', 'action', 'other']];
+    'mode' => ['Simulation', 'info', 'binary'], 'on' => ['Simulation On', 'action', 'other'], 'off' => ['Simulation Off', 'action', 'other'],
+    'change' => ['Habitudes changées', 'info', 'binary']];
   public static function equipement($creer = true) {
     $w = eqLogic::byLogicalId('widget', __CLASS__);
     if (!is_object($w)) {
@@ -737,6 +740,7 @@ class presencehabituelle extends eqLogic {
     $w->checkAndUpdateCmd('maintenant', $m); // ph:propre
     $w->checkAndUpdateCmd('calcul', isset($h['date']) ? date('d/m H:i', strtotime($h['date'])) : ''); // ph:propre
     $w->checkAndUpdateCmd('suivies', count(self::suivi())); // ph:propre
+    $w->checkAndUpdateCmd('change', self::calage()['etat'] == 'change' ? 1 : 0); // ph:propre
   }
 
   /* Historique Jeedom des commandes suivies : seule écriture du plugin sur des commandes d'autres équipements, à la demande
@@ -896,16 +900,21 @@ class presencehabituelle extends eqLogic {
     return $inv ? ($v == 1 || $v >= 99) : $v <= 0;
   }
   /* Contexte d'un passage à l'instant $t ; tire l'aléa et le plan des volets à chaque nouvelle journée (04:00) dans $E.
-     $capteur = false : pas de capteur de luminosité (journée rejouée à l'avance), le soleil seul. */
-  public static function contexte($t, array &$E, $capteur = true) {
+     $capteur = false : pas de capteur de luminosité (journée rejouée à l'avance), le soleil seul ;
+     $coef = coefficients du recalage à essayer (null : ceux du calage, si le recalage est activé). */
+  private static $ctx = null; // tendances lues une fois par appel (journée rejouée : 288 passages), oubliées à chaque analyse
+  public static function contexte($t, array &$E, $capteur = true, ?array $coef = null) {
     $M = 'presencehabituelle_moteur'; $A = 'presencehabituelle_analyse'; $r = fn() => mt_rand() / (mt_getrandmax() + 1);
-    static $cache = null; // tendances lues une fois par appel (journée rejouée : 288 passages)
+    $cache = &self::$ctx;
     self::semaine();
     if ($cache === null) {
       $h = self::habitudes(); $regles = $A::regles(self::cfg('regles')); $tx = [];
       foreach ($h['groupes'] ?? [] as $g) $tx[$g['nom']] = $g['nom'] . ' ' . implode(' ', array_map(fn($id) => self::nom($id, true), $g['ids'] ?? [])); // nom et pièce Jeedom : type de pièce
-      $cache = ['h' => $h, 'regles' => $regles, 'sources' => $M::sources($h['groupes'] ?? [], $regles, $tx, self::FIABLE)];
+      $cache = ['h' => $h, 'regles' => $regles, 'sources' => $M::sources($h['groupes'] ?? [], $regles, $tx, self::FIABLE), 'cal' => []];
     }
+    if ($coef === null) $coef = self::recalage() ? (self::calage()['coef'] ?? []) : [];
+    $ck = json_encode($coef);
+    if (!isset($cache['cal'][$ck])) $cache['cal'] = [$ck => $M::caler($cache['sources'], $coef)]; // un seul jeu gardé
     $geo = fn($k) => (float)str_replace(',', '.', (string)config::byKey($k, 'core', 0));
     $lat = $geo('info::latitude'); $lon = $geo('info::longitude');
     if (!$lat && !$lon) { $lat = 46.6; $lon = 2.4; } // ponytail: coordonnées absentes de la configuration de Jeedom, centre de la France
@@ -925,7 +934,7 @@ class presencehabituelle extends eqLogic {
     $sans = array_values(array_filter(array_map(fn($x) => mb_strtolower(trim($x)), explode(',', (string)config::byKey('sans_jour', __CLASS__, ''))), 'strlen')); // sans tenir compte de la casse
     return ['t' => $t, 'm' => (int)date('G', $t) * 60 + (int)date('i', $t), 'k' => $A::cle((int)date('N', $t), (int)date('G', $t), (int)date('i', $t)),
       'pk' => $M::penombre($t, date_sun_info(strtotime(date('Y-m-d', $t) . ' 12:00'), $lat, $lon), $lux, $bas, max($bas + 1, $haut)),
-      'sources' => $cache['sources'], 'max' => $max, 'sansJour' => $sans, 'regles' => $cache['regles']];
+      'sources' => $cache['cal'][$ck], 'max' => $max, 'sansJour' => $sans, 'regles' => $cache['regles']];
   }
   // État réel des lampes (infos seulement) : [id => allumée]
   private static function etats(array $ids) {
@@ -1027,6 +1036,116 @@ class presencehabituelle extends eqLogic {
     return ($j = (int)config::byKey($cle, __CLASS__, 90)) > 0 ? $j : 90;
   }
 
+  /* Recalage (« calage ») : la simulation rejouée en mémoire sur les derniers jours réels, pièce par pièce, comparée au réel ;
+     deux coefficients par pièce (fréquence cf, durée cd) corrigés à chaque tour jusqu'à entrer dans les tolérances.
+     Une fois calée : plus de rejeu, seulement un contrôle quotidien des 14 derniers jours face à la référence du calage ;
+     une pièce hors tolérances 3 contrôles de suite → « Habitudes changées » (message Jeedom + commande info), recalage par bouton.
+     N'écrit que la configuration du plugin (clé calage) et la commande info de son widget. */
+  const CAL_JOURS = 28; const CAL_SPAN = 45; const CAL_MIN = 10; const CAL_TOURS = 5; const CAL_ALERTE = 3; const CAL_MAX = 20; // tours au total : au-delà, calée « au mieux »
+  public static function recalage() { return (string)config::byKey('recalage', __CLASS__, '0') === '1'; }
+  public static function calage() { return self::cfg('calage') + ['etat' => self::recalage() ? 'cours' : 'off', 'coef' => [], 'tours' => 0, 'depuis' => 0, 'table' => [], 'volets' => [], 'ref' => [], 'alertes' => []]; }
+  private static function calageSauver(array $c) { config::save('calage', json_encode($c, JSON_INVALID_UTF8_SUBSTITUTE), __CLASS__); }
+  public static function tolerances() {
+    $v = fn($k, $d) => is_numeric($x = str_replace(',', '.', trim((string)config::byKey($k, __CLASS__, '')))) && $x > 0 ? (float)$x : $d;
+    return [$v('tol_h', 15) / 100, $v('tol_n', 25) / 100, $v('tol_v', 20)];
+  }
+  // Jours ['d' => Y-m-d] → jours de jours() (00:00 → 00:00)
+  private static function joursDe(array $d) { return array_map(fn($x) => ['d' => $x, 'a' => strtotime($x), 'b' => strtotime($x . ' +1 day'), 'n' => (int)date('N', strtotime($x))], $d); }
+  /* Rejeu en mémoire (rien n'est envoyé ni gardé) sur les jours du recalage, soleil de ces jours, coefficients $coef.
+     → [{nom: bilan()}, {id volet: {f, o}}] (heures médianes en minutes, jours de semaine) */
+  public static function rejeu(array $coef) {
+    $M = 'presencehabituelle_moteur'; $A = 'presencehabituelle_analyse';
+    $h = self::habitudes(); $d = [];
+    foreach ($h['groupes'] ?? [] as $g) foreach ($g['jr'] ?? [] as $x) $d[$x] = 1;
+    if (!$d) return [[], []];
+    ksort($d); $d = array_keys($d);
+    $t0 = strtotime($d[0]) - 3600; $t1 = strtotime(end($d) . ' +1 day'); // une heure avant : la soirée de la veille démarre
+    mt_srand(1414); // même aléa à chaque tour : seul le coefficient change le résultat
+    $E = []; $on = []; $se = []; $vo = [];
+    try { for ($t = $t0; $t < $t1; $t += 60 * $M::PAS) {
+      $C = self::contexte($t, $E, false, $coef);
+      [$E, $dec] = $M::pas($E, $C, fn() => mt_rand() / (mt_getrandmax() + 1));
+      foreach ($dec as $x) {
+        if (isset($x['v'])) { $jd = $E['jour']['d']; $n = (int)date('N', strtotime($jd)); $mn = $A::minutes($t, $jd); // journée 04:00 → 04:00 comme analyser : +1440 après minuit
+          if ($x['action'] == 'fermer' && $A::cle($n, 21) == 'S') $vo[$x['ids'][0]]['f'][] = $mn;
+          if ($x['action'] == 'ouvrir' && $A::cle($n, 8) == 'S') $vo[$x['ids'][0]]['o'][] = $mn;
+          continue; }
+        if ($x['action'] == 'on') $on[$x['nom']] = $t;
+        elseif (isset($on[$x['nom']])) { $se[$x['nom']][] = [$on[$x['nom']], $t]; unset($on[$x['nom']]); }
+      }
+    } } finally { mt_srand(); } // aléa rendu au processus, même après une erreur
+    foreach ($on as $nom => $a) $se[$nom][] = [$a, $t1];
+    $P = []; foreach ($h['groupes'] ?? [] as $g) if (!empty($g['jr'])) $P[$g['nom']] = $A::bilan($se[$g['nom']] ?? [], self::joursDe($g['jr']));
+    $V = []; foreach ($vo as $id => $x) $V[$id] = array_map(fn($l) => $A::quantile($l, .5), $x);
+    return [$P, $V];
+  }
+  private static function sources0() { $E = []; return self::contexte(time(), $E, false, [])['sources']; } // sources sans coefficient
+  // {nom: bilan réel} des pièces assez relevées et que la simulation a le droit d'allumer
+  // ponytail: une lampe « jamais » d'une pièce simulée compte encore dans le réel de sa pièce
+  private static function reels($cle, $min) {
+    $S = self::sources0(); $R = [];
+    foreach (self::habitudes()['groupes'] ?? [] as $g) { $s = $S[$g['nom']] ?? null;
+      if (($g[$cle]['j'] ?? 0) >= $min && $s && $s['ids'] && ($s['src']['S'] != 'jamais' || $s['src']['W'] != 'jamais')) $R[$g['nom']] = $g[$cle]; }
+    return $R;
+  }
+  // Ce qui rend les coefficients caducs : lampes, source (tendances / provisoire), durées mesurées ou du type, plages du Guide
+  private static function signature() {
+    return md5(json_encode(array_map(fn($s) => [$s['ids'], $s['src'], $s['d'] == presencehabituelle_moteur::PROV[$s['type']]['d'], $s['plages']], self::sources0())));
+  }
+  // Chaque nuit (cronDaily, après analyser) ou au bouton : jusqu'à CAL_TOURS tours pendant un calage, sinon le contrôle léger
+  public static function recaler() {
+    if (!self::recalage()) return;
+    $c = self::calage(); $M = 'presencehabituelle_moteur'; $tol = self::tolerances();
+    if ($c['etat'] == 'calee' && ($c['sig'] ?? '') !== self::signature()) { $c['etat'] = 'cours'; $c['tours'] = 0; $c['controle'] = []; $c['alertes'] = []; } // pièces changées : recalage
+    if ($c['etat'] == 'calee') {
+      $der = ''; foreach (self::habitudes()['groupes'] ?? [] as $g) $der = max($der, (string)max($g['jr'] ?? ['']));
+      if ($der === ($c['controle']['der'] ?? null)) return $c; // aucun jour compté de plus (absence, Simulation On) : rien à contrôler
+      $R14 = self::reels('reel14', 7); $ref = array_intersect_key($c['ref'], $R14);
+      [, $v] = $M::ajuster($ref, $R14, [], [INF, $tol[1]]); // la référence face aux 14 derniers jours, allumages seulement (les heures suivent la saison)
+      $c['alertes'] = array_intersect_key($c['alertes'], $v);
+      foreach ($v as $nom => $x) $c['alertes'][$nom] = $x['ok'] ? 0 : ($c['alertes'][$nom] ?? 0) + 1;
+      $c['controle'] = ['t' => time(), 'der' => $der, 'v' => $v, 'r' => $R14];
+      $ch = array_keys(array_filter($c['alertes'], fn($n) => $n >= self::CAL_ALERTE));
+      if ($ch) {
+        $c['etat'] = 'change'; $c['depuis'] = time(); $c['pieces'] = $ch;
+        message::add(__CLASS__, __('Présence habituelle : habitudes changées', __FILE__) . ' (' . implode(', ', $ch) . '). ' . __('Relancez le calage depuis l\'onglet Calage du plugin.', __FILE__));
+      }
+      self::calageSauver($c); self::majWidget();
+      return $c;
+    }
+    if ($c['etat'] != 'cours') return $c; // habitudes changées : on attend le bouton
+    $R = self::reels('reel', self::CAL_MIN);
+    if (!$R) { $c['note'] = __('Pas encore assez de jours relevés', __FILE__); self::calageSauver($c); return $c; }
+    unset($c['note']);
+    for ($i = 0; $i < self::CAL_TOURS; $i++) {
+      [$P, $V] = self::rejeu($c['coef']);
+      [$coef, $v] = $M::ajuster($R, $P, $c['coef'], $tol);
+      $c['tours']++;
+      $c['table'] = []; foreach ($v as $nom => $x) $c['table'][$nom] = $x + ['r' => $R[$nom], 'p' => $P[$nom], 'c' => ($c['coef'][$nom] ?? []) + ['cf' => 1, 'cd' => 1]];
+      $c['volets'] = []; foreach (self::habitudes()['volets'] ?? [] as $x) $c['volets'][$x['id']] = ['nom' => $x['nom'], 'rf' => $x['soir']['S']['med'] ?? null, 'ro' => $x['matin']['S']['med'] ?? null, 'pf' => $V[$x['id']]['f'] ?? null, 'po' => $V[$x['id']]['o'] ?? null];
+      if (!array_filter($v, fn($x) => !$x['ok'] && !$x['borne']) || $c['tours'] >= self::CAL_MAX) { // tout dans les tolérances, au bout de ce qu'un coefficient peut faire, ou trop de tours
+        foreach ($c['table'] as $nom => $x) if (!$x['ok']) $c['table'][$nom]['borne'] = true; // au mieux
+        $c['etat'] = 'calee'; $c['depuis'] = time(); $c['alertes'] = []; $c['controle'] = []; $c['sig'] = self::signature();
+        $c['ref'] = array_map(fn($r) => ['h' => $r['h'], 'n' => $r['n']], $R);
+        break;
+      }
+      $c['coef'] = $coef;
+    }
+    $c['t'] = time(); self::calageSauver($c); self::majWidget();
+    return $c;
+  }
+  public static function calageRelancer($origine = false) {
+    if (!self::recalage()) throw new Exception(__('Cochez d\'abord « Recalage automatique » dans la configuration du plugin', __FILE__));
+    $c = self::calage(); $c = ['etat' => 'cours', 'tours' => 0, 'alertes' => [], 'ref' => [], 'depuis' => 0, 'pieces' => [], 'controle' => []] + $c;
+    if ($origine) $c['coef'] = [];
+    self::calageSauver($c);
+    return self::recaler();
+  }
+  public static function postConfig_recalage($v) { // cochée : calage dès cette nuit (coefficients gardés) ; décochée : rien ne tourne, réglages d'origine dans la simulation
+    $c = self::calage(); $c['etat'] = (string)$v === '1' ? ($c['etat'] == 'off' ? 'cours' : $c['etat']) : 'off';
+    self::calageSauver($c); self::majWidget();
+  }
+
   /* Box ou Jeedom arrêté : rien n'est relevé, les lampes paraîtraient éteintes. Un trou de plus de 3 h entre deux passages est exclu.
      ponytail: 3 h = deux cronHourly manqués ; un arrêt plus court n'est pas vu */
   public static function cronHourly() {
@@ -1043,6 +1162,7 @@ class presencehabituelle extends eqLogic {
     try {
       self::purger(max(7, self::jours('conserver')));
       self::analyser();
+      self::recaler();
     } catch (Throwable $e) { log::add(__CLASS__, 'error', 'cronDaily : ' . $e->getMessage()); }
   }
 }

@@ -77,5 +77,20 @@ if (!isConnect('admin')) {
       </label>
       <div class="col-md-4"><input class="configKey form-control" data-l1key="sans_jour" placeholder="{{Cave, WC}}"></div>
     </div>
+    <legend>{{Recalage}}</legend>
+    <div class="form-group">
+      <label class="col-md-4 control-label">{{Recalage automatique}}
+        <sup><i class="fas fa-question-circle tooltips" title="{{Coché : chaque nuit, la simulation est rejouée en mémoire sur les 28 derniers jours réels et comparée pièce par pièce (heures allumées, allumages) ; deux réglages par pièce (fréquence, durée) sont corrigés jusqu'à ce qu'elle soit calée. Ensuite, seul un contrôle léger tourne chaque nuit. Décoché : rien ne tourne, la simulation suit les tendances telles quelles. Détail : onglet Calage.}}"></i></sup>
+      </label>
+      <div class="col-md-2"><input type="checkbox" class="configKey" data-l1key="recalage"></div>
+    </div>
+    <div class="form-group">
+      <label class="col-md-4 control-label">{{Tolérances}} ({{%, %, minutes}})
+        <sup><i class="fas fa-question-circle tooltips" title="{{Écart accepté entre la simulation et le réel : heures allumées par jour (défaut 15 %), allumages par jour (défaut 25 %), heure des volets (défaut 20 min, affichée seulement).}}"></i></sup>
+      </label>
+      <div class="col-md-2"><input class="configKey form-control" data-l1key="tol_h" placeholder="{{heures : 15}}"></div>
+      <div class="col-md-2"><input class="configKey form-control" data-l1key="tol_n" placeholder="{{allumages : 25}}"></div>
+      <div class="col-md-2"><input class="configKey form-control" data-l1key="tol_v" placeholder="{{volets : 20}}"></div>
+    </div>
   </fieldset>
 </form>

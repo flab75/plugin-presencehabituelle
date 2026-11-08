@@ -23,6 +23,7 @@ sendVarToJS('eqType', $plugin->getId());
 		<li role="presentation"><a href="#ph_suivi" role="tab" data-toggle="tab"><i class="fas fa-list-check"></i> {{Commandes suivies}}</a></li>
 		<li role="presentation"><a href="#ph_hab" role="tab" data-toggle="tab"><i class="fas fa-chart-bar"></i> {{Tendances}}</a></li>
 		<li role="presentation"><a href="#ph_plan" role="tab" data-toggle="tab"><i class="fas fa-map"></i> {{Plan}}</a></li>
+		<li role="presentation"><a href="#ph_cal" role="tab" data-toggle="tab"><i class="fas fa-sliders-h"></i> {{Calage}}</a></li>
 		<li role="presentation"><a href="#ph_sim" role="tab" data-toggle="tab"><i class="fas fa-house-user"></i> {{Simulation}}</a></li>
 	</ul>
 	<div class="tab-content">
@@ -104,6 +105,17 @@ sendVarToJS('eqType', $plugin->getId());
 					<p><small>{{Pièce du plan de chaque pièce Jeedom : sert à « Placer d’après les pièces Jeedom » et à grouper le Guide.}}</small></p><div id="ph_liens"></div>
 				</div>
 			</div>
+		</div>
+		<div role="tabpanel" class="tab-pane" id="ph_cal" style="padding-top:10px">
+			<p>{{La simulation rejouée en mémoire sur les derniers jours réels (rien n'est envoyé), comparée au réel pièce par pièce. Le recalage corrige pour chaque pièce la fréquence des allumages et leur durée, jusqu'à entrer dans les tolérances (configuration du plugin). Une fois calée, seul un contrôle léger tourne chaque nuit.}}</p>
+			<div style="margin-bottom:8px">
+				<span id="ph_cal_etat" style="margin-right:10px"></span>
+				<a class="btn btn-sm btn-primary" id="ph_cal_relancer" title="{{Un calage tout de suite (jusqu'à 5 tours, quelques dizaines de secondes), puis chaque nuit jusqu'à ce qu'elle soit calée.}}"><i class="fas fa-redo"></i> {{Relancer le calage}}</a>
+				<a class="btn btn-sm btn-default" id="ph_cal_origine" title="{{Coefficients remis à 1, puis nouveau calage.}}"><i class="fas fa-undo"></i> {{Remettre les réglages d'origine}}</a>
+				<a class="btn btn-sm btn-default" id="ph_cal_maj"><i class="fas fa-sync"></i></a>
+			</div>
+			<div id="ph_cal_table"></div>
+			<legend style="font-size:1.1em">{{Volets (jours de semaine)}}</legend><div id="ph_cal_volets"></div>
 		</div>
 		<div role="tabpanel" class="tab-pane" id="ph_sim" style="padding-top:10px">
 			<p>{{Pendant une absence, Simulation On allume et éteint les lampes suivies, ferme et ouvre les volets, pièce par pièce : d'après ses tendances quand elle a assez de jours comptés, sinon d'après des horaires provisoires de son type de pièce (cuisine, salon, chambre…). Les lampes ne s'allument qu'à la pénombre, les règles du Guide sont suivies. Une période On est exclue de l'analyse, comme une absence.}}</p>

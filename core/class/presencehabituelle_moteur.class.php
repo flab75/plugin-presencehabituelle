@@ -67,16 +67,52 @@ class presencehabituelle_moteur {
   }
 
   // Règles du Guide à la minute $m d'un jour $k : « jamais » d'une plage exclue, et seulement dans les plages « peut » s'il y en a
-  public static function permis(array $plages, $k, $m) {
+  // $ex = jour d'exception (jour()) : une plage exclue marquée x (« sauf exception ») ne compte pas ce jour-là
+  public static function permis(array $plages, $k, $m, $ex = false) {
     $mn = fn($x) => 60 * (int)substr($x, 0, 2) + (int)substr($x, 3, 2);
     $dans = function ($q) use ($m, $mn) { $a = $mn($q['de']); $b = $mn($q['a']); return $a == $b || ($a < $b ? $m >= $a && $m < $b : $m >= $a || $m < $b); };
     $marche = null;
     foreach ($plages as $q) {
       if ($q['j'] != 'tous' && $q['j'] != $k) continue;
-      if ($q['k'] == 'exclue' && $dans($q)) return false;
+      if ($q['k'] == 'exclue' && $dans($q) && !($ex && !empty($q['x']))) return false;
       if ($q['k'] == 'marche') $marche = $marche || $dans($q);
     }
     return $marche !== false;
+  }
+
+  /* Recalage : coefficients par pièce {nom: {cf, cd}} ; cf multiplie la probabilité d'allumer (profil), cd la durée tirée.
+     Les heures jamais allumées restent à 0. */
+  public static function caler(array $sources, array $coef) {
+    foreach ($coef as $nom => $c) if (isset($sources[$nom])) {
+      $cf = (float)($c['cf'] ?? 1); $cd = (float)($c['cd'] ?? 1);
+      $sources[$nom]['cf'] = $cf; // l'allumage seulement : un profil gonflé empêcherait aussi d'éteindre (WC allumé 16 h, places de présence prises)
+      $sources[$nom]['d'] = [$sources[$nom]['d'][0] * $cd, $sources[$nom]['d'][1] * $cd];
+    }
+    return $sources;
+  }
+  const BORNE = 3; // coefficients entre 1/3 et 3
+  /* Un tour de recalage. $R / $P = {nom: bilan()} réel / rejoué ; $tol = [heures, allumages] en fraction (0,15 = ±15 %).
+     → [coefficients, {nom: {ok, borne, eh, en}}] ; eh / en = écart relatif des heures et des allumages par jour.
+     ponytail: pas amorti (racine du rapport) ; écart sous 6 min par jour toujours accepté (pièce presque jamais allumée) */
+  public static function ajuster(array $R, array $P, array $coef, array $tol) {
+    $v = []; $b = fn($x) => max(1 / self::BORNE, min(self::BORNE, $x));
+    foreach ($R as $nom => $r) {
+      if (!isset($P[$nom])) continue;
+      $p = $P[$nom]; $c = ($coef[$nom] ?? []) + ['cf' => 1, 'cd' => 1];
+      $eh = $r['h'] > 0 ? ($p['h'] - $r['h']) / $r['h'] : ($p['h'] > 0 ? 1 : 0);
+      $en = $r['n'] > 0 ? ($p['n'] - $r['n']) / $r['n'] : ($p['n'] > 0 ? 1 : 0);
+      $ok = (abs($eh) <= $tol[0] || abs($p['h'] - $r['h']) < .1) && (abs($en) <= $tol[1] || abs($p['n'] - $r['n']) < .1);
+      $av = $c;
+      if (!$ok && $r['n'] > 0) {
+        $c['cf'] = $b($c['cf'] * ($p['n'] > 0 ? sqrt($r['n'] / $p['n']) : self::BORNE));
+        if ($p['n'] > 0 && $p['h'] > 0) $c['cd'] = $b($c['cd'] * sqrt(($r['h'] / $r['n']) / ($p['h'] / $p['n'])));
+      } elseif (!$ok && $p['n'] > 0) $c['cf'] = $b($c['cf'] / self::BORNE); // jamais allumée en vrai : bien moins souvent
+      $c = ['cf' => round($c['cf'], 3), 'cd' => round($c['cd'], 3)];
+      $coef[$nom] = $c;
+      $sat = abs($en) > $tol[1] && abs($p['n'] - $r['n']) >= .1 && ($en < 0 ? $av['cf'] >= self::BORNE : $av['cf'] <= round(1 / self::BORNE, 3)); // trop peu (ou trop) d'allumages, cf déjà à sa limite
+      $v[$nom] = ['ok' => $ok, 'borne' => !$ok && ($sat || $c == ['cf' => round($av['cf'], 3), 'cd' => round($av['cd'], 3)]), 'eh' => round($eh, 3), 'en' => round($en, 3)];
+    }
+    return [$coef, $v];
   }
 
   /* Pénombre k de 0 (plein jour) à 1 (nuit) : capteur de luminosité si lu (entre $bas et $haut lux),
@@ -137,7 +173,7 @@ class presencehabituelle_moteur {
     foreach ($C['sources'] as $nom => $s) {
       $e = ($E['g'][$nom] ?? []) + ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => 0];
       if ($e['vis'] > $t) { $E['g'][$nom] = $e; continue; } // visiteur : quelqu'un l'a changée, laissée tranquille
-      $ok = $s['src'][$k] != 'jamais' && self::permis($s['plages'], $k, $m);
+      $ok = $s['src'][$k] != 'jamais' && self::permis($s['plages'], $k, $m, !empty($J['ex']));
       $pk = in_array(mb_strtolower((string)$nom), $C['sansJour'], true) ? 1 : $C['pk']; // (string) : un nom fait de chiffres devient une clé entière
       $p = min(1, $s['profil'][$k][$h] / 100 * $pk * $J['f']);
       $d = ['g' => 1, 'nom' => $nom, 'src' => $s['src'][$k], 'p' => round($p, 3)];
@@ -145,7 +181,7 @@ class presencehabituelle_moteur {
         $fin = !$ok ? 'plage' : (!empty($e['ec']) ? 'eclair' : ($s['profil'][$k][$h] <= 0 && empty($J['ex']) ? 'jamais' : ($t >= $e['fin'] && $r() >= 1 - pow(1 - $p, self::GAP / 60) ? 'fin' : null))); // heure où la pièce n'a jamais été allumée : éteinte, même au milieu d'une longue durée tirée (une cuisine allumée toute la journée ne file pas jusqu'à 3 h), sauf un jour d'exception
         if ($t >= $e['fin'] && !$fin) $e['fin'] = $t + 60 * self::duree($s, $r); // prolongée
         if ($fin) { $dec[] = $d + ['ids' => $e['l'], 'action' => 'off', 'motif' => $fin]; $e = ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => $t + 60 * (10 + 30 * $r()), 'vis' => 0, 'off' => $t, 'lo' => $e['l']]; $on--; }
-      } elseif ($ok && $p > 0 && $t >= $e['pause'] && $on < $C['max'] && $r() < 1 - pow(1 - $p, self::PAS / 60)) {
+      } elseif ($ok && $p > 0 && $t >= $e['pause'] && $on < $C['max'] && $r() < 1 - pow(1 - min(1, $p * ($s['cf'] ?? 1)), self::PAS / 60)) {
         $du = self::duree($s, $r);
         $e = ['on' => 1, 'fin' => $t + 60 * $du, 'l' => self::lampes($s, $r), 'pause' => 0, 'vis' => 0] + ($du ? [] : ['ec' => 1]); $on++;
         $dec[] = $d + ['ids' => $e['l'], 'action' => 'on', 'motif' => 'tirage'];
@@ -162,9 +198,9 @@ class presencehabituelle_moteur {
       $d = ['v' => 1, 'nom' => $v['nom'], 'ids' => [(int)$id], 'src' => $v['src'], 'p' => 1];
       $pl = $C['regles'][$id]['plages'] ?? [];
       $fj = $v['f'] === null ? null : ($v['f'] - 240 + 1440) % 1440; $oj = ($v['o'] - 240 + 1440) % 1440;
-      if (!$e['ferme'] && $fj !== null && $mj >= $fj && $e['fj'] !== $J['d'] && self::permis($pl, $k, $m)) {
+      if (!$e['ferme'] && $fj !== null && $mj >= $fj && $e['fj'] !== $J['d'] && self::permis($pl, $k, $m, !empty($J['ex']))) {
         $e = ['ferme' => 1, 'fj' => $J['d'], 'nom' => $v['nom']]; $dec[] = $d + ['action' => 'fermer', 'motif' => 'soir'];
-      } elseif ($e['ferme'] && $mj >= $oj && $mj < 720 && ($fj === null || $mj < $fj) && $e['fj'] !== $J['d'] && self::permis($pl, $k, $m)) {
+      } elseif ($e['ferme'] && $mj >= $oj && $mj < 720 && ($fj === null || $mj < $fj) && $e['fj'] !== $J['d'] && self::permis($pl, $k, $m, !empty($J['ex']))) {
         $e['ferme'] = 0; $dec[] = $d + ['action' => 'ouvrir', 'motif' => 'matin']; // n'ouvre que ce qu'il a fermé
       }
       $E['v'][$id] = $e;

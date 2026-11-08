@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14
+- Recalibration ("Automatic recalibration" option, off by default): each night the simulation is replayed in memory over the last 28 counted real days and compared room by room (hours lit, switch-ons, duration, 24 h profile). Two settings per room (frequency, duration, between ÷3 and ×3) are corrected, at most 5 rounds per night, until within tolerances (±15 % hours, ±25 % switch-ons, adjustable).
+- Once calibrated, no more replay: a light check compares the last 14 days with the calibration reference every night. A room out of tolerance 3 nights in a row: "Habits changed" state, Jeedom message and "Habitudes changées" info command on the widget. Calibration is restarted with a button.
+- New Calibration tab: state, real / simulated table per room with gaps, settings, 24 h bands, shutters; "Restart calibration" and "Reset to original settings" buttons.
+- Guide rules: a "never on" range can be "except on exception days" (about one day in 30, drawn at random, it does not apply).
+- The frequency setting only acts on switching on: a session still ends by the profile. Nightly check on switch-ons only, skipped when no new day is counted; rooms changed in the Guide trigger a new calibration; stops "at best" after 20 rounds.
+
 ## 0.13.2
 - Fix: the upper light threshold ("lux_haut") was no longer read since 0.13.1; with a sensor, dimness jumped from 0 to 1 at the lower threshold.
 

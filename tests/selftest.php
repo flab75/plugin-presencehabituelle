@@ -253,6 +253,28 @@ $Ev['jour']['volets'] = []; $Ev['v'][9]['nom'] = 'V';
 $ok(!$d && $Ev2['v'][9]['ferme'] == 1, 'volet sorti du plan : pas rouvert la nuit');
 [$Ev2, $d] = $M::pas($Ev, ['t' => 1000, 'm' => 480, 'k' => 'S', 'pk' => 1, 'sources' => [], 'max' => 3, 'sansJour' => [], 'regles' => []], $r);
 $ok(count($d) == 1 && $d[0]['action'] == 'ouvrir' && $d[0]['motif'] == 'hors plan' && !isset($Ev2['v'][9]), 'volet sorti du plan : rouvert à 08:00 et oublié');
+// plage exclue « sauf exception » : permise seulement un jour d'exception ; une plage sans x reste interdite
+$px = [['k' => 'exclue', 'j' => 'tous', 'de' => '00:30', 'a' => '06:00', 'x' => 1]];
+$ok(!$M::permis($px, 'S', 120) && $M::permis($px, 'S', 120, true) && !$M::permis([['k' => 'exclue', 'j' => 'tous', 'de' => '00:30', 'a' => '06:00']], 'S', 120, true), 'plage sauf exception');
+$ok(($A::regles([5 => ['plages' => [$px[0], ['k' => 'marche', 'j' => 'tous', 'de' => '08:00', 'a' => '09:00', 'x' => 1]]]])[5]['plages'] ?? []) == [$px[0], ['k' => 'marche', 'j' => 'tous', 'de' => '08:00', 'a' => '09:00']], 'x gardé sur une plage exclue seulement');
+// recalage : bilan, coefficients appliqués, tour d'ajustement
+$jb = [['d' => '2026-03-02', 'a' => $t('2026-03-02'), 'b' => $t('2026-03-03')], ['d' => '2026-03-03', 'a' => $t('2026-03-03'), 'b' => $t('2026-03-04')]];
+$bl = $A::bilan([[$t('2026-03-02 19:00'), $t('2026-03-02 21:00')], [$t('2026-03-03 23:00'), $t('2026-03-04 01:00')]], $jb);
+$ok($bl['h'] == 1.5 && $bl['n'] == 1 && $bl['mn'] == 90 && $bl['p'][19] == 50 && $bl['p'][23] == 50 && $bl['p'][0] == 0, 'bilan : ' . json_encode($bl));
+$sc = $M::caler(['X' => ['profil' => ['S' => [0, 40], 'W' => [10, 0]], 'd' => [10, 20]]], ['X' => ['cf' => 2, 'cd' => .5], 'Y' => ['cf' => 3]]);
+$ok($sc['X']['profil']['S'] == [0, 40] && $sc['X']['cf'] == 2 && $sc['X']['d'] == [5, 10] && !isset($sc['Y']), 'caler');
+[$cf, $v] = $M::ajuster(['A' => ['h' => 4, 'n' => 2], 'B' => ['h' => 2, 'n' => 1], 'C' => ['h' => 1, 'n' => 1]], ['A' => ['h' => 1, 'n' => .5], 'B' => ['h' => 2.1, 'n' => 1.1], 'C' => ['h' => 1, 'n' => 1]], ['C' => ['cf' => 3, 'cd' => 1]], [.15, .25]);
+$ok(!$v['A']['ok'] && $cf['A'] == ['cf' => 2.0, 'cd' => 1.0] && $v['B']['ok'] && $cf['B'] == ['cf' => 1, 'cd' => 1] && $v['C']['ok'], 'ajuster : ' . json_encode([$cf, $v]));
+[$cf, $v] = $M::ajuster(['A' => ['h' => 9, 'n' => 9]], ['A' => ['h' => 1, 'n' => 1]], ['A' => ['cf' => 3, 'cd' => 3]], [.15, .25]);
+$ok(!$v['A']['ok'] && $v['A']['borne'] && $cf['A'] == ['cf' => 3.0, 'cd' => 3.0], 'ajuster : borne');
+[$cf, $v] = $M::ajuster(['A' => ['h' => 2, 'n' => 1]], ['A' => ['h' => 0, 'n' => 0]], [], [.15, .25]);
+$ok($cf['A']['cf'] == 3 && !$v['A']['borne'], 'ajuster : jamais allumée dans le rejeu');
+[$cf, $v] = $M::ajuster(['A' => ['h' => 0, 'n' => 0]], ['A' => ['h' => 1, 'n' => 1]], [], [.15, .25]);
+$ok(round($cf['A']['cf'], 3) == .333 && !$v['A']['borne'], 'ajuster : jamais allumée en vrai');
+[, $v] = $M::ajuster(['A' => ['h' => 2, 'n' => 1]], ['A' => ['h' => 4, 'n' => 1.1]], [], [INF, .25]);
+$ok($v['A']['ok'], 'ajuster : contrôle sur les allumages seulement');
+[, $v] = $M::ajuster(['A' => ['h' => 4, 'n' => 4]], ['A' => ['h' => 1, 'n' => 1]], ['A' => ['cf' => 3, 'cd' => 1]], [.15, .25]);
+$ok($v['A']['borne'], 'ajuster : cf à sa limite, allumages trop rares');
 echo "moteur OK\n";
 
 // confidentialité : aucun appel réseau dans le code du plugin
@@ -293,7 +315,7 @@ foreach ($it as $f) {
   }
 }
 $ok(($marques['historiser'] ?? 0) == 6, 'écritures « historiser » : 6 attendues (historiser, remettre)');
-$ok(($marques['propre'] ?? 0) == 12, 'écritures « propre » : 12 attendues (equipement, majWidget, ajax widget) : ' . ($marques['propre'] ?? 0));
+$ok(($marques['propre'] ?? 0) == 13, 'écritures « propre » : 13 attendues (equipement, majWidget, ajax widget) : ' . ($marques['propre'] ?? 0));
 $ok(($marques['envoyer'] ?? 0) == 1, 'envoi aux équipements : 1 ligne attendue (envoyer)');
 $cl = file_get_contents(__DIR__ . '/../core/class/presencehabituelle.class.php');
 // bascule de l'envoi réel, état enregistré avant d'agir (ces fonctions écrivent la configuration : lues ici, pas exécutées)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14
+- Recalage (case « Recalage automatique » de la configuration, décochée par défaut) : chaque nuit, la simulation est rejouée en mémoire sur les 28 derniers jours réels comptés et comparée pièce par pièce (heures allumées, allumages, durée, profil de 24 h). Deux réglages par pièce (fréquence, durée, entre ÷ 3 et × 3) sont corrigés, au plus 5 tours par nuit, jusqu'à entrer dans les tolérances (±15 % des heures, ±25 % des allumages, réglables).
+- Une fois calée, plus de rejeu : un contrôle léger compare chaque nuit les 14 derniers jours à la référence du calage. Une pièce hors tolérances 3 nuits de suite : état « Habitudes changées », message Jeedom et commande info « Habitudes changées » du widget. Le calage se relance par un bouton.
+- Nouvel onglet Calage : état, tableau réel / simulé par pièce avec écarts et pastilles, réglages, bandes de 24 h, volets ; boutons « Relancer le calage » et « Remettre les réglages d'origine ».
+- Le réglage de fréquence ne joue que sur l'allumage : la fin d'une session suit toujours le profil (un profil gonflé gardait le WC allumé 16 h). Contrôle sur les allumages seulement (les heures suivent la saison), sauté quand aucun jour nouveau n'est compté (absence) ; pièces ajoutées, retirées ou changées dans le Guide : calage refait ; arrêt « au mieux » après 20 tours.
+- Règles du Guide : une plage « jamais allumée » peut être « sauf exception » (un jour sur 30 environ, tiré au hasard, elle ne compte pas).
+
 ## 0.13.2
 - Correction : le seuil haut de luminosité (« lux_haut ») n'était plus lu depuis la 0.13.1 ; avec un capteur, la pénombre passait d'un coup de 0 à 1 au seuil bas.
 

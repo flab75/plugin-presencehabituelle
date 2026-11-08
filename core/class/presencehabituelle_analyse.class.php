@@ -73,7 +73,7 @@ class presencehabituelle_analyse {
       foreach (array_slice((array)($v['plages'] ?? []), 0, 10) as $q)
         if (is_array($q) && in_array($q['k'] ?? '', ['marche', 'exclue'], true) && in_array($q['j'] ?? '', ['tous', 'S', 'W'], true)
           && preg_match($h, (string)($q['de'] ?? '')) && preg_match($h, (string)($q['a'] ?? '')))
-          $p[] = ['k' => $q['k'], 'j' => $q['j'], 'de' => $q['de'], 'a' => $q['a']];
+          $p[] = ['k' => $q['k'], 'j' => $q['j'], 'de' => $q['de'], 'a' => $q['a']] + ($q['k'] == 'exclue' && !empty($q['x']) ? ['x' => 1] : []); // x : sauf un jour d'exception
       if (!empty($v['jamais']) || $p) $r[(int)$id] = ['jamais' => empty($v['jamais']) ? 0 : 1, 'plages' => $p];
     }
     return $r;
@@ -170,6 +170,24 @@ class presencehabituelle_analyse {
     $p['ex'] = []; // exceptions : [jour, heure] allumé à une heure où il l'est au plus RARE % des jours
     foreach ($jours as $j) for ($h = 0; $h < 24; $h++) if (isset($on[$j['d'] . ' ' . $h]) && $p[self::cle($j['n'], $h)][$h] <= self::RARE) $p['ex'][] = [$j['d'], $h];
     return $p;
+  }
+
+  /* Recalage : bilan d'un groupe sur des jours ($jours de jours()) : h = heures allumées par jour, n = allumages par jour,
+     mn = durée moyenne (min), p = % des jours allumé dans chaque heure (0..23, semaine et week-end ensemble) */
+  public static function bilan(array $sessions, array $jours) {
+    $N = count($jours); $tot = 0; $n = 0; $p = array_fill(0, 24, 0);
+    if (!$N) return ['h' => 0, 'n' => 0, 'mn' => 0, 'p' => $p, 'j' => 0];
+    foreach ($jours as $j) {
+      $vu = [];
+      foreach ($sessions as $s) {
+        $a = max($s[0], $j['a']); $b = min($s[1], $j['b']);
+        if ($b <= $a) continue;
+        $tot += $b - $a; if ($s[0] >= $j['a']) $n++;
+        for ($t = $a - ($a % 3600); $t < $b; $t += 3600) $vu[(int)date('G', $t)] = 1; // ponytail: heure pleine à l'heure UTC ronde, juste en France (décalage d'heures entières)
+      }
+      foreach ($vu as $h => $x) $p[$h]++;
+    }
+    return ['h' => round($tot / 3600 / $N, 2), 'n' => round($n / $N, 2), 'mn' => $n ? (int)round($tot / 60 / $n) : 0, 'p' => array_map(fn($x) => (int)round(100 * $x / $N), $p), 'j' => $N];
   }
 
   // Lissage 1-2-1 sur 24 h (minuit relié à 23 h) ; une heure jamais allumée reste à 0

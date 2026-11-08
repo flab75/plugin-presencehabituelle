@@ -66,6 +66,8 @@ try {
   if (init('action') == 'simulation') ajax::success($P::etatSimulation());
   if (init('action') == 'mode') { $P::simulation((int)init('on') == 1); ajax::success($P::etatSimulation()); }
   if (init('action') == 'journee') ajax::success($P::journee());
+  if (init('action') == 'calage') ajax::success(['c' => $P::calage(), 'actif' => $P::recalage() ? 1 : 0, 'tol' => $P::tolerances()]);
+  if (init('action') == 'calage_relancer') { set_time_limit(300); $P::calageRelancer(init('origine') == 1); ajax::success(['c' => $P::calage(), 'actif' => 1, 'tol' => $P::tolerances()]); }
   if (init('action') == 'effacer') { $P::effacer(); $P::demarrer(); ajax::success($P::analyser()); } // état courant noté à nouveau
 
   throw new Exception(__('Aucune méthode correspondante à', __FILE__) . ' : ' . init('action'));
