@@ -114,7 +114,7 @@ class presencehabituelle_moteur {
   }
 
   private static function duree(array $s, callable $r) { // minutes
-    if ($r() * 100 < $s['pas']) return 1 + 2 * $r(); // passage éclair : éteint au passage suivant
+    if ($r() * 100 < $s['pas']) return 0; // passage éclair : éteint au passage suivant (5 min)
     return max(self::PAS, $s['d'][0] + $r() * ($s['d'][1] - $s['d'][0]));
   }
   private static function lampes(array $s, callable $r) {
@@ -126,7 +126,8 @@ class presencehabituelle_moteur {
     return [$s['ids'][min(count($s['ids']) - 1, (int)floor($r() * count($s['ids'])))]];
   }
 
-  /* Un passage du cron. $E = état {g: {nom: {on, fin, l, pause, vis}}, v: {id: {ferme, fj}}, jour: {d, dec, f, volets}} ;
+  /* Un passage du cron. $E = état {g: {nom: {on, fin, l, pause, vis, off, lo}}, v: {id: {ferme, fj, nom}}, jour: {d, dec, f, volets}, reel} ;
+     off / lo = heure et lampes du dernier « off » (renvoyé s'il s'est perdu, voir visiteurs()) ;
      $C = {t, m (minute du jour), k (S|W), pk (pénombre), sources, max (présences simultanées), sansJour [noms], regles}.
      → [état, décisions [{g|v, nom, ids, action: on|off|ouvrir|fermer, src, p, motif}]] */
   public static function pas(array $E, array $C, callable $r) {
@@ -137,18 +138,23 @@ class presencehabituelle_moteur {
       $e = ($E['g'][$nom] ?? []) + ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => 0];
       if ($e['vis'] > $t) { $E['g'][$nom] = $e; continue; } // visiteur : quelqu'un l'a changée, laissée tranquille
       $ok = $s['src'][$k] != 'jamais' && self::permis($s['plages'], $k, $m);
-      $pk = in_array($nom, $C['sansJour'], true) ? 1 : $C['pk'];
+      $pk = in_array(mb_strtolower((string)$nom), $C['sansJour'], true) ? 1 : $C['pk']; // (string) : un nom fait de chiffres devient une clé entière
       $p = min(1, $s['profil'][$k][$h] / 100 * $pk * $J['f']);
       $d = ['g' => 1, 'nom' => $nom, 'src' => $s['src'][$k], 'p' => round($p, 3)];
       if ($e['on']) {
-        $fin = !$ok ? 'plage' : ($s['profil'][$k][$h] <= 0 && empty($J['ex']) ? 'jamais' : ($t >= $e['fin'] && $r() >= 1 - pow(1 - $p, self::GAP / 60) ? 'fin' : null)); // heure où la pièce n'a jamais été allumée : éteinte, même au milieu d'une longue durée tirée (une cuisine allumée toute la journée ne file pas jusqu'à 3 h), sauf un jour d'exception
+        $fin = !$ok ? 'plage' : (!empty($e['ec']) ? 'eclair' : ($s['profil'][$k][$h] <= 0 && empty($J['ex']) ? 'jamais' : ($t >= $e['fin'] && $r() >= 1 - pow(1 - $p, self::GAP / 60) ? 'fin' : null))); // heure où la pièce n'a jamais été allumée : éteinte, même au milieu d'une longue durée tirée (une cuisine allumée toute la journée ne file pas jusqu'à 3 h), sauf un jour d'exception
         if ($t >= $e['fin'] && !$fin) $e['fin'] = $t + 60 * self::duree($s, $r); // prolongée
-        if ($fin) { $dec[] = $d + ['ids' => $e['l'], 'action' => 'off', 'motif' => $fin]; $e = ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => $t + 60 * (10 + 30 * $r()), 'vis' => 0]; $on--; }
+        if ($fin) { $dec[] = $d + ['ids' => $e['l'], 'action' => 'off', 'motif' => $fin]; $e = ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => $t + 60 * (10 + 30 * $r()), 'vis' => 0, 'off' => $t, 'lo' => $e['l']]; $on--; }
       } elseif ($ok && $p > 0 && $t >= $e['pause'] && $on < $C['max'] && $r() < 1 - pow(1 - $p, self::PAS / 60)) {
-        $e = ['on' => 1, 'fin' => $t + 60 * self::duree($s, $r), 'l' => self::lampes($s, $r), 'pause' => 0, 'vis' => 0]; $on++;
+        $du = self::duree($s, $r);
+        $e = ['on' => 1, 'fin' => $t + 60 * $du, 'l' => self::lampes($s, $r), 'pause' => 0, 'vis' => 0] + ($du ? [] : ['ec' => 1]); $on++;
         $dec[] = $d + ['ids' => $e['l'], 'action' => 'on', 'motif' => 'tirage'];
       }
       $E['g'][$nom] = $e;
+    }
+    foreach ($E['g'] ?? [] as $nom => $e) if (!isset($C['sources'][$nom])) { // pièce sortie des sources (commande décochée, Guide) : éteinte, oubliée
+      if (!empty($e['on'])) $dec[] = ['g' => 1, 'nom' => $nom, 'ids' => $e['l'], 'action' => 'off', 'src' => '', 'p' => 0, 'motif' => 'disparu'];
+      unset($E['g'][$nom]);
     }
     $mj = ($m - 240 + 1440) % 1440; // minutes depuis 04:00 : la nuit appartient au jour d'avant
     foreach ($J['volets'] as $id => $v) {
@@ -157,26 +163,34 @@ class presencehabituelle_moteur {
       $pl = $C['regles'][$id]['plages'] ?? [];
       $fj = $v['f'] === null ? null : ($v['f'] - 240 + 1440) % 1440; $oj = ($v['o'] - 240 + 1440) % 1440;
       if (!$e['ferme'] && $fj !== null && $mj >= $fj && $e['fj'] !== $J['d'] && self::permis($pl, $k, $m)) {
-        $e = ['ferme' => 1, 'fj' => $J['d']]; $dec[] = $d + ['action' => 'fermer', 'motif' => 'soir'];
-      } elseif ($e['ferme'] && $mj >= $oj && ($fj === null || $mj < $fj) && $e['fj'] !== $J['d'] && self::permis($pl, $k, $m)) {
+        $e = ['ferme' => 1, 'fj' => $J['d'], 'nom' => $v['nom']]; $dec[] = $d + ['action' => 'fermer', 'motif' => 'soir'];
+      } elseif ($e['ferme'] && $mj >= $oj && $mj < 720 && ($fj === null || $mj < $fj) && $e['fj'] !== $J['d'] && self::permis($pl, $k, $m)) {
         $e['ferme'] = 0; $dec[] = $d + ['action' => 'ouvrir', 'motif' => 'matin']; // n'ouvre que ce qu'il a fermé
       }
       $E['v'][$id] = $e;
+    }
+    foreach ($E['v'] ?? [] as $id => $e) if (!isset($J['volets'][$id])) { // volet sorti du plan (« jamais simulé ») : rouvert le matin s'il l'a fermé, puis oublié
+      if (empty($e['ferme'])) unset($E['v'][$id]);
+      elseif ($mj >= 240 && $mj < 720) { $dec[] = ['v' => 1, 'nom' => $e['nom'] ?? '', 'ids' => [(int)$id], 'src' => '', 'p' => 1, 'action' => 'ouvrir', 'motif' => 'hors plan']; unset($E['v'][$id]); }
     }
     return [$E, $dec];
   }
 
   /* Visiteur (envoi réel seulement) : une lampe d'un groupe changée par quelqu'un d'autre ($reels[id] = allumée ou non) → groupe laissé $min minutes.
-     Groupe allumé par le moteur dont toutes les lampes sont éteintes, ou groupe éteint dont une lampe est allumée. */
+     Groupe allumé par le moteur dont toutes les lampes sont éteintes, ou groupe éteint dont une lampe est allumée (aussi au 1er passage après On).
+     Sauf un « off » du moteur de moins de 10 min dont les lampes sont restées allumées : ordre perdu, renvoyé. → [état, décisions] */
   public static function visiteurs(array $E, array $sources, array $reels, $t, $min) {
+    $dec = [];
     foreach ($sources as $nom => $s) {
-      $e = $E['g'][$nom] ?? null; if (!$e || ($e['vis'] ?? 0) > $t) continue;
-      $l = $e['on'] ? $e['l'] : $s['ids']; $vus = array_intersect_key($reels, array_flip($l));
-      if (!$vus) continue;
-      $allume = in_array(true, $vus, true);
-      if ($e['on'] != $allume) $E['g'][$nom] = ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => $t + 60 * $min];
+      $e = ($E['g'][$nom] ?? []) + ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => 0];
+      if ($e['vis'] > $t) continue;
+      $vus = array_intersect_key($reels, array_flip($e['on'] ? $e['l'] : $s['ids']));
+      if (!$vus || (bool)$e['on'] == in_array(true, $vus, true)) continue;
+      $lit = array_keys(array_filter($vus));
+      if (!$e['on'] && $t - ($e['off'] ?? 0) <= 600 && !array_diff($lit, $e['lo'] ?? [])) { $dec[] = ['g' => 1, 'nom' => $nom, 'ids' => $lit, 'action' => 'off', 'src' => '', 'p' => 0, 'motif' => 'renvoi']; continue; }
+      $E['g'][$nom] = ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => $t + 60 * $min];
     }
-    return $E;
+    return [$E, $dec];
   }
 
   // Arrêt : tout ce que le moteur a allumé est éteint (les volets restent comme ils sont)

@@ -41,7 +41,7 @@ if (!isConnect('admin')) {
     <legend>{{Simulation}}</legend>
     <div class="form-group">
       <label class="col-md-4 control-label">{{Envoyer vraiment aux équipements}}
-        <sup><i class="fas fa-question-circle tooltips" title="{{Non coché (défaut) : la simulation est « à blanc », elle décide et note tout au journal de l'onglet Simulation, mais n'allume, n'éteint, n'ouvre ni ne ferme rien. Cochez-la seulement après avoir lu quelques journées à blanc.}}"></i></sup>
+        <sup><i class="fas fa-question-circle tooltips" title="{{Non coché (défaut) : la simulation est « à blanc », elle décide et note tout au journal de l'onglet Simulation, mais n'allume, n'éteint, n'ouvre ni ne ferme rien. Cochez-la seulement après avoir lu quelques journées à blanc. Décochée pendant une simulation On : les lampes qu'elle a allumées sont éteintes, puis elle continue à blanc ; cochée : elle repart de zéro.}}"></i></sup>
       </label>
       <div class="col-md-2"><input type="checkbox" class="configKey" data-l1key="reel"></div>
     </div>
@@ -52,12 +52,14 @@ if (!isConnect('admin')) {
       <div class="col-md-2"><input type="checkbox" class="configKey" data-l1key="blanc_sans_on"></div>
     </div>
     <div class="form-group">
-      <label class="col-md-4 control-label">{{Pièces allumées en même temps, au plus}}</label>
+      <label class="col-md-4 control-label">{{Pièces allumées en même temps, au plus}}
+        <sup><i class="fas fa-question-circle tooltips" title="{{Vide ou 0 : 3.}}"></i></sup>
+      </label>
       <div class="col-md-2"><input class="configKey form-control" data-l1key="presences_max" placeholder="3"></div>
     </div>
     <div class="form-group">
       <label class="col-md-4 control-label">{{Pièce changée par quelqu'un : laissée}} ({{minutes}})
-        <sup><i class="fas fa-question-circle tooltips" title="{{Si une lampe suivie est allumée ou éteinte par quelqu'un d'autre pendant la simulation (visiteur, voisin qui arrose), la pièce n'est plus touchée pendant ce temps. Par défaut 60.}}"></i></sup>
+        <sup><i class="fas fa-question-circle tooltips" title="{{Envoi réel seulement. Si une lampe suivie est allumée ou éteinte par quelqu'un d'autre pendant la simulation (visiteur, voisin qui arrose), la pièce n'est plus touchée pendant ce temps. Vide ou 0 : 60.}}"></i></sup>
       </label>
       <div class="col-md-2"><input class="configKey form-control" data-l1key="visiteur" placeholder="60"></div>
     </div>
@@ -65,7 +67,7 @@ if (!isConnect('admin')) {
       <label class="col-md-4 control-label">{{Capteur de luminosité}}
         <sup><i class="fas fa-question-circle tooltips" title="{{Facultatif. Une commande info de luminosité extérieure (lux) : les lampes ne s'allument qu'à la pénombre, entre les deux seuils. Vide : le lever et le coucher du soleil (coordonnées de la configuration de Jeedom).}}"></i></sup>
       </label>
-      <div class="col-md-2"><input class="configKey form-control" data-l1key="lux_cmd" placeholder="{{id de la commande}}"></div>
+      <div class="col-md-2"><input class="configKey form-control" data-l1key="lux_cmd" placeholder="{{id de la commande (ou #id#)}}"></div>
       <div class="col-md-2"><input class="configKey form-control" data-l1key="lux_bas" placeholder="{{nuit sous 350 lux}}"></div>
       <div class="col-md-2"><input class="configKey form-control" data-l1key="lux_haut" placeholder="{{jour au-dessus de 1000 lux}}"></div>
     </div>

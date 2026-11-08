@@ -20,15 +20,12 @@
 		"Le week-end commence": "Weekend starts",
 		"Le week-end finit": "Weekend ends",
 		"Habitudes et règles « en semaine » / « le week-end » : par défaut du vendredi 16:00 au lundi 04:00 (soirs du vendredi au dimanche, matins du samedi et du dimanche). Adaptez-le à votre rythme (travail le samedi, retour le dimanche midi…), puis Recalculer les tendances.": "Habits and rules \"on weekdays\" / \"at the weekend\": by default from Friday 16:00 to Monday 04:00 (Friday to Sunday evenings, Saturday and Sunday mornings). Adapt it to your rhythm (work on Saturday, back on Sunday noon…), then Recompute the trends.",
-		"id de la commande": "command id",
 		"jour au-dessus de 1000 lux": "day above 1000 lux",
 		"Noms des pièces (ou groupes) sans fenêtre, séparés par des virgules : la pénombre n'y compte pas.": "Names of rooms (or groups) without a window, separated by commas: dusk does not count there.",
-		"Si une lampe suivie est allumée ou éteinte par quelqu'un d'autre pendant la simulation (visiteur, voisin qui arrose), la pièce n'est plus touchée pendant ce temps. Par défaut 60.": "If a followed lamp is switched on or off by someone else during the simulation (visitor, neighbour watering the plants), the room is left alone for this time. Default 60.",
 		"minutes": "minutes",
 		"nuit sous 350 lux": "night below 350 lux",
 		"À blanc même sans Simulation On": "Dry run even without Simulation On",
 		"Pour essayer à la maison : la simulation à blanc tourne en permanence et remplit le journal, sans rien envoyer. Ignoré si « Envoyer vraiment » est coché.": "To try it at home: the dry-run simulation runs all the time and fills the log, without sending anything. Ignored if \"Really send\" is ticked.",
-		"Non coché (défaut) : la simulation est « à blanc », elle décide et note tout au journal de l'onglet Simulation, mais n'allume, n'éteint, n'ouvre ni ne ferme rien. Cochez-la seulement après avoir lu quelques journées à blanc.": "Unticked (default): the simulation is a \"dry run\", it decides and writes everything in the log of the Simulation tab, but switches nothing on or off, opens or closes nothing. Tick it only after reading a few dry-run days.",
 		"Envoyer vraiment aux équipements": "Really send to the devices",
 		"Facultatif. Une commande info de luminosité extérieure (lux) : les lampes ne s'allument qu'à la pénombre, entre les deux seuils. Vide : le lever et le coucher du soleil (coordonnées de la configuration de Jeedom).": "Optional. An outdoor light info command (lux): lamps only switch on in the dusk, between the two thresholds. Empty: sunrise and sunset (coordinates of the Jeedom configuration).",
 		"Pièces allumées même de jour": "Rooms lit even by day",
@@ -36,7 +33,11 @@
 		"Pièce changée par quelqu'un : laissée": "Room changed by someone: left alone for",
 		"Simulation": "Simulation",
 		"Capteur de luminosité": "Light sensor",
-		"Pièces allumées en même temps, au plus": "Rooms lit at the same time, at most"
+		"Pièces allumées en même temps, au plus": "Rooms lit at the same time, at most",
+		"Non coché (défaut) : la simulation est « à blanc », elle décide et note tout au journal de l'onglet Simulation, mais n'allume, n'éteint, n'ouvre ni ne ferme rien. Cochez-la seulement après avoir lu quelques journées à blanc. Décochée pendant une simulation On : les lampes qu'elle a allumées sont éteintes, puis elle continue à blanc ; cochée : elle repart de zéro.": "Unticked (default): the simulation is a \"dry run\", it decides and logs everything in the Simulation tab, but switches nothing on or off and opens or closes nothing. Tick it only after reading a few dry-run days. Unticked during a Simulation On: the lamps it switched on are switched off, then it goes on as a dry run; ticked: it starts again from scratch.",
+		"Envoi réel seulement. Si une lampe suivie est allumée ou éteinte par quelqu'un d'autre pendant la simulation (visiteur, voisin qui arrose), la pièce n'est plus touchée pendant ce temps. Vide ou 0 : 60.": "Real sending only. If a followed lamp is switched on or off by someone else during the simulation (visitor, neighbour watering), the room is left alone for that time. Empty or 0: 60.",
+		"id de la commande (ou #id#)": "command id (or #id#)",
+		"Vide ou 0 : 3.": "Empty or 0: 3."
 	},
 	"plugins/presencehabituelle/core/class/presencehabituelle.class.php": {
 		"Période illisible (attendu AAAA-MM-JJ HH:MM → AAAA-MM-JJ HH:MM)": "Unreadable period (expected YYYY-MM-DD HH:MM → YYYY-MM-DD HH:MM)",
@@ -72,7 +73,10 @@
 		"pas de commande d'action": "no action command",
 		"Simulation": "Simulation",
 		"Simulation On": "Simulation On",
-		"Simulation Off": "Simulation Off"
+		"Simulation Off": "Simulation Off",
+		"pas de commande pour éteindre": "no command to switch off",
+		"pas de commande pour ouvrir": "no command to open",
+		"déjà fermé": "already closed"
 	},
 	"plugins/presencehabituelle/core/ajax/presencehabituelle.ajax.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",
@@ -470,7 +474,12 @@
 		"Aucune lampe allumée sur ces 24 h.": "No lamp switched on over these 24 h.",
 		"provisoire": "provisional",
 		"envoyé": "sent",
-		"heure jamais allumée": "hour never on"
+		"heure jamais allumée": "hour never on",
+		"passage éclair": "quick passage",
+		"plus suivie": "no longer followed",
+		"renvoyé (perdu)": "sent again (lost)",
+		"hors du plan": "out of the plan",
+		"envoi réel": "real sending"
 	},
 	"plugins/presencehabituelle/desktop/php/presencehabituelle.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",

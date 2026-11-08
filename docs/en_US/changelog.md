@@ -1,8 +1,17 @@
 # Changelog
 
+## 0.13.1
+- Fixes after the adverse review of 0.13:
+  - "Really send" unticked during Simulation On: the lamps really switched on are switched off, then the simulation goes on as a dry run; ticked: it starts again from scratch (the dry-run state is no longer taken for the house);
+  - the state is saved before sending: a log that cannot be written (full disk) no longer makes orders sent twice or lost;
+  - a room taken out of the simulation is switched off instead of staying on; a lamp without a command to switch it off is not switched on; a lost "switch off" is sent again instead of being taken for a visitor; a lamp already on when On starts counts as a visitor;
+  - shutters: a shutter already closed is no longer "closed" then opened again, nor a shutter without a command to open it; opening in the morning only (a "may" range no longer opens it in the evening); a shutter taken out of the simulation that it had closed is opened in the morning;
+  - 04:00 day right on clock-change days; light sensor in the `#1234#` format; night threshold of 0 lux allowed; "Rooms lit even by day" ignoring case, and for a name made of figures;
+  - Simulation tab: no more invented shutters on Off; widget updated when the configuration changes; "sent" no longer shown on the Simulation On / Off lines; a quick passage lasts 5 minutes, as the documentation now says;
+  - "Erase all" also erases the simulation log; simulation periods purged like the others; documentation up to date (configuration, privacy, shutters, visitor with real sending only).
+
 ## 0.13
-- Fix: a room lit for long (kitchen on all day) is switched off as soon as it reaches an hour when it has never been on, instead of running until the end of the drawn duration (kitchen on until 03:20); the exception stays possible, about one day in 30.
-- **Simulation** tab and **Simulation On / Off** commands of the widget: room by room, from its trends when it has enough counted days, otherwise from provisional times for its room type (kitchen, living room, bedroom…); only in the dusk (light sensor or sun), shift and activity drawn each day, scenes, Guide rules, at most 3 rooms at once, shutters opened and closed, someone switching a lamp left alone 60 min; Off switches off what it switched on.
+- **Simulation** tab and **Simulation On / Off** commands of the widget: room by room, from its trends when it has enough counted days, otherwise from provisional times for its room type (kitchen, living room, bedroom…); only in the dusk (light sensor or sun), shift and activity drawn each day, scenes, Guide rules, at most 3 rooms at once, shutters opened and closed, someone switching a lamp left alone 60 min; Off switches off what it switched on; a room reaching an hour when it has never been on is switched off, except about one day in 30.
 - **Dry run by default**: nothing is sent, every decision is logged (7 days); "Dry-run day" replays the next 24 h at once; "Really send to the devices" in the configuration. A Simulation On period is excluded from the analysis.
 
 ## 0.12.1

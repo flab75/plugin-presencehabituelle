@@ -975,7 +975,7 @@
   var SRC = { hist: '{{tendances}}', prov: '{{provisoire}}', jamais: '{{jamais simulée}}' }
   var TYP = { cuisine: '{{cuisine}}', salon: '{{salon}}', chambre: '{{chambre}}', sdb: '{{salle de bains}}', passage: '{{passage}}', bureau: '{{bureau}}', autre: '{{autre}}' }
   var ACT = { on: '{{allumer}}', off: '{{éteindre}}', ouvrir: '{{ouvrir}}', fermer: '{{fermer}}', 'mode on': '{{Simulation On}}', 'mode off': '{{Simulation Off}}' }
-  var MOT = { tirage: '{{tirage}}', fin: '{{durée finie}}', plage: '{{hors plage}}', jamais: '{{heure jamais allumée}}', arret: '{{arrêt}}', soir: '{{soir}}', matin: '{{matin}}' }
+  var MOT = { tirage: '{{tirage}}', fin: '{{durée finie}}', plage: '{{hors plage}}', jamais: '{{heure jamais allumée}}', eclair: '{{passage éclair}}', disparu: '{{plus suivie}}', renvoi: '{{renvoyé (perdu)}}', 'hors plan': '{{hors du plan}}', arret: '{{arrêt}}', soir: '{{soir}}', matin: '{{matin}}' }
   function nomG(n) { return String(n || '').replace(/^[\x00\x01]/, '') } // groupes « lampe seule » et « pièce du plan »
   function heure(t) { var d = new Date(t * 1000); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) }
   function lignes(js) {
@@ -984,7 +984,7 @@
     js.slice().reverse().forEach(function (x) {
       h += '<tr><td>' + heure(x.t) + '</td><td>' + esc(nomG(x.nom)) + '</td><td>' + esc(ACT[x.action] || x.action) + '</td><td>' + esc(String(x.src || '').split('/').map(function (s) { return SRC[s] || s }).join(' / '))
         + (x.p && x.p < 1 ? ' (' + Math.round(x.p * 100) + ' %)' : '') + '</td><td>' + esc(MOT[x.motif] || x.motif || '') + '</td><td>'
-        + (x.mode == 'reel' ? (x.envoi ? '<span class="label label-danger">' + esc(x.envoi) + '</span>' : '<span class="label label-success">{{envoyé}}</span>') : '<span class="label label-default">{{à blanc}}</span>') + '</td></tr>'
+        + (String(x.action).indexOf('mode') === 0 ? (x.mode == 'reel' ? '<span class="label label-warning">{{envoi réel}}</span>' : '<span class="label label-default">{{à blanc}}</span>') : x.mode == 'reel' ? (x.envoi ? '<span class="label label-danger">' + esc(x.envoi) + '</span>' : '<span class="label label-success">{{envoyé}}</span>') : '<span class="label label-default">{{à blanc}}</span>') + '</td></tr>'
     })
     return h + '</tbody></table>'
   }

@@ -219,7 +219,7 @@ for ($x = $t('2026-03-02 23:00'); $x < $t('2026-03-03 04:00') && $hc === null; $
   [$Ec, $d] = $M::pas($Ec, ['t' => $x, 'm' => (int)date('G', $x) * 60 + (int)date('i', $x), 'k' => 'S', 'pk' => 1, 'sources' => $sc, 'max' => 3, 'sansJour' => [], 'regles' => []], $r);
   foreach ($d as $y) if ($y['action'] == 'off') $hc = date('H:i', $x) . ' ' . $y['motif'];
 }
-$ok($hc !== null && $hc <= '01:00 jamais', 'cuisine éteinte à la 1re heure jamais allumée : ' . $hc);
+$ok($hc === '01:00 jamais', 'cuisine éteinte à la 1re heure jamais allumée : ' . $hc);
 $Ec['jour']['ex'] = true; $Ec['g']['Cuisine'] = ['on' => 1, 'fin' => $t('2026-03-03 03:00'), 'l' => [3], 'pause' => 0, 'vis' => 0]; $hx = null;
 for ($x = $t('2026-03-02 23:00'); $x < $t('2026-03-03 05:00') && $hx === null; $x += 300) {
   [$Ec, $d] = $M::pas($Ec, ['t' => $x, 'm' => (int)date('G', $x) * 60 + (int)date('i', $x), 'k' => 'S', 'pk' => 1, 'sources' => $sc, 'max' => 3, 'sansJour' => [], 'regles' => []], $r);
@@ -229,8 +229,30 @@ $ok($hx >= '03:00', "jour d'exception : cuisine allumée jusqu'au bout de sa dur
 $nx = 0; for ($i = 0; $i < 3000; $i++) $nx += $M::jour($r)['ex'] ? 1 : 0; $ok($nx > 50 && $nx < 150, "jours d'exception : $nx sur 3000");
 $E['g']['Chambre'] = ['on' => 1, 'fin' => 0, 'l' => [6], 'pause' => 0, 'vis' => 0];
 $ar = $M::arret($E); $ok($ar && !array_filter($ar, fn($y) => $y['action'] != 'off') && count($ar) == count(array_filter($E['g'], fn($e) => $e['on'])), "l'arrêt éteint tout");
-$Ev = $M::visiteurs(['g' => ['Salon' => ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => 0]]], $src, [1 => true], 1000, 60);
-$ok($Ev['g']['Salon']['vis'] == 1000 + 3600, 'visiteur : pièce allumée par quelqu\'un, laissée 1 h');
+[$Ev, $dv] = $M::visiteurs(['g' => ['Salon' => ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => 0]]], $src, [1 => true], 1000, 60);
+$ok($Ev['g']['Salon']['vis'] == 1000 + 3600 && !$dv, 'visiteur : pièce allumée par quelqu\'un, laissée 1 h');
+[$Ev, $dv] = $M::visiteurs([], $src, [1 => true], 1000, 60);
+$ok(($Ev['g']['Salon']['vis'] ?? 0) == 1000 + 3600, 'visiteur : lampe déjà allumée au 1er passage après On');
+[$Ev, $dv] = $M::visiteurs(['g' => ['Salon' => ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => 0, 'off' => 800, 'lo' => [1]]]], $src, [1 => true], 1000, 60);
+$ok(count($dv) == 1 && $dv[0]['action'] == 'off' && $dv[0]['motif'] == 'renvoi' && $dv[0]['ids'] == [1] && empty($Ev['g']['Salon']['vis']), 'off perdu renvoyé, pas pris pour un visiteur : ' . json_encode($dv));
+[$Ev, $dv] = $M::visiteurs(['g' => ['Salon' => ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => 0, 'off' => 100, 'lo' => [1]]]], $src, [1 => true], 1000, 60);
+$ok(!$dv && $Ev['g']['Salon']['vis'] == 4600, 'off de plus de 10 min : visiteur');
+// pièce sortie des sources : éteinte et oubliée ; passage éclair : éteint au passage suivant
+$Ed = ['jour' => ['d' => 'x', 'dec' => 0, 'f' => 1, 'volets' => []], 'g' => ['Partie' => ['on' => 1, 'fin' => 9e9, 'l' => [42], 'pause' => 0, 'vis' => 0], '12' => ['on' => 1, 'fin' => 9e9, 'l' => [43], 'pause' => 0, 'vis' => 0, 'ec' => 1]]];
+$s12 = ['12' => ['nom' => '12', 'ids' => [43], 'type' => 'autre', 'src' => ['S' => 'prov', 'W' => 'prov'], 'profil' => ['S' => array_fill(0, 24, 50), 'W' => array_fill(0, 24, 50)], 'plages' => [], 'd' => [5, 5], 'pas' => 0, 'scenes' => []]];
+[$Ed, $d] = $M::pas($Ed, ['t' => 1000, 'm' => 1200, 'k' => 'S', 'pk' => 1, 'sources' => $s12, 'max' => 3, 'sansJour' => ['12'], 'regles' => []], $r);
+$mo = array_column($d, 'motif', 'nom');
+$ok(($mo['Partie'] ?? '') == 'disparu' && !isset($Ed['g']['Partie']) && ($mo[12] ?? '') == 'eclair' && $Ed['g'][12]['lo'] == [43], 'pièce disparue éteinte, passage éclair 5 min : ' . json_encode($d));
+// volet : pas rouvert le soir (plage « peut » du soir) ; sorti du plan alors que fermé : rouvert le matin, pas la nuit
+$pv = [['k' => 'marche', 'j' => 'tous', 'de' => '17:00', 'a' => '23:00']];
+$Ev = ['jour' => ['d' => 'j2', 'dec' => 0, 'f' => 1, 'volets' => [9 => ['nom' => 'V', 'o' => 450, 'f' => 1300, 'src' => 'prov/prov']]], 'g' => [], 'v' => [9 => ['ferme' => 1, 'fj' => 'j1']]];
+[$Ev2, $d] = $M::pas($Ev, ['t' => 1000, 'm' => 1100, 'k' => 'S', 'pk' => 0, 'sources' => [], 'max' => 3, 'sansJour' => [], 'regles' => [9 => ['plages' => $pv]]], $r);
+$ok(!$d && $Ev2['v'][9]['ferme'] == 1, 'volet : pas ouvert le soir par une plage « peut » : ' . json_encode($d));
+$Ev['jour']['volets'] = []; $Ev['v'][9]['nom'] = 'V';
+[$Ev2, $d] = $M::pas($Ev, ['t' => 1000, 'm' => 120, 'k' => 'S', 'pk' => 1, 'sources' => [], 'max' => 3, 'sansJour' => [], 'regles' => []], $r);
+$ok(!$d && $Ev2['v'][9]['ferme'] == 1, 'volet sorti du plan : pas rouvert la nuit');
+[$Ev2, $d] = $M::pas($Ev, ['t' => 1000, 'm' => 480, 'k' => 'S', 'pk' => 1, 'sources' => [], 'max' => 3, 'sansJour' => [], 'regles' => []], $r);
+$ok(count($d) == 1 && $d[0]['action'] == 'ouvrir' && $d[0]['motif'] == 'hors plan' && !isset($Ev2['v'][9]), 'volet sorti du plan : rouvert à 08:00 et oublié');
 echo "moteur OK\n";
 
 // confidentialité : aucun appel réseau dans le code du plugin
@@ -274,6 +296,9 @@ $ok(($marques['historiser'] ?? 0) == 6, 'écritures « historiser » : 6 attendu
 $ok(($marques['propre'] ?? 0) == 12, 'écritures « propre » : 12 attendues (equipement, majWidget, ajax widget) : ' . ($marques['propre'] ?? 0));
 $ok(($marques['envoyer'] ?? 0) == 1, 'envoi aux équipements : 1 ligne attendue (envoyer)');
 $cl = file_get_contents(__DIR__ . '/../core/class/presencehabituelle.class.php');
+// bascule de l'envoi réel, état enregistré avant d'agir (ces fonctions écrivent la configuration : lues ici, pas exécutées)
+$ok(strpos($cl, 'public static function preConfig_reel($v)') !== false && strpos($cl, 'if ($avant) self::arretMoteur(); else config::remove(\'moteur\', __CLASS__);') !== false, 'envoi réel décoché : extinction ; coché : nouveau départ');
+$ok(preg_match('/config::save\(\'moteur\'[^\n]*\n\s*self::agir\(\$dec, \$reel\);/', $cl) && preg_match('/config::remove\(\'moteur\'[^\n]*\n\s*self::agir\(presencehabituelle_moteur::arret/', $cl), 'état enregistré avant d\'envoyer');
 $ok(preg_match('/public static function envoyer\(array \$d\) \{\s*if \(self::blanc\(\)\) return /', $cl) && strpos($cl, "function blanc() { return (string)config::byKey('reel', __CLASS__, '0') !== '1'; }") !== false, 'à blanc par défaut, et rien n\'est envoyé à blanc');
 foreach (['core/ajax/presencehabituelle.ajax.php', 'desktop/php/presencehabituelle.php', 'plugin_info/configuration.php'] as $f)
   $ok(preg_match("/if \\(!isConnect\\('admin'\\)\\)/", file_get_contents(__DIR__ . '/../' . $f)), "accès administrateur seulement : $f");

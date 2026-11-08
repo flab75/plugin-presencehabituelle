@@ -1,8 +1,17 @@
 # Changelog
 
+## 0.13.1
+- Corrections après la revue adverse de la 0.13 :
+  - « Envoyer vraiment » décoché pendant Simulation On : les lampes vraiment allumées sont éteintes, puis la simulation continue à blanc ; coché : elle repart de zéro (l'état de l'essai à blanc n'est plus pris pour la maison) ;
+  - l'état est enregistré avant d'envoyer : un journal impossible à écrire (disque plein) ne fait plus renvoyer ni perdre d'ordres ;
+  - une pièce sortie de la simulation est éteinte au lieu de rester allumée ; une lampe sans commande pour l'éteindre n'est pas allumée ; un « éteindre » perdu est renvoyé au lieu d'être pris pour un visiteur ; une lampe déjà allumée au moment de On compte comme visiteur ;
+  - volets : un volet déjà fermé n'est plus « fermé » puis rouvert, ni un volet sans commande pour l'ouvrir ; ouverture le matin seulement (une plage « peut » ne l'ouvre plus le soir) ; un volet sorti de la simulation qu'elle avait fermé est rouvert le matin ;
+  - journée de 04:00 juste aux changements d'heure ; capteur de luminosité au format `#1234#` ; seuil de nuit à 0 lux permis ; « Pièces allumées même de jour » sans tenir compte des majuscules, et pour un nom fait de chiffres ;
+  - onglet Simulation : plus de volets inventés sur Off ; widget mis à jour quand la configuration change ; « envoyé » ne s'affiche plus sur les lignes Simulation On / Off ; un passage éclair dure 5 minutes, comme la notice le dit maintenant ;
+  - « Tout effacer » efface aussi le journal de la simulation ; périodes de simulation purgées comme les autres ; notice à jour (configuration, confidentialité, volets, visiteur en envoi réel seulement).
+
 ## 0.13
-- Correction : une pièce allumée longtemps (cuisine allumée toute la journée) est éteinte dès qu'elle arrive à une heure où elle n'a jamais été allumée, au lieu d'aller jusqu'au bout de la durée tirée (cuisine allumée jusqu'à 3 h 20) ; l'exception reste possible, un jour sur 30 environ.
-- Onglet **Simulation** et commandes **Simulation On / Off** du widget : pièce par pièce, d'après ses tendances quand elle a assez de jours comptés, sinon d'après des horaires provisoires de son type de pièce (cuisine, salon, chambre…) ; seulement à la pénombre (capteur de luminosité ou soleil), décalage et activité tirés chaque jour, scènes, règles du Guide, au plus 3 pièces à la fois, volets ouverts et fermés, pièce changée par quelqu'un laissée 60 min ; Off éteint ce qu'elle a allumé.
+- Onglet **Simulation** et commandes **Simulation On / Off** du widget : pièce par pièce, d'après ses tendances quand elle a assez de jours comptés, sinon d'après des horaires provisoires de son type de pièce (cuisine, salon, chambre…) ; seulement à la pénombre (capteur de luminosité ou soleil), décalage et activité tirés chaque jour, scènes, règles du Guide, au plus 3 pièces à la fois, volets ouverts et fermés, pièce changée par quelqu'un laissée 60 min ; Off éteint ce qu'elle a allumé ; une pièce arrivée à une heure où elle n'a jamais été allumée est éteinte, sauf un jour sur 30 environ.
 - **À blanc par défaut** : rien n'est envoyé, chaque décision est notée au journal (7 jours) ; « Journée à blanc » rejoue tout de suite les 24 prochaines heures ; « Envoyer vraiment aux équipements » dans la configuration. Une période Simulation On est exclue de l'analyse.
 
 ## 0.12.1
