@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.14
+- Documentation (2026-11-08): **Calibration** section (what is compared and corrected, tolerances, nightly check, habits changed, Calage tab), "sauf exception" Guide range, widget's Habitudes changées command.
 - Recalibration ("Automatic recalibration" option, off by default): each night the simulation is replayed in memory over the last 28 counted real days and compared room by room (hours lit, switch-ons, duration, 24 h profile). Two settings per room (frequency, duration, between ÷3 and ×3) are corrected, at most 5 rounds per night, until within tolerances (±15 % hours, ±25 % switch-ons, adjustable).
 - Once calibrated, no more replay: a light check compares the last 14 days with the calibration reference every night. A room out of tolerance 3 nights in a row: "Habits changed" state, Jeedom message and "Habitudes changées" info command on the widget. Calibration is restarted with a button.
 - New Calibration tab: state, real / simulated table per room with gaps, settings, 24 h bands, shutters; "Restart calibration" and "Reset to original settings" buttons.
