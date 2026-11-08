@@ -90,7 +90,7 @@ Onglet **Simulation**, ou les commandes **Simulation On** / **Simulation Off** d
 - Une pièce s'allume au hasard selon la part des jours où elle l'est à cette heure, **seulement à la pénombre** (capteur de luminosité, sinon le soleil), pour une durée tirée entre le quart et les trois quarts des durées relevées (sinon celles du type de pièce) ; un passage éclair (couloir, détecteur) dure 1 à 3 minutes. Les lampes allumées ensemble d'habitude (scènes) s'allument ensemble, sinon une lampe de la pièce.
 - Chaque jour (à 04:00) tire un **décalage** de ±45 minutes et une activité de 70 à 130 % : deux jours ne se ressemblent pas.
 - Les **règles du Guide** sont suivies (jamais simulée, plages permises ou interdites) ; au plus **3 pièces** allumées en même temps (réglable).
-- **Volets** : ouverts et fermés entre le quart et les trois quarts des heures relevées, sinon 30 minutes après le lever (pas avant 07:00, 08:30 le week-end) et 20 minutes après le coucher (pas après 22:30) ; un volet d'habitude jamais fermé la nuit reste ouvert. La simulation n'ouvre que ce qu'elle a fermé.
+- **Volets** : ouverts et fermés entre le quart et les trois quarts des heures relevées, sinon 30 à 60 minutes après le lever (pas avant 07:00, 08:30 le week-end) et 20 à 50 minutes après le coucher (pas après 22:30) ; un volet d'habitude jamais fermé la nuit reste ouvert. La simulation n'ouvre que ce qu'elle a fermé.
 - **Quelqu'un** allume ou éteint une lampe suivie (visiteur, voisin) : la pièce est laissée tranquille 60 minutes (réglable).
 - **Simulation Off** éteint ce que la simulation a allumé ; les volets restent comme ils sont.
 

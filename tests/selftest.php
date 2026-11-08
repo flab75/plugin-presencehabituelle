@@ -180,7 +180,7 @@ echo "calcul OK\n";
 
 // moteur de la simulation (aléa à graine : rejouable)
 $M = 'presencehabituelle_moteur'; mt_srand(42); $r = fn() => mt_rand() / (mt_getrandmax() + 1);
-$ok($M::typePiece('Salle de bains') == 'sdb' && $M::typePiece('Lampe Cuisine') == 'cuisine' && $M::typePiece('Séjour') == 'salon' && $M::typePiece('Grenier') == 'autre', 'type de pièce');
+$ok($M::sources([['nom' => 'Palier', 'ids' => [1]]], [], ['Palier' => 'Palier Lampe Chambre 1'], 10)['Palier']['type'] == 'passage' && $M::typePiece('Salle de bains') == 'sdb' && $M::typePiece('Lampe Cuisine') == 'cuisine' && $M::typePiece('Séjour') == 'salon' && $M::typePiece('Grenier') == 'autre', 'type de pièce');
 $pv = $M::provisoire('salon', 'S'); $ok($pv[20] == 85 && $pv[18] == 85 && $pv[17] == 0 && $pv[12] == 0, 'profil provisoire : ' . json_encode($pv));
 $prof = array_fill(0, 24, 0); for ($i = 19; $i < 23; $i++) $prof[$i] = 90;
 $gs = [['nom' => 'Salon', 'ids' => [1, 2], 'jours' => 20, 'nS' => 14, 'nW' => 6, 'lS' => $prof, 'lW' => $prof, 'confirmerW' => 1, 'lampes' => ['A', 'B'], 'lids' => [1, 2], 'scenes' => ['A + B' => 70]],
@@ -193,7 +193,7 @@ $ok(!$M::permis([['k' => 'exclue', 'j' => 'S', 'de' => '23:00', 'a' => '06:00']]
 $sun = date_sun_info($t('2026-03-02 12:00'), 48.85, 2.35);
 $ok($M::penombre($t('2026-03-02 13:00'), $sun) == 0 && $M::penombre($t('2026-03-02 23:00'), $sun) == 1 && $M::penombre(0, [], 200) == 1 && $M::penombre(0, [], 1200) == 0, 'pénombre');
 $pvo = $M::planVolets([['id' => 9, 'nom' => 'V', 'jours' => 0]], [], 'S', 'S', 400, 1100, $r, 10);
-$ok($pvo[9]['o'] == 430 && $pvo[9]['f'] == 1120 && $M::planVolets([['id' => 9, 'nom' => 'V', 'jours' => 20, 'soir' => ['S' => ['n' => 5, 'q25' => 1200, 'q75' => 1200, 'ferme' => 5]]]], [], 'S', 'S', 400, 1100, $r, 10)[9]['f'] === null, 'volets du jour : ' . json_encode($pvo));
+$ok($pvo[9]['o'] >= 430 && $pvo[9]['o'] <= 460 && $pvo[9]['f'] >= 1120 && $pvo[9]['f'] <= 1150 && $M::planVolets([['id' => 9, 'nom' => 'V', 'jours' => 20, 'soir' => ['S' => ['n' => 5, 'q25' => 1200, 'q75' => 1200, 'ferme' => 5]]]], [], 'S', 'S', 400, 1100, $r, 10)[9]['f'] === null, 'volets du jour : ' . json_encode($pvo));
 // une semaine de passages : jamais hors des plages, au plus « max » pièces allumées, volet fermé le soir et rouvert le matin, l'arrêt éteint tout
 $src = $M::sources([$gs[0], $gs[1], ['nom' => 'Chambre', 'ids' => [6], 'jours' => 0], ['nom' => 'Bureau', 'ids' => [7], 'jours' => 0]], $rg, [], 10);
 $E = []; $vu = []; $fv = $ov = 0; $max = 0; $nb = 0;
@@ -205,8 +205,8 @@ for ($x = $t('2026-03-02 04:00'); $x < $t('2026-03-09 04:00'); $x += 300) {
   foreach ($d as $y) {
     if ($y['action'] == 'on') { $nb++; $ok($y['nom'] != 'Salon' || ($m >= 19 * 60 + 30 && $m < 22 * 60), 'Salon allumé hors de sa plage à ' . date('D H:i', $x)); }
     if ($y['action'] == 'off' && $y['nom'] == 'Salon') $ok($y['motif'] != 'plage' || $m == 22 * 60, 'Salon : fin de plage à ' . date('H:i', $x));
-    if ($y['action'] == 'fermer') { $fv++; $ok($m == 1120, 'volet fermé à ' . date('H:i', $x)); }
-    if ($y['action'] == 'ouvrir') { $ov++; $ok($m == 430, 'volet ouvert à ' . date('H:i', $x)); }
+    if ($y['action'] == 'fermer') { $fv++; $ok($m == $E['jour']['volets'][9]['f'] - $E['jour']['volets'][9]['f'] % 5 + ($E['jour']['volets'][9]['f'] % 5 ? 5 : 0), 'volet fermé à ' . date('H:i', $x)); }
+    if ($y['action'] == 'ouvrir') { $ov++; $ok($m >= 430 && $m <= 465, 'volet ouvert à ' . date('H:i', $x)); }
   }
   $max = max($max, count(array_filter($E['g'], fn($e) => $e['on'])));
 }

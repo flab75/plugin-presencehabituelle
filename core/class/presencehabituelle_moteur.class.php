@@ -41,7 +41,8 @@ class presencehabituelle_moteur {
     $r = [];
     foreach ($groupes as $g) {
       $ids = array_values(array_filter($g['ids'] ?? [], fn($id) => empty($regles[$id]['jamais'])));
-      $type = self::typePiece($textes[$g['nom']] ?? $g['nom']); $pr = self::PROV[$type];
+      $type = ($x = self::typePiece($g['nom'])) != 'autre' ? $x : self::typePiece($textes[$g['nom']] ?? ''); // le nom du groupe d'abord : « Palier » dont la lampe est rangée dans « Chambre »
+      $pr = self::PROV[$type];
       $s = ['nom' => $g['nom'], 'ids' => $ids, 'type' => $type, 'src' => [], 'profil' => [], 'plages' => []];
       foreach ($ids as $id) foreach ($regles[$id]['plages'] ?? [] as $q) $s['plages'][] = $q;
       foreach (['S', 'W'] as $k) {
@@ -95,7 +96,7 @@ class presencehabituelle_moteur {
 
   /* Volets de la journée : ouverture et fermeture (minutes ; f null = pas fermé la nuit). $volets = sortie volets d'analyser(),
      $n = jour ISO, $kM / $kS = semaine ou week-end du matin et du soir, $lever / $coucher en minutes.
-     Historique : entre q25 et q75 des jours relevés ; provisoire : lever + 30 min (pas avant 07:00, 08:30 le week-end), coucher + 20 min (pas après 22:30). */
+     Historique : entre q25 et q75 des jours relevés ; provisoire : lever + 30 à 60 min (pas avant 07:00, 08:30 le week-end), coucher + 20 à 50 min (pas après 22:30). */
   public static function planVolets(array $volets, array $regles, $kM, $kS, $lever, $coucher, callable $r, $fiable) {
     $p = [];
     foreach ($volets as $v) {
@@ -103,8 +104,8 @@ class presencehabituelle_moteur {
       $m = $v['matin'][$kM] ?? []; $s = $v['soir'][$kS] ?? [];
       $hm = ($v['jours'] ?? 0) >= $fiable && ($m['n'] ?? 0) && empty($m['confirmer']);
       $hs = ($v['jours'] ?? 0) >= $fiable && ($s['n'] ?? 0) && empty($s['confirmer']);
-      $o = $hm ? $m['q25'] + $r() * ($m['q75'] - $m['q25']) : max($lever + 30, $kM == 'W' ? 510 : 420);
-      $f = $hs ? $s['q25'] + $r() * ($s['q75'] - $s['q25']) : min($coucher + 20, 1350);
+      $o = $hm ? $m['q25'] + $r() * ($m['q75'] - $m['q25']) : max($lever + 30, $kM == 'W' ? 510 : 420) + 30 * $r(); // provisoire : pas tous à la même minute
+      $f = $hs ? $s['q25'] + $r() * ($s['q75'] - $s['q25']) : min($coucher + 20 + 30 * $r(), 1350);
       if (isset($s['ferme']) && empty($s['confirmerF']) && $s['ferme'] < 10) $f = null; // jamais (ou presque) fermé la nuit
       $p[$v['id']] = ['nom' => $v['nom'], 'o' => (int)round($o), 'f' => $f === null ? null : (int)round($f), 'src' => ($hm ? 'hist' : 'prov') . '/' . ($hs ? 'hist' : 'prov')];
     }

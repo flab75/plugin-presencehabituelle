@@ -90,7 +90,7 @@ The **Plan** tab draws the house, one plan per floor:
 - A room switches on at random according to the share of days it is on at this hour, **only in the dusk** (light sensor, otherwise the sun), for a duration drawn between the quarter and three quarters of the recorded durations (otherwise those of the room type); a quick passage (corridor, sensor) lasts 1 to 3 minutes. Lamps usually switched on together (scenes) go on together, otherwise one lamp of the room.
 - Each day (at 04:00) draws a **shift** of ±45 minutes and an activity of 70 to 130 %: no two days look alike.
 - The **Guide rules** are followed (never simulated, allowed or forbidden ranges); at most **3 rooms** lit at the same time (adjustable).
-- **Shutters**: opened and closed between the quarter and three quarters of the recorded times, otherwise 30 minutes after sunrise (not before 07:00, 08:30 at weekends) and 20 minutes after sunset (not after 22:30); a shutter usually never closed at night stays open. The simulation only opens what it closed.
+- **Shutters**: opened and closed between the quarter and three quarters of the recorded times, otherwise 30 to 60 minutes after sunrise (not before 07:00, 08:30 at weekends) and 20 to 50 minutes after sunset (not after 22:30); a shutter usually never closed at night stays open. The simulation only opens what it closed.
 - **Someone** switches a followed lamp on or off (visitor, neighbour): the room is left alone for 60 minutes (adjustable).
 - **Simulation Off** switches off what the simulation switched on; shutters stay as they are.
 
