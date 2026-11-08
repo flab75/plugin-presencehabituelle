@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13
+- **Simulation** tab and **Simulation On / Off** commands of the widget: room by room, from its trends when it has enough counted days, otherwise from provisional times for its room type (kitchen, living room, bedroom…); only in the dusk (light sensor or sun), shift and activity drawn each day, scenes, Guide rules, at most 3 rooms at once, shutters opened and closed, someone switching a lamp left alone 60 min; Off switches off what it switched on.
+- **Dry run by default**: nothing is sent, every decision is logged (7 days); "Dry-run day" replays the next 24 h at once; "Really send to the devices" in the configuration. A Simulation On period is excluded from the analysis.
+
 ## 0.12.1
 - Fixes after the general review: two simultaneous saves (two tabs) run one after the other, and everything is checked before anything is erased; unreadable data refused instead of taken as "empty"; the page reloads the followed commands kept by the box.
 - Guide: a duplicate whose kept command is not chosen yet does not count; changing your mind about a command puts its duplicates back in order; "Reset the Guide" also gives the commands their type back.

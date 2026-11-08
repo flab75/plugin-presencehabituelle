@@ -2,6 +2,7 @@
 /* Contrôles : calcul des habitudes sur données synthétiques, aucun appel réseau dans le code, puis (sur la box) analyse réelle sans rien écrire.
    Usage : sudo -u www-data php tests/selftest.php */
 require_once __DIR__ . '/../core/class/presencehabituelle_analyse.class.php';
+require_once __DIR__ . '/../core/class/presencehabituelle_moteur.class.php';
 $ok = function ($v, $m) { if (!$v) { echo "ECHEC : $m\n"; exit(1); } }; // assert() est désactivé en production
 $A = 'presencehabituelle_analyse';
 date_default_timezone_set('Europe/Paris');
@@ -177,6 +178,45 @@ $pe = $A::periodes("2026-10-15 15:27 → 2026-10-23 12:42\nn'importe quoi\n2026-
 $ok(count($pe) == 2 && $pe[0][0] == $t('2026-10-15 15:27') && $pe[1][1] == $t('2026-11-02 23:59:59'), 'périodes : ' . json_encode($pe));
 echo "calcul OK\n";
 
+// moteur de la simulation (aléa à graine : rejouable)
+$M = 'presencehabituelle_moteur'; mt_srand(42); $r = fn() => mt_rand() / (mt_getrandmax() + 1);
+$ok($M::typePiece('Salle de bains') == 'sdb' && $M::typePiece('Lampe Cuisine') == 'cuisine' && $M::typePiece('Séjour') == 'salon' && $M::typePiece('Grenier') == 'autre', 'type de pièce');
+$pv = $M::provisoire('salon', 'S'); $ok($pv[20] == 85 && $pv[18] == 85 && $pv[17] == 0 && $pv[12] == 0, 'profil provisoire : ' . json_encode($pv));
+$prof = array_fill(0, 24, 0); for ($i = 19; $i < 23; $i++) $prof[$i] = 90;
+$gs = [['nom' => 'Salon', 'ids' => [1, 2], 'jours' => 20, 'nS' => 14, 'nW' => 6, 'lS' => $prof, 'lW' => $prof, 'confirmerW' => 1, 'lampes' => ['A', 'B'], 'lids' => [1, 2], 'scenes' => ['A + B' => 70]],
+  ['nom' => 'Cuisine', 'ids' => [3], 'jours' => 0], ['nom' => 'Cave', 'ids' => [4], 'jours' => 20, 'nS' => 14, 'lS' => $prof]];
+$rg = [4 => ['jamais' => 1, 'plages' => []], 1 => ['jamais' => 0, 'plages' => [['k' => 'marche', 'j' => 'tous', 'de' => '19:30', 'a' => '22:00']]]];
+$src = $M::sources($gs, $rg, [], 10);
+$ok($src['Salon']['src'] == ['S' => 'hist', 'W' => 'prov'] && $src['Cuisine']['src']['S'] == 'prov' && $src['Cuisine']['type'] == 'cuisine' && $src['Cave']['src']['S'] == 'jamais' && $src['Salon']['scenes'] == [[[1, 2], 70]], 'sources : ' . json_encode(array_column($src, 'src')));
+$ok($M::sources([['nom' => 'X', 'ids' => [5], 'jours' => 20, 'nS' => 9, 'lS' => $prof]], [], [], 10)['X']['src']['S'] == 'prov' && $M::sources([['nom' => 'X', 'ids' => [5], 'jours' => 20, 'nS' => 10, 'lS' => $prof]], [], [], 10)['X']['src']['S'] == 'hist', 'provisoire → historique au seuil');
+$ok(!$M::permis([['k' => 'exclue', 'j' => 'S', 'de' => '23:00', 'a' => '06:00']], 'S', 60) && $M::permis([['k' => 'exclue', 'j' => 'S', 'de' => '23:00', 'a' => '06:00']], 'W', 60) && !$M::permis($rg[1]['plages'], 'S', 19 * 60) && $M::permis($rg[1]['plages'], 'S', 20 * 60), 'plages permises');
+$sun = date_sun_info($t('2026-03-02 12:00'), 48.85, 2.35);
+$ok($M::penombre($t('2026-03-02 13:00'), $sun) == 0 && $M::penombre($t('2026-03-02 23:00'), $sun) == 1 && $M::penombre(0, [], 200) == 1 && $M::penombre(0, [], 1200) == 0, 'pénombre');
+$pvo = $M::planVolets([['id' => 9, 'nom' => 'V', 'jours' => 0]], [], 'S', 'S', 400, 1100, $r, 10);
+$ok($pvo[9]['o'] == 430 && $pvo[9]['f'] == 1120 && $M::planVolets([['id' => 9, 'nom' => 'V', 'jours' => 20, 'soir' => ['S' => ['n' => 5, 'q25' => 1200, 'q75' => 1200, 'ferme' => 5]]]], [], 'S', 'S', 400, 1100, $r, 10)[9]['f'] === null, 'volets du jour : ' . json_encode($pvo));
+// une semaine de passages : jamais hors des plages, au plus « max » pièces allumées, volet fermé le soir et rouvert le matin, l'arrêt éteint tout
+$src = $M::sources([$gs[0], $gs[1], ['nom' => 'Chambre', 'ids' => [6], 'jours' => 0], ['nom' => 'Bureau', 'ids' => [7], 'jours' => 0]], $rg, [], 10);
+$E = []; $vu = []; $fv = $ov = 0; $max = 0; $nb = 0;
+for ($x = $t('2026-03-02 04:00'); $x < $t('2026-03-09 04:00'); $x += 300) {
+  $jd = date('Y-m-d', $x - 4 * 3600);
+  if (($E['jour']['d'] ?? '') != $jd) $E['jour'] = ['d' => $jd, 'dec' => 0, 'f' => 1.3, 'volets' => $M::planVolets([['id' => 9, 'nom' => 'V', 'jours' => 0]], [], 'S', 'S', 400, 1100, $r, 10)];
+  $m = (int)date('G', $x) * 60 + (int)date('i', $x); $k = $A::cle((int)date('N', $x), (int)date('G', $x), (int)date('i', $x));
+  [$E, $d] = $M::pas($E, ['t' => $x, 'm' => $m, 'k' => $k, 'pk' => 1, 'sources' => $src, 'max' => 2, 'sansJour' => [], 'regles' => $rg], $r);
+  foreach ($d as $y) {
+    if ($y['action'] == 'on') { $nb++; $ok($y['nom'] != 'Salon' || ($m >= 19 * 60 + 30 && $m < 22 * 60), 'Salon allumé hors de sa plage à ' . date('D H:i', $x)); }
+    if ($y['action'] == 'off' && $y['nom'] == 'Salon') $ok($y['motif'] != 'plage' || $m == 22 * 60, 'Salon : fin de plage à ' . date('H:i', $x));
+    if ($y['action'] == 'fermer') { $fv++; $ok($m == 1120, 'volet fermé à ' . date('H:i', $x)); }
+    if ($y['action'] == 'ouvrir') { $ov++; $ok($m == 430, 'volet ouvert à ' . date('H:i', $x)); }
+  }
+  $max = max($max, count(array_filter($E['g'], fn($e) => $e['on'])));
+}
+$ok($nb > 20 && $max <= 2 && $fv == 7 && $ov == 6, "semaine simulée : $nb allumages, au plus $max pièces, volet fermé $fv / ouvert $ov fois");
+$E['g']['Chambre'] = ['on' => 1, 'fin' => 0, 'l' => [6], 'pause' => 0, 'vis' => 0];
+$ar = $M::arret($E); $ok($ar && !array_filter($ar, fn($y) => $y['action'] != 'off') && count($ar) == count(array_filter($E['g'], fn($e) => $e['on'])), "l'arrêt éteint tout");
+$Ev = $M::visiteurs(['g' => ['Salon' => ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => 0]]], $src, [1 => true], 1000, 60);
+$ok($Ev['g']['Salon']['vis'] == 1000 + 3600, 'visiteur : pièce allumée par quelqu\'un, laissée 1 h');
+echo "moteur OK\n";
+
 // confidentialité : aucun appel réseau dans le code du plugin
 $motifs = ['http' . '://', 'https' . '://', 'curl' . '_', 'fsock' . 'open', 'stream' . '_socket', 'com' . '_http', 'file_get_contents(\'h', 'f' . 'open(', 'XMLHttp' . 'Request', '$.' . 'ajax', '$.' . 'get(', '$.' . 'post(', 'new ' . 'Image', 'Soap' . 'Client', 'sock' . 'et_', 'Web' . 'Socket', 'send' . 'Beacon'];
 $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(dirname(__DIR__), FilesystemIterator::SKIP_DOTS));
@@ -196,11 +236,12 @@ foreach ($it as $f) {
     $o = basename($f) . ':' . ($i + 1);
     if (basename($f) != 'presencehabituelle_analyse.class.php' && preg_match_all('/\$(w|wc)\s*=(?!=)\s*([^;]+)/', $l, $af, PREG_SET_ORDER)) foreach ($af as $x) // $w / $wc = l'équipement du plugin ou ses commandes, rien d'autre
       $ok(preg_match('/^(\$P::equipement\(|self::equipement\(|eqLogic::byLogicalId\(\'widget\', __CLASS__\)|new self\(\)|new presencehabituelleCmd\(\)|\$w->getCmd\(null, \'maintenant\'\))/', trim($x[2])), "\$$x[1] n'est pas l'équipement du plugin ($o)");
-    if (preg_match('#// ph:(propre|historiser)$#', rtrim($l), $mq)) { // écritures permises : le widget du plugin ($w, $wc) ; l'historique à la demande (bouton + sauvegarde)
+    if (preg_match('#// ph:(propre|historiser|envoyer)$#', rtrim($l), $mq)) { // écritures permises : le widget du plugin ($w, $wc) ; l'historique à la demande (bouton + sauvegarde)
       $ok(in_array(basename($f), $mq[1] == 'propre' ? ['presencehabituelle.class.php', 'presencehabituelle.ajax.php'] : ['presencehabituelle.class.php']), "marque $mq[1] hors de sa place ($o)");
+      if ($mq[1] == 'envoyer') $ok(trim($l) == '$c->execCmd($o); // ph:envoyer', "envoi : seulement la commande d'action trouvée ($o)");
       $marques[$mq[1]] = ($marques[$mq[1]] ?? 0) + 1;
       // seul l'appel permis est ôté ; le reste de la ligne passe les mêmes contrôles
-      $l = $mq[1] == 'propre' ? preg_replace('/\$wc?->\w+\(/', '(', $l) : preg_replace('/\$c->(setIsHistorized|setConfiguration\(\'historizeMode\'|save)\(?/', '(', $l);
+      $l = $mq[1] == 'envoyer' ? '' : ($mq[1] == 'propre' ? preg_replace('/\$wc?->\w+\(/', '(', $l) : preg_replace('/\$c->(setIsHistorized|setConfiguration\(\'historizeMode\'|save)\(?/', '(', $l));
     }
     $b = preg_replace_callback('/\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"/', fn($m) => str_repeat('x', strlen($m[0])), $l); // chaînes masquées : un « // » dans une chaîne n'ouvre pas un commentaire
     if (preg_match('#^\s*/?\*|\s//#', $b, $cm, PREG_OFFSET_CAPTURE)) $l = substr($l, 0, $cm[0][1]); // commentaires ôtés : « history::archive » cité n'est pas un appel
@@ -214,7 +255,10 @@ foreach ($it as $f) {
   }
 }
 $ok(($marques['historiser'] ?? 0) == 6, 'écritures « historiser » : 6 attendues (historiser, remettre)');
-$ok(($marques['propre'] ?? 0) == 11, 'écritures « propre » : 11 attendues (equipement, majWidget, ajax widget) : ' . ($marques['propre'] ?? 0));
+$ok(($marques['propre'] ?? 0) == 12, 'écritures « propre » : 12 attendues (equipement, majWidget, ajax widget) : ' . ($marques['propre'] ?? 0));
+$ok(($marques['envoyer'] ?? 0) == 1, 'envoi aux équipements : 1 ligne attendue (envoyer)');
+$cl = file_get_contents(__DIR__ . '/../core/class/presencehabituelle.class.php');
+$ok(preg_match('/public static function envoyer\(array \$d\) \{\s*if \(self::blanc\(\)\) return /', $cl) && strpos($cl, "function blanc() { return (string)config::byKey('reel', __CLASS__, '0') !== '1'; }") !== false, 'à blanc par défaut, et rien n\'est envoyé à blanc');
 foreach (['core/ajax/presencehabituelle.ajax.php', 'desktop/php/presencehabituelle.php', 'plugin_info/configuration.php'] as $f)
   $ok(preg_match("/if \\(!isConnect\\('admin'\\)\\)/", file_get_contents(__DIR__ . '/../' . $f)), "accès administrateur seulement : $f");
 foreach (['data', 'tests', 'plugin_info'] as $d) $ok(preg_match('/Require all denied/', (string)@file_get_contents(__DIR__ . "/../$d/.htaccess")), "$d/.htaccess refuse l'accès (Apache 2.4)");

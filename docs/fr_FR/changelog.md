@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13
+- Onglet **Simulation** et commandes **Simulation On / Off** du widget : pièce par pièce, d'après ses tendances quand elle a assez de jours comptés, sinon d'après des horaires provisoires de son type de pièce (cuisine, salon, chambre…) ; seulement à la pénombre (capteur de luminosité ou soleil), décalage et activité tirés chaque jour, scènes, règles du Guide, au plus 3 pièces à la fois, volets ouverts et fermés, pièce changée par quelqu'un laissée 60 min ; Off éteint ce qu'elle a allumé.
+- **À blanc par défaut** : rien n'est envoyé, chaque décision est notée au journal (7 jours) ; « Journée à blanc » rejoue tout de suite les 24 prochaines heures ; « Envoyer vraiment aux équipements » dans la configuration. Une période Simulation On est exclue de l'analyse.
+
 ## 0.12.1
 - Corrections après la revue générale : deux enregistrements simultanés (deux onglets) passent l'un après l'autre, et tout est vérifié avant le moindre effacement ; données illisibles refusées au lieu d'être prises pour « vide » ; la page reprend le suivi retenu par la box.
 - Guide : un doublon dont la commande gardée n'est pas encore choisie ne compte pas ; changer d'avis sur une commande remet en ordre ses doublons ; « Remettre le Guide à zéro » rend aussi leur type aux commandes.

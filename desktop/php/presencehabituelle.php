@@ -23,6 +23,7 @@ sendVarToJS('eqType', $plugin->getId());
 		<li role="presentation"><a href="#ph_suivi" role="tab" data-toggle="tab"><i class="fas fa-list-check"></i> {{Commandes suivies}}</a></li>
 		<li role="presentation"><a href="#ph_hab" role="tab" data-toggle="tab"><i class="fas fa-chart-bar"></i> {{Tendances}}</a></li>
 		<li role="presentation"><a href="#ph_plan" role="tab" data-toggle="tab"><i class="fas fa-map"></i> {{Plan}}</a></li>
+		<li role="presentation"><a href="#ph_sim" role="tab" data-toggle="tab"><i class="fas fa-house-user"></i> {{Simulation}}</a></li>
 	</ul>
 	<div class="tab-content">
 		<div role="tabpanel" class="tab-pane active" id="ph_guide" style="padding-top:10px">
@@ -103,6 +104,21 @@ sendVarToJS('eqType', $plugin->getId());
 					<p><small>{{Pièce du plan de chaque pièce Jeedom : sert à « Placer d’après les pièces Jeedom » et à grouper le Guide.}}</small></p><div id="ph_liens"></div>
 				</div>
 			</div>
+		</div>
+		<div role="tabpanel" class="tab-pane" id="ph_sim" style="padding-top:10px">
+			<p>{{Pendant une absence, Simulation On allume et éteint les lampes suivies, ferme et ouvre les volets, pièce par pièce : d'après ses tendances quand elle a assez de jours comptés, sinon d'après des horaires provisoires de son type de pièce (cuisine, salon, chambre…). Les lampes ne s'allument qu'à la pénombre, les règles du Guide sont suivies. Une période On est exclue de l'analyse, comme une absence.}}</p>
+			<p><b>{{À blanc par défaut}}</b> : {{rien n'est envoyé aux équipements, les décisions sont seulement notées au journal ci-dessous. Pour envoyer vraiment : configuration du plugin.}}</p>
+			<div style="margin-bottom:8px">
+				<span id="ph_sim_etat" style="margin-right:10px"></span>
+				<a class="btn btn-sm btn-success" id="ph_sim_on"><i class="fas fa-play"></i> {{Simulation On}}</a>
+				<a class="btn btn-sm btn-warning" id="ph_sim_off"><i class="fas fa-stop"></i> {{Simulation Off}}</a>
+				<a class="btn btn-sm btn-default" id="ph_sim_journee" title="{{Les 24 prochaines heures rejouées tout de suite en mémoire, avec le soleil seul : rien n'est envoyé ni gardé.}}"><i class="fas fa-forward"></i> {{Journée à blanc}}</a>
+				<a class="btn btn-sm btn-default" id="ph_sim_maj"><i class="fas fa-sync"></i></a>
+			</div>
+			<div id="ph_sim_journee_res"></div>
+			<legend style="font-size:1.1em">{{Pièces}}</legend><div id="ph_sim_sources"></div>
+			<legend style="font-size:1.1em">{{Volets aujourd'hui}}</legend><div id="ph_sim_volets"></div>
+			<legend style="font-size:1.1em">{{Journal des dernières 24 h}}</legend><div id="ph_sim_journal"></div>
 		</div>
 	</div>
 </div>

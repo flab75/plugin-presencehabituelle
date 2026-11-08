@@ -971,6 +971,61 @@
     if (window.jeeDialog) jeeDialog.dialog({ id: 'jee_modal', title: '{{Configuration du widget}}', contentUrl: u })
     else $('#md_modal').dialog({ title: '{{Configuration du widget}}' }).load(u).dialog('open')
   })
+  // Onglet Simulation
+  var SRC = { hist: '{{tendances}}', prov: '{{provisoire}}', jamais: '{{jamais simulée}}' }
+  var TYP = { cuisine: '{{cuisine}}', salon: '{{salon}}', chambre: '{{chambre}}', sdb: '{{salle de bains}}', passage: '{{passage}}', bureau: '{{bureau}}', autre: '{{autre}}' }
+  var ACT = { on: '{{allumer}}', off: '{{éteindre}}', ouvrir: '{{ouvrir}}', fermer: '{{fermer}}', 'mode on': '{{Simulation On}}', 'mode off': '{{Simulation Off}}' }
+  var MOT = { tirage: '{{tirage}}', fin: '{{durée finie}}', plage: '{{hors plage}}', arret: '{{arrêt}}', soir: '{{soir}}', matin: '{{matin}}' }
+  function nomG(n) { return String(n || '').replace(/^[\x00\x01]/, '') } // groupes « lampe seule » et « pièce du plan »
+  function heure(t) { var d = new Date(t * 1000); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) }
+  function lignes(js) {
+    if (!js.length) return '<p>{{Rien pour l’instant.}}</p>'
+    var h = '<table class="table table-condensed"><thead><tr><th>{{Heure}}</th><th>{{Pièce ou volet}}</th><th>{{Action}}</th><th>{{D’après}}</th><th>{{Pourquoi}}</th><th>{{Envoi}}</th></tr></thead><tbody>'
+    js.slice().reverse().forEach(function (x) {
+      h += '<tr><td>' + heure(x.t) + '</td><td>' + esc(nomG(x.nom)) + '</td><td>' + esc(ACT[x.action] || x.action) + '</td><td>' + esc(String(x.src || '').split('/').map(function (s) { return SRC[s] || s }).join(' / '))
+        + (x.p && x.p < 1 ? ' (' + Math.round(x.p * 100) + ' %)' : '') + '</td><td>' + esc(MOT[x.motif] || x.motif || '') + '</td><td>'
+        + (x.mode == 'reel' ? (x.envoi ? '<span class="label label-danger">' + esc(x.envoi) + '</span>' : '<span class="label label-success">{{envoyé}}</span>') : '<span class="label label-default">{{à blanc}}</span>') + '</td></tr>'
+    })
+    return h + '</tbody></table>'
+  }
+  function sim(r) {
+    $('#ph_sim_etat').html(!r.mode ? (r.tourne ? '<span class="label label-info">{{Off, à blanc en permanence (essai)}}</span>' : '<span class="label label-default">{{Off}}</span>')
+      : (r.blanc ? '<span class="label label-info">{{On, à blanc : rien n’est envoyé}}</span>' : '<span class="label label-danger">{{On : envoie aux équipements}}</span>')
+      + (r.depuis ? ' {{depuis}} ' + esc(new Date(r.depuis * 1000).toLocaleString()) : ''))
+    $('#ph_sim_on').toggle(!r.mode); $('#ph_sim_off').toggle(!!r.mode)
+    var h = '<table class="table table-condensed"><thead><tr><th>{{Pièce}}</th><th>{{Type}}</th><th>{{En semaine}}</th><th>{{Le week-end}}</th><th></th></tr></thead><tbody>'
+    r.sources.forEach(function (s) {
+      h += '<tr><td>' + esc(nomG(s.nom)) + '</td><td>' + esc(TYP[s.type] || s.type) + '</td><td>' + esc(SRC[s.src.S]) + '</td><td>' + esc(SRC[s.src.W]) + '</td><td>'
+        + (r.allumes.indexOf(s.nom) >= 0 ? '<i class="fas fa-lightbulb" style="color:#f0ad4e" title="{{allumée par la simulation}}"></i>' : '') + '</td></tr>'
+    })
+    $('#ph_sim_sources').html(r.sources.length ? h + '</tbody></table><p><small>{{« provisoire » : moins de}} ' + r.fiable + ' {{jours comptés (ou à confirmer) ; le type de pièce vient de son nom et de la pièce Jeedom de ses lampes.}}</small></p>' : '<p>{{Aucune lampe suivie.}}</p>')
+    var v = Object.keys(r.volets || {})
+    $('#ph_sim_volets').html(v.length ? v.map(function (id) { var x = r.volets[id]; return esc(x.nom) + ' : {{ouvert à}} ' + hm(x.o) + ', ' + (x.f === null ? '{{pas fermé la nuit}}' : '{{fermé à}} ' + hm(x.f)) }).join('<br>') : '<p>{{Aucun volet suivi.}}</p>')
+    $('#ph_sim_journal').html(lignes(r.journal))
+  }
+  function simCharger() { ajax('simulation', {}, sim) }
+  $('a[href="#ph_sim"]').on('shown.bs.tab', simCharger)
+  $('#ph_sim_maj').on('click', simCharger)
+  $('#ph_sim_on').on('click', function () { ajax('mode', { on: 1 }, sim) })
+  $('#ph_sim_off').on('click', function () { ajax('mode', { on: 0 }, sim) })
+  $('#ph_sim_journee').on('click', function () {
+    var b = $(this).addClass('disabled')
+    ajax('journee', {}, function (r) {
+      b.removeClass('disabled')
+      var pieces = {}, h = '<p>{{Journée rejouée du}} ' + esc(new Date(r.debut * 1000).toLocaleString()) + ' {{au}} ' + esc(new Date(r.fin * 1000).toLocaleString()) + ' ({{soleil seul, sans capteur de luminosité}}) :</p>'
+      r.decisions.forEach(function (x) { if (x.type == 'lumiere') (pieces[x.nom] = pieces[x.nom] || []).push(x) })
+      var lg = function (t) { return ((t - r.debut) / (r.fin - r.debut) * 100).toFixed(2) }
+      Object.keys(pieces).forEach(function (n) {
+        var bd = '', deb = null
+        pieces[n].forEach(function (x) { if (x.action == 'on') deb = x.t; else if (deb !== null) { bd += '<div title="' + heure(deb) + ' → ' + heure(x.t) + '" style="position:absolute;top:0;bottom:0;left:' + lg(deb) + '%;width:' + Math.max(.3, lg(x.t) - lg(deb)) + '%;background:#f0ad4e"></div>'; deb = null } })
+        if (deb !== null) bd += '<div title="' + heure(deb) + ' →" style="position:absolute;top:0;bottom:0;left:' + lg(deb) + '%;right:0;background:#f0ad4e"></div>'
+        h += '<div style="display:flex;align-items:center;margin:2px 0"><span style="width:180px;flex:none">' + esc(nomG(n)) + '</span><div style="position:relative;flex:1;height:14px;border:1px solid var(--al-border-color,#ccc)">' + bd + '</div></div>'
+      })
+      if (!Object.keys(pieces).length) h += '<p>{{Aucune lampe allumée sur ces 24 h.}}</p>'
+      $('#ph_sim_journee_res').html(h + '<details><summary>{{Toutes les décisions}}</summary>' + lignes(r.decisions) + '</details>')
+    }, function () { b.removeClass('disabled') })
+  })
+
   charger()
   histo()
   ajax('habitudes', {}, habitudes)

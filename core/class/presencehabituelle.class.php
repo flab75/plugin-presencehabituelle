@@ -1,8 +1,9 @@
 <?php
 /* Présence habituelle : tire des historiques (lumières, volets) les tendances, les exceptions et ce qui n'arrive jamais, sans rien envoyer hors de la box.
-   0.12 : analyse seule (aucune action sur les équipements), plan de la maison par étage, découverte des commandes à suivre, Guide, widget. */
+   0.13 : analyse, plan de la maison par étage, découverte des commandes à suivre, Guide, widget ; simulation (à blanc par défaut : rien n'est envoyé). */
 require_once __DIR__ . '/../../../../core/php/core.inc.php';
 require_once __DIR__ . '/presencehabituelle_analyse.class.php';
+require_once __DIR__ . '/presencehabituelle_moteur.class.php';
 
 class presencehabituelle extends eqLogic {
   const TABLE = 'presencehabituelle_event'; // src : 0 listener ou état noté, 1 repris de l'historique (points exacts seulement)
@@ -382,6 +383,7 @@ class presencehabituelle extends eqLogic {
   public static function exclusions() {
     $A = 'presencehabituelle_analyse';
     $p = array_merge($A::periodes(config::byKey('exclusions', __CLASS__, '')), self::arrets(), self::arrets('simulation'));
+    if ($d = (int)config::byKey('mode_depuis', __CLASS__, 0)) $p[] = [$d, time()]; // simulation en cours
     if ($x = (int)config::byKey('exclure_cmd', __CLASS__, 0))
       foreach ($A::intervalles(self::evs($x), time()) as $i) $p[] = [$i[0], $i[1]];
     return $A::fusion($p); // chevauchements réunis : une heure n'est retirée qu'une fois
@@ -656,7 +658,7 @@ class presencehabituelle extends eqLogic {
       if (!$iv) { $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'piece' => $pi, 'ids' => $ids, 'jours' => 0]; continue; }
       $parNom = []; foreach ($iv as $id => $i) $parNom[$noms[$id]] = $i;
       $j = $A::jours($debut, $fin, $exG); $se = $A::sessions($parNom); $p = $A::profil($se, $j);
-      $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'piece' => $pi, 'ids' => $ids, 'lampes' => array_values($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
+      $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'piece' => $pi, 'ids' => $ids, 'lampes' => array_values($noms), 'lids' => array_keys($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
         'S' => $p['S'], 'W' => $p['W'], 'cS' => $p['cS'], 'cW' => $p['cW'], 'lS' => $A::lisser($p['S']), 'lW' => $A::lisser($p['W']),
         'ex' => $p['ex'], 'durees' => $A::durees($se, $j), 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmerS' => $p['nS'] < self::FIABLE, 'confirmerW' => $p['nW'] < self::FIABLE, 'bloquees' => $bloq];
     }
@@ -699,7 +701,8 @@ class presencehabituelle extends eqLogic {
      Ses commandes seules sont écrites ($w, $wc) ; marque « ph:propre » = écriture sur cet équipement-là (vérifiée par le selftest).
      « Allumé d'habitude maintenant » dit quand la maison est vide : rempli seulement si l'option widget_pieces est cochée. */
   const CMDS = ['etat' => ['État', 'info', 'string'], 'maintenant' => ['Allumé d\'habitude maintenant', 'info', 'string'],
-    'calcul' => ['Tendances du', 'info', 'string'], 'suivies' => ['Commandes suivies', 'info', 'numeric'], 'recalculer' => ['Recalculer', 'action', 'other']];
+    'calcul' => ['Tendances du', 'info', 'string'], 'suivies' => ['Commandes suivies', 'info', 'numeric'], 'recalculer' => ['Recalculer', 'action', 'other'],
+    'mode' => ['Simulation', 'info', 'binary'], 'on' => ['Simulation On', 'action', 'other'], 'off' => ['Simulation Off', 'action', 'other']];
   public static function equipement($creer = true) {
     $w = eqLogic::byLogicalId('widget', __CLASS__);
     if (!is_object($w)) {
@@ -727,7 +730,9 @@ class presencehabituelle extends eqLogic {
     $k = presencehabituelle_analyse::cle((int)date('N', $t), $hr); // jour civil et heure pleine, comme profil() des lumières
     $n = []; foreach ($h['groupes'] ?? [] as $g) if (empty($g['confirmer' . $k]) && ($g['l' . $k][$hr] ?? 0) >= 50) $n[] = $g['nom']; // « à confirmer » : pas assez de jours
     $m = !(int)config::byKey('widget_pieces', __CLASS__, 0) ? '' : ($n ? mb_substr(implode(', ', $n), 0, 250) : __('rien', __FILE__));
-    $w->checkAndUpdateCmd('etat', __('Analyse seule : rien n\'est allumé ni fermé', __FILE__)); // ph:propre
+    $mode = (int)config::byKey('mode', __CLASS__, 0);
+    $w->checkAndUpdateCmd('etat', !$mode ? __('Simulation arrêtée : rien n\'est allumé ni fermé', __FILE__) : (self::blanc() ? __('Simulation à blanc : rien n\'est envoyé', __FILE__) : __('Simulation en marche', __FILE__))); // ph:propre
+    $w->checkAndUpdateCmd('mode', $mode); // ph:propre
     $w->checkAndUpdateCmd('maintenant', $m); // ph:propre
     $w->checkAndUpdateCmd('calcul', isset($h['date']) ? date('d/m H:i', strtotime($h['date'])) : ''); // ph:propre
     $w->checkAndUpdateCmd('suivies', count(self::suivi())); // ph:propre
@@ -805,6 +810,157 @@ class presencehabituelle extends eqLogic {
     });
   }
 
+  /* Simulation (0.13). Mode On/Off (config 'mode', 'mode_depuis') : une période On est exclue de l'analyse, comme une absence.
+     À blanc (case 'reel' de la configuration non cochée, le défaut) : le moteur décide et note au journal, n'envoie rien ;
+     « blanc_sans_on » le fait tourner à blanc même sans On, pour l'essayer à la maison (cette période-là n'est pas exclue).
+     Le scénario 245 et le Mode simulation 927 de la maison ne sont ni lus ni touchés. */
+  public static function blanc() { return (string)config::byKey('reel', __CLASS__, '0') !== '1'; } // case non cochée (ou jamais enregistrée) = à blanc
+  public static function tourne() { return (int)config::byKey('mode', __CLASS__, 0) || (self::blanc() && (int)config::byKey('blanc_sans_on', __CLASS__, 0)); }
+  public static function simulation($on) {
+    self::verrou(function () use ($on) {
+      if ((int)$on == (int)config::byKey('mode', __CLASS__, 0)) return;
+      if ($on) config::save('mode_depuis', time(), __CLASS__);
+      else {
+        if ($d = (int)config::byKey('mode_depuis', __CLASS__, 0)) self::exclure($d, time(), 'simulation');
+        config::remove('mode_depuis', __CLASS__);
+      }
+      config::save('mode', $on ? 1 : 0, __CLASS__);
+      self::journal([['nom' => '', 'ids' => [], 'action' => $on ? 'mode on' : 'mode off', 'src' => '', 'p' => 0, 'motif' => '', 'mode' => self::blanc() ? 'blanc' : 'reel']]);
+      self::arretMoteur(!$on); // On : nouveau départ : ce que l'essai à blanc croyait allumé est oublié ; à l'arrêt, ce qui a été allumé est éteint
+      log::add(__CLASS__, 'info', 'Simulation ' . ($on ? 'On' : 'Off') . (self::blanc() ? ' (à blanc)' : ''));
+    });
+    self::majWidget();
+  }
+  // Fin : ce que le moteur a allumé est éteint (envoi réel seulement), son état oublié
+  private static function arretMoteur($reel = true) {
+    if (!$E = self::cfg('moteur')) return;
+    self::agir(presencehabituelle_moteur::arret($E), $reel && !self::blanc());
+    config::remove('moteur', __CLASS__);
+  }
+  public static function cron5() {
+    try { self::verrou(fn() => self::moteur()); } catch (Throwable $e) { log::add(__CLASS__, 'error', 'cron5 : ' . $e->getMessage()); }
+  }
+  private static function moteur() {
+    $M = 'presencehabituelle_moteur';
+    if (!self::tourne()) { self::arretMoteur(false); return; } // essai à blanc arrêté : rien n'avait été envoyé
+    $E = self::cfg('moteur'); $t = time(); $reel = !self::blanc() && (int)config::byKey('mode', __CLASS__, 0);
+    $C = self::contexte($t, $E);
+    if ($reel) {
+      $ids = []; foreach ($C['sources'] as $s) $ids = array_merge($ids, $s['ids']);
+      $E = $M::visiteurs($E, $C['sources'], self::etats($ids), $t, ($v = (int)config::byKey('visiteur', __CLASS__, 60)) > 0 ? $v : 60);
+    }
+    [$E, $dec] = $M::pas($E, $C, fn() => mt_rand() / (mt_getrandmax() + 1));
+    self::agir($dec, $reel);
+    config::save('moteur', json_encode($E), __CLASS__);
+  }
+  /* Contexte d'un passage à l'instant $t ; tire l'aléa et le plan des volets à chaque nouvelle journée (04:00) dans $E.
+     $capteur = false : pas de capteur de luminosité (journée rejouée à l'avance), le soleil seul. */
+  public static function contexte($t, array &$E, $capteur = true) {
+    $M = 'presencehabituelle_moteur'; $A = 'presencehabituelle_analyse'; $r = fn() => mt_rand() / (mt_getrandmax() + 1);
+    static $cache = null; // tendances lues une fois par appel (journée rejouée : 288 passages)
+    self::semaine();
+    if ($cache === null) {
+      $h = self::habitudes(); $regles = $A::regles(self::cfg('regles')); $tx = [];
+      foreach ($h['groupes'] ?? [] as $g) $tx[$g['nom']] = $g['nom'] . ' ' . implode(' ', array_map(fn($id) => self::nom($id, true), $g['ids'] ?? [])); // nom et pièce Jeedom : type de pièce
+      $cache = ['h' => $h, 'regles' => $regles, 'sources' => $M::sources($h['groupes'] ?? [], $regles, $tx, self::FIABLE)];
+    }
+    $geo = fn($k) => (float)str_replace(',', '.', (string)config::byKey($k, 'core', 0));
+    $lat = $geo('info::latitude'); $lon = $geo('info::longitude');
+    if (!$lat && !$lon) { $lat = 46.6; $lon = 2.4; } // ponytail: coordonnées absentes de la configuration de Jeedom, centre de la France
+    $jd = date('Y-m-d', $t - 4 * 3600); // la nuit appartient au jour d'avant
+    if (($E['jour']['d'] ?? '') !== $jd) {
+      $mid = strtotime($jd . ' 12:00'); $n = (int)date('N', $mid); $sj = date_sun_info($mid, $lat, $lon);
+      $mn = fn($x) => is_int($x) ? (int)date('G', $x) * 60 + (int)date('i', $x) : null;
+      $E['jour'] = ['d' => $jd] + $M::jour($r) + ['volets' => $M::planVolets($cache['h']['volets'] ?? [], $cache['regles'], $A::cle($n, 8), $A::cle($n, 21), $mn($sj['sunrise'] ?? null) ?? 480, $mn($sj['sunset'] ?? null) ?? 1200, $r, self::FIABLE)];
+    }
+    $lux = null;
+    if ($capteur && ($lc = (int)config::byKey('lux_cmd', __CLASS__, 0)) && is_object($c = cmd::byId($lc)) && $c->getType() == 'info' && is_numeric($v = $c->execCmd())) {
+      $E['lux'] = isset($E['lux']) ? .88 * $E['lux'] + .12 * (float)$v : (float)$v; $lux = $E['lux']; // lissé : un nuage ne rallume pas la maison
+    }
+    $bas = (float)config::byKey('lux_bas', __CLASS__, 350) ?: 350; $haut = (float)config::byKey('lux_haut', __CLASS__, 1000) ?: 1000;
+    $max = ($x = (int)config::byKey('presences_max', __CLASS__, 3)) > 0 ? $x : 3;
+    $sans = array_values(array_filter(array_map('trim', explode(',', (string)config::byKey('sans_jour', __CLASS__, ''))), 'strlen')); $sans = array_merge($sans, array_map(fn($x) => "\1" . $x, $sans)); // pièce du plan : nom de groupe préfixé
+    return ['t' => $t, 'm' => (int)date('G', $t) * 60 + (int)date('i', $t), 'k' => $A::cle((int)date('N', $t), (int)date('G', $t), (int)date('i', $t)),
+      'pk' => $M::penombre($t, date_sun_info(strtotime(date('Y-m-d', $t) . ' 12:00'), $lat, $lon), $lux, $bas, max($bas + 1, $haut)),
+      'sources' => $cache['sources'], 'max' => $max, 'sansJour' => $sans, 'regles' => $cache['regles']];
+  }
+  // État réel des lampes (infos seulement) : [id => allumée]
+  private static function etats(array $ids) {
+    $r = [];
+    foreach (array_unique($ids) as $id) if (is_object($c = cmd::byId($id)) && $c->getType() == 'info' && ($v = self::valeur($c->execCmd())) !== null) $r[$id] = $v > 0;
+    return $r;
+  }
+  private static function agir(array $dec, $reel) {
+    $j = [];
+    foreach ($dec as $d) {
+      $d['mode'] = $reel ? 'reel' : 'blanc';
+      if ($reel) { try { $d['envoi'] = self::envoyer($d); } catch (Throwable $e) { $d['envoi'] = $e->getMessage(); } }
+      $j[] = $d;
+    }
+    if ($j) self::journal($j);
+  }
+  /* Seul endroit où le plugin agit sur la maison, jamais à blanc (vérifié par le selftest). Commande d'action du même équipement que l'info suivie :
+     liée à elle (sa valeur), sinon la seule de l'équipement à avoir le type générique ou le nom attendu (deux possibles, aucune : rien n'est envoyé).
+     → '' ou ce qui n'a pas pu être envoyé */
+  const ACTIONS = ['on' => [['LIGHT_ON', 'ENERGY_ON'], '/^(on|allumer?|marche)$/iu', 'max'], 'off' => [['LIGHT_OFF', 'ENERGY_OFF'], '/^(off|[ée]teindre|arr[êe]t)$/iu', 'min'],
+    'ouvrir' => [['FLAP_UP', 'FLAP_BSO_UP'], '/^(ouvrir|monter|mont[ée]e|haut|up|open)$/iu', 'max'], 'fermer' => [['FLAP_DOWN', 'FLAP_BSO_DOWN'], '/^(fermer|descendre|descente|bas|down|close)$/iu', 'min']];
+  public static function envoyer(array $d) {
+    if (self::blanc()) return __('à blanc', __FILE__);
+    $S = self::suivi(); $manque = [];
+    foreach ($d['ids'] as $id) {
+      if (!$a = self::action($id, $d['action'], !empty($S[$id]['i']))) { $manque[] = self::nom($id); continue; }
+      [$c, $o] = $a;
+      $c->execCmd($o); // ph:envoyer
+    }
+    return $manque ? __('pas de commande d\'action', __FILE__) . ' : ' . implode(', ', $manque) : '';
+  }
+  public static function action($id, $action, $inv = false) { // → [commande d'action, options] ou null
+    if (!is_object($i = cmd::byId($id)) || !is_object($eq = $i->getEqLogic())) return null;
+    [$gen, $re, $bout] = self::ACTIONS[$action];
+    if ($inv && in_array($action, ['ouvrir', 'fermer'])) $bout = $bout == 'max' ? 'min' : 'max'; // sens inversé : 0 = ouvert
+    $lie = []; $nom = []; $cur = [];
+    foreach ($eq->getCmd('action') as $c) {
+      if ($c->getType() != 'action') continue;
+      $g = (string)$c->getGeneric_type(); $l = (int)trim((string)$c->getValue(), '#') == (int)$id;
+      if (in_array($g, $gen, true) || preg_match($re, trim($c->getName()))) { if ($l) $lie[] = [$c, []]; else $nom[] = [$c, []]; }
+      elseif ($c->getSubType() == 'slider' && in_array($g, ['LIGHT_SLIDER', 'FLAP_SLIDER'], true)) $cur[] = [$c, ['slider' => $bout == 'max' ? $c->getConfiguration('maxValue', 100) : $c->getConfiguration('minValue', 0)], $l];
+    }
+    if (count($lie) == 1) return $lie[0];
+    if (!$lie && count($nom) == 1) return $nom[0];
+    if (!$lie && !$nom) { $cl = array_values(array_filter($cur, fn($x) => $x[2])); $x = count($cl) == 1 ? $cl[0] : (count($cur) == 1 ? $cur[0] : null); return $x ? [$x[0], $x[1]] : null; }
+    return null;
+  }
+  public static function journalFichier() { return __DIR__ . '/../../data/simulation.log.json'; }
+  // Journal du moteur, 7 jours ; $l null = lecture
+  public static function journal(?array $l = null) {
+    $f = self::journalFichier(); $j = is_file($f) ? json_decode((string)file_get_contents($f), true) : [];
+    if (!is_array($j)) $j = [];
+    if ($l === null) return $j;
+    $t = time();
+    foreach ($l as $x) $j[] = ['t' => $t, 'type' => isset($x['v']) ? 'volet' : 'lumiere'] + array_diff_key($x, ['g' => 0, 'v' => 0]);
+    $j = array_values(array_filter($j, fn($x) => ($x['t'] ?? 0) >= $t - 7 * 86400));
+    self::ecrire($f, array_slice($j, -5000));
+  }
+  // Journée à blanc : les 24 prochaines heures rejouées en mémoire (même code, soleil seul), rien n'est envoyé ni gardé
+  public static function journee() {
+    $E = []; $r = []; $t0 = time() - time() % 300; $M = 'presencehabituelle_moteur';
+    for ($t = $t0; $t < $t0 + 86400; $t += 300) {
+      $C = self::contexte($t, $E, false);
+      [$E, $d] = $M::pas($E, $C, fn() => mt_rand() / (mt_getrandmax() + 1));
+      foreach ($d as $x) $r[] = ['t' => $t, 'type' => isset($x['v']) ? 'volet' : 'lumiere'] + array_diff_key($x, ['g' => 0, 'v' => 0]);
+    }
+    return ['debut' => $t0, 'fin' => $t0 + 86400, 'decisions' => $r, 'sources' => array_values($C['sources'] ?? []), 'volets' => $E['jour']['volets'] ?? []];
+  }
+  // Onglet Simulation
+  public static function etatSimulation() {
+    $E = self::cfg('moteur'); $C = self::contexte(time(), $E, false);
+    return ['mode' => (int)config::byKey('mode', __CLASS__, 0), 'depuis' => (int)config::byKey('mode_depuis', __CLASS__, 0), 'blanc' => self::blanc() ? 1 : 0,
+      'sans_on' => (int)config::byKey('blanc_sans_on', __CLASS__, 0), 'tourne' => self::tourne() ? 1 : 0, 'fiable' => self::FIABLE,
+      'sources' => array_values(array_map(fn($s) => ['nom' => $s['nom'], 'type' => $s['type'], 'src' => $s['src']], $C['sources'])),
+      'volets' => $E['jour']['volets'] ?? [], 'allumes' => array_keys(array_filter($E['g'] ?? [], fn($e) => !empty($e['on']))),
+      'journal' => array_values(array_filter(self::journal(), fn($x) => $x['t'] >= time() - 86400))];
+  }
+
   /* Purge : au-delà de « conserver » jours, seul le dernier état connu reste, ramené à la limite
      (sinon un « On » purgé laisserait un « Off » seul : absence ou allumage perdus). */
   public static function purger($jours) {
@@ -846,9 +1002,10 @@ class presencehabituelle extends eqLogic {
 
 class presencehabituelleCmd extends cmd {
   public function execute($_options = []) {
-    if ($this->getLogicalId() != 'recalculer') return;
+    if (!in_array($this->getLogicalId(), ['recalculer', 'on', 'off'])) return;
     // administrateur, ou scénario / cron (sans session) ; pas un compte limité ni l'API (habitudes = heures où la maison est vide)
-    if (php_sapi_name() != 'cli' && !isConnect('admin')) throw new Exception(__('Recalculer : réservé aux administrateurs', __FILE__));
+    if (php_sapi_name() != 'cli' && !isConnect('admin')) throw new Exception(__('Réservé aux administrateurs', __FILE__));
+    if ($this->getLogicalId() != 'recalculer') return presencehabituelle::simulation($this->getLogicalId() == 'on');
     $f = presencehabituelle::fichier(); clearstatcache(true, $f);
     if (is_file($f) && time() - filemtime($f) < 60) // ponytail: une minute entre deux calculs, contre les clics répétés ; verrou si ça ne suffit pas
       throw new Exception(__('Tendances déjà calculées il y a moins d\'une minute', __FILE__));
