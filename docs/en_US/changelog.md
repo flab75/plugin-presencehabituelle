@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.1
+- Fixes after the general review: two simultaneous saves (two tabs) run one after the other, and everything is checked before anything is erased; unreadable data refused instead of taken as "empty"; the page reloads the followed commands kept by the box.
+- Guide: a duplicate whose kept command is not chosen yet does not count; changing your mind about a command puts its duplicates back in order; "Reset the Guide" also gives the commands their type back.
+- Trends: a lamp left on (forgotten, stuck) is flagged "on without end" instead of erasing the following days; overlapping excluded periods merged; a dimmer no longer records each brightness change; a lamp switched on every evening around midnight recognised (23:58 and 00:02).
+- Plan: plan version (another tab still on the old plan is refused), images of floors never saved erased after a day, 3 MB image at most, drawing kept when the room name or the passage is cancelled, marker details on a click (tablets), old Safari / iPad (image, grid, names); deleted absence command flagged; floor names with figures ("Lamp 1") no longer mean "1st floor".
+- Selftest: administrator access and `.htaccess` checked, "//" in a string no longer hides a write; `.htaccess` for Apache 2.2 and 2.4.
+
 ## 0.12
 - **Configuration** (plugin configuration) and **Widget** buttons at the top of the page: a "Usual presence" device (state, rooms usually on now, date of the trends, followed commands, Recompute), object and visibility adjustable; the rooms usually lit only if you tick the option (they hint at when the house is empty).
 - Guide: **Enable their history…** for followed commands not historized or smoothed, on confirmation, previous setting kept and **Put the history back as before**; or the steps to do it by hand.

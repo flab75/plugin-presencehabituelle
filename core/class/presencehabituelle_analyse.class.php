@@ -13,6 +13,7 @@ class presencehabituelle_analyse {
     $r = [];
     foreach (is_array($x) ? $x : [] as $id => $v) {
       if (!(int)$id || !is_array($v) || !in_array($v['r'] ?? '', ['oui', 'non', 'doublon', 'groupe'], true)) continue;
+      if ($v['r'] == 'doublon' && (!(int)($v['de'] ?? 0) || (int)$v['de'] == (int)$id)) continue; // doublon dont la commande gardée n'est pas choisie : pas encore une réponse
       $r[(int)$id] = ['r' => $v['r']];
       if ($v['r'] == 'doublon' && (int)($v['de'] ?? 0) && (int)$v['de'] != (int)$id) $r[(int)$id]['de'] = (int)$v['de'];
       if ($v['r'] == 'groupe' && is_array($v['m'] ?? null)) { // lampes que le groupe allume
@@ -90,11 +91,18 @@ class presencehabituelle_analyse {
   }
 
   /* Sessions trop longues (extinction manquée : box arrêtée, pont Zigbee hors ligne…) : retirées, et renvoyées pour exclure les jours touchés.
-     → [intervalles gardés, [[début, fin]] retirés] */
-  public static function longues(array $iv, $max) {
-    $g = []; $x = [];
-    foreach ($iv as $i) if ($i[1] - $i[0] > $max) $x[] = [$i[0], $i[1]]; else $g[] = $i;
-    return [$g, $x];
+     Celle encore en cours à $fin (lampe restée allumée, ou bloquée) est retirée sans exclure ses jours : sinon une lampe oubliée effacerait les jours qui suivent.
+     → [intervalles gardés, [[début, fin]] retirés, bloquée depuis (horodatage) ou null] */
+  public static function longues(array $iv, $max, $fin = null) {
+    $g = []; $x = []; $bl = null;
+    foreach ($iv as $i) if ($i[1] - $i[0] <= $max) $g[] = $i; elseif ($fin !== null && $i[1] >= $fin && !$i[2]) $bl = $i[0]; else $x[] = [$i[0], $i[1]];
+    return [$g, $x, $bl];
+  }
+  // Intervalles [[a, b]] triés, ceux qui se chevauchent ou se touchent réunis
+  public static function fusion(array $iv) {
+    usort($iv, fn($x, $y) => $x[0] <=> $y[0]); $r = [];
+    foreach ($iv as [$a, $b]) { $n = count($r) - 1; if ($n >= 0 && $a <= $r[$n][1]) $r[$n][1] = max($r[$n][1], $b); else $r[] = [(int)$a, (int)$b]; }
+    return $r;
   }
 
   /* Groupe de lampes : sessions = au moins une lampe allumée.
@@ -382,7 +390,7 @@ class presencehabituelle_analyse {
       $val = array_map(fn($ts) => array_values(array_filter(array_map($f, $ts), fn($w) => $w !== null)), $jours); // une fois par allumage
       $mieux = [null, 0];
       foreach ($val as $ws) foreach ($ws as $c) {
-        $n = 0; foreach ($val as $u) foreach ($u as $w) if (abs($w - $c) <= $tol) { $n++; break; }
+        $n = 0; foreach ($val as $u) foreach ($u as $w) if (min(abs($w - $c), 1440 - abs($w - $c)) <= $tol) { $n++; break; } // 23:58 et 00:02 : 4 min d'écart
         if ($n > $mieux[1]) $mieux = [$c, $n];
       }
       return [$mieux[0], $mieux[1] / count($jours)];

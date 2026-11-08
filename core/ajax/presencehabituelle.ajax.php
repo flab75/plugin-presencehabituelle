@@ -6,16 +6,18 @@ try {
   require_once __DIR__ . '/../class/presencehabituelle.class.php';
   ajax::init();
   $P = 'presencehabituelle';
+  // Paramètre JSON : absent = null (page d'avant, rien changé) ; présent mais illisible = refus (jamais pris pour « vide »)
+  $J = function ($k) { if (init($k) === '') return null; $v = json_decode((string)init($k), true); if (!is_array($v)) throw new Exception(__('Données illisibles : rien n\'a été enregistré', __FILE__) . ' (' . $k . ')'); return $v; };
 
   if (init('action') == 'liste') {
-    $x = (int)config::byKey('exclure_cmd', $P, 0);
-    ajax::success(['candidats' => $P::candidats(), 'suivi' => (object)$P::suivi(), 'exclure' => $x ? cmd::cmdToHumanReadable('#' . $x . '#') : '',
+    $x = (int)config::byKey('exclure_cmd', $P, 0); $perdu = $x && !is_object(cmd::byId($x)); // commande d'absence supprimée : ni « #123# » affiché, ni oubliée en silence
+    ajax::success(['candidats' => $P::candidats(), 'suivi' => (object)$P::suivi(), 'exclure' => $x && !$perdu ? cmd::cmdToHumanReadable('#' . $x . '#') : '', 'exclure_perdu' => $perdu ? 1 : 0,
       'exclusions' => config::byKey('exclusions', $P, ''),
       'jamais' => config::byKey('suivi', $P, '') === '', // jamais enregistré : la page préconise
       'precedent' => $P::precedent(), 'observation' => $P::observes() ? $P::finObservee() : 0,
       'reponses' => (object)$P::cfg('reponses'), 'regles' => (object)$P::cfg('regles'), 'detecteurs' => $P::detecteursLus(), 'donnees' => (object)$P::donnees(), 'figes' => $P::figes(), 'fiable' => $P::FIABLE]);
   }
-  if (init('action') == 'decouverte') ajax::success($P::decouverte(init('detecteurs') === '' ? null : json_decode((string)init('detecteurs'), true)));
+  if (init('action') == 'decouverte') ajax::success($P::decouverte($J('detecteurs')));
   if (init('action') == 'historiques') { $ids = json_decode((string)init('ids'), true); $ids = is_array($ids) ? $ids : []; ajax::success(['h' => (object)$P::historiques($ids), 's' => (object)$P::scenarios($ids)]); }
   if (init('action') == 'observer') {
     $ids = json_decode((string)init('ids'), true);
@@ -29,8 +31,8 @@ try {
       if (!preg_match('/^#(\d+)#$/', trim(cmd::humanReadableToCmd($x)), $m)) throw new Exception(__('Commande d\'absence introuvable', __FILE__) . ' : ' . $x);
       $x = (int)$m[1];
     } else $x = 0;
-    ajax::success(['repris' => $P::enregistrer($s, $x, (string)init('exclusions'), init('reponses') === '' ? null : json_decode((string)init('reponses'), true), init('regles') === '' ? null : json_decode((string)init('regles'), true), init('detecteurs') === '' ? null : json_decode((string)init('detecteurs'), true)), 'habitudes' => $P::analyser(), 'precedent' => ($p = $P::precedent()) ? $p['date'] : null,
-      'reponses' => (object)$P::cfg('reponses'), 'regles' => (object)$P::cfg('regles'), 'detecteurs' => $P::detecteursLus(), 'donnees' => (object)$P::donnees(), 'figes' => $P::figes()]); // ce que la box a retenu
+    ajax::success(['repris' => $P::enregistrer($s, $x, (string)init('exclusions'), $J('reponses'), $J('regles'), $J('detecteurs')), 'habitudes' => $P::analyser(), 'precedent' => ($p = $P::precedent()) ? $p['date'] : null,
+      'suivi' => (object)$P::suivi(), 'reponses' => (object)$P::cfg('reponses'), 'regles' => (object)$P::cfg('regles'), 'detecteurs' => $P::detecteursLus(), 'donnees' => (object)$P::donnees(), 'figes' => $P::figes()]); // ce que la box a retenu
   }
   if (init('action') == 'habitudes') {
     ajax::success($P::habitudes());

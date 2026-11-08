@@ -1,6 +1,6 @@
 <?php
 /* Présence habituelle : tire des historiques (lumières, volets) les tendances, les exceptions et ce qui n'arrive jamais, sans rien envoyer hors de la box.
-   0.7 : analyse seule (aucune action sur les équipements), plan de la maison par étage, découverte des commandes à suivre. */
+   0.12 : analyse seule (aucune action sur les équipements), plan de la maison par étage, découverte des commandes à suivre, Guide, widget. */
 require_once __DIR__ . '/../../../../core/php/core.inc.php';
 require_once __DIR__ . '/presencehabituelle_analyse.class.php';
 
@@ -32,6 +32,7 @@ class presencehabituelle extends eqLogic {
   public static function arreter() {
     if (is_object($l = listener::byClassAndFunction(__CLASS__, 'evenement'))) $l->remove();
     config::save('arret', time(), __CLASS__);
+    if (self::historiserAvant()) log::add(__CLASS__, 'warning', 'Plugin désactivé : l\'historique activé par le plugin reste activé ; « Remettre l\'historique comme avant » (Guide) le rétablit une fois le plugin réactivé');
   }
 
   /* Périodes exclues gardées [[début, fin]] (config::byKey décode déjà le JSON) :
@@ -44,7 +45,8 @@ class presencehabituelle extends eqLogic {
   }
 
   public static function exclure($a, $b, $cle = 'arrets') {
-    $p = self::arrets($cle); $p[] = [(int)$a, (int)$b]; config::save($cle, json_encode($p), __CLASS__);
+    $p = presencehabituelle_analyse::fusion(array_merge(self::arrets($cle), [[(int)$a, (int)$b]])); // chevauchements fusionnés : la liste ne grossit pas à chaque redémarrage
+    config::save($cle, json_encode($p), __CLASS__);
   }
 
   // Bouton « Tout effacer » : changements d'état et habitudes calculées (le choix des commandes reste)
@@ -89,7 +91,7 @@ class presencehabituelle extends eqLogic {
      sans retour d'état (Somfy RTS, radio sans retour) ? Départ : premier relevé, sinon date où il a été suivi (d). */
   /* Historique Jeedom des 90 derniers jours : {cmdId: {n: points, j: jours depuis le premier}} (lecture seule ; ponytail: deux GROUP BY sur les ids demandés) */
   public static function historiques(array $ids) {
-    $ids = array_slice(array_values(array_unique(array_filter(array_map('intval', $ids), fn($x) => $x > 0))), 0, 2000);
+    $ids = array_slice(array_values(array_unique(array_filter(array_map('intval', $ids), fn($x) => $x > 0))), 0, 200); // la page les demande par paquets de 200
     if (!$ids) return [];
     $r = []; $d = date('Y-m-d H:i:s', time() - 90 * 86400);
     foreach (['history', 'historyArch'] as $t)
@@ -100,7 +102,7 @@ class presencehabituelle extends eqLogic {
     return $r;
   }
   public static function scenarios(array $ids) { // {cmdId: [[scénario, nom, actions notées dans son journal, 1re, dernière, actif]]} : scénarios qui lancent une action de son équipement (lecture seule)
-    $ids = array_slice(array_values(array_unique(array_filter(array_map('intval', $ids), fn($x) => $x > 0))), 0, 2000);
+    $ids = array_slice(array_values(array_unique(array_filter(array_map('intval', $ids), fn($x) => $x > 0))), 0, 200); // la page les demande par paquets de 200
     $par = []; $sc = []; $acts = []; $connus = [];
     foreach ($ids as $id) {
       $c = cmd::byId($id); if (!is_object($c)) continue;
@@ -144,7 +146,7 @@ class presencehabituelle extends eqLogic {
     $l = array_column($l, null, 'cmd_id'); $excl = self::exclusions(); $r = [];
     foreach ($v as $id => $s) {
       if ((int)($l[$id]['n'] ?? 0) >= 2 || !($a = (int)($l[$id]['d'] ?? 0) ?: (int)($s['d'] ?? 0))) continue;
-      $duree = time() - $a; foreach ($excl as [$x, $y]) $duree -= max(0, min($y, time()) - max($x, $a)); // ponytail: périodes qui se chevauchent comptées deux fois
+      $duree = time() - $a; foreach ($excl as [$x, $y]) $duree -= max(0, min($y, time()) - max($x, $a));
       if ($duree > 3 * 86400) $r[] = (int)$id;
     }
     return $r;
@@ -203,7 +205,7 @@ class presencehabituelle extends eqLogic {
   private static function ajouter($id, $v, $ts) {
     if ($v === null) return;
     $d = DB::Prepare('SELECT valeur FROM ' . self::TABLE . ' WHERE cmd_id = ? ORDER BY ts DESC, id DESC LIMIT 1', [$id], DB::FETCH_TYPE_ROW);
-    if (is_array($d) && (float)$d['valeur'] == $v) return;
+    if (is_array($d) && ((float)$d['valeur'] == $v || ((self::suivi()[$id]['t'] ?? '') != 'volet' && ((float)$d['valeur'] > 0) == ($v > 0)))) return; // hors volet, seul allumé / éteint compte : un variateur ne remplit pas la table
     DB::Prepare('INSERT INTO ' . self::TABLE . ' (cmd_id, ts, valeur, src) VALUES (?, ?, ?, 0)', [$id, $ts, $v], DB::FETCH_TYPE_ROW);
   }
 
@@ -309,6 +311,9 @@ class presencehabituelle extends eqLogic {
 
   /* Enregistre le choix de la page. $suivi = {cmdId: {g, t}} ; renvoie le nombre de changements repris de l'historique. */
   public static function enregistrer(array $suivi, $exclure, $exclusions, $reponses = null, $regles = null, $detecteurs = null) {
+    return self::verrou(fn() => self::enregistrer1($suivi, $exclure, $exclusions, $reponses, $regles, $detecteurs)); // deux onglets : l'un après l'autre
+  }
+  private static function enregistrer1(array $suivi, $exclure, $exclusions, $reponses, $regles, $detecteurs) {
     $A = 'presencehabituelle_analyse';
     $mal = [];
     foreach (preg_split('/\R/', (string)$exclusions) as $l) if (trim($l) !== '' && !$A::periodes($l)) $mal[] = trim($l);
@@ -328,16 +333,16 @@ class presencehabituelle extends eqLogic {
       throw new Exception(__('Commande d\'absence numérique lissée : réglez son lissage sur « Aucun » (configuration de la commande, onglet Historique) ou passez par un virtuel binaire', __FILE__));
     if ($avantX && $avantX != $exclure) // commande d'absence changée ou retirée : ses absences restent exclues
       foreach (presencehabituelle_analyse::intervalles(self::evs($avantX), time()) as $i) self::exclure($i[0], $i[1]);
-    $gardes = array_keys($propre); if ($exclure) $gardes[] = $exclure;
-    foreach (array_keys($avant + [$avantX => 1]) as $id) // retirée = ses évènements partent
-      if ($id && !in_array((int)$id, $gardes, true)) DB::Prepare('DELETE FROM ' . self::TABLE . ' WHERE cmd_id = ?', [(int)$id], DB::FETCH_TYPE_ROW);
-    $jours = self::jours('amorcer');
-    foreach (array_unique($gardes) as $id) if (!isset($avant[$id]) && $id != $avantX) { $n += self::amorcer(cmd::byId($id), $jours); self::noter($id); }
     $reponses = $reponses === null ? self::cfg('reponses') : $A::reponses($reponses); // null : page d'avant 0.8, réponses gardées
     $regles = $regles === null ? self::cfg('regles') : $A::regles($regles);
     $info = fn($id) => is_object($c = cmd::byId($id)) && $c->getType() == 'info';
     $detecteurs = $detecteurs === null ? self::cfg('detecteurs') : array_values(array_filter(array_map(fn($d) => ['cmd' => $info($d['cmd']) ? $d['cmd'] : 0, 'm' => array_values(array_filter($d['m'], $info))] + $d,
       $A::detecteurs($detecteurs)), fn($d) => $d['m'])); // commande supprimée : détecteur gardé, non relié ; lampes inconnues ôtées
+    $gardes = array_keys($propre); if ($exclure) $gardes[] = $exclure; // tout est validé : les effacements peuvent commencer
+    foreach (array_keys($avant + [$avantX => 1]) as $id) // retirée = ses évènements partent
+      if ($id && !in_array((int)$id, $gardes, true)) DB::Prepare('DELETE FROM ' . self::TABLE . ' WHERE cmd_id = ?', [(int)$id], DB::FETCH_TYPE_ROW);
+    $jours = self::jours('amorcer');
+    foreach (array_unique($gardes) as $id) if (!isset($avant[$id]) && $id != $avantX) { $n += self::amorcer(cmd::byId($id), $jours); self::noter($id); }
     $vieux = ['suivi' => $avant, 'exclure' => $avantX, 'exclusions' => (string)config::byKey('exclusions', __CLASS__, ''), 'reponses' => self::cfg('reponses'), 'regles' => self::cfg('regles'), 'detecteurs' => self::cfg('detecteurs')];
     $sansD = fn($x) => array_map(fn($e) => array_diff_key($e, ['d' => 0]), $x); // d (suivie depuis) n'est pas un choix : sans lui, un suivi d'avant 0.9 serait vu changé
     if (config::byKey('suivi', __CLASS__, '') !== '' && ['suivi' => $sansD($avant)] + $vieux != ['suivi' => $sansD($propre), 'exclure' => $exclure, 'exclusions' => (string)$exclusions, 'reponses' => $reponses, 'regles' => $regles, 'detecteurs' => $detecteurs]) // « Revenir au choix d'avant »
@@ -379,7 +384,7 @@ class presencehabituelle extends eqLogic {
     $p = array_merge($A::periodes(config::byKey('exclusions', __CLASS__, '')), self::arrets(), self::arrets('simulation'));
     if ($x = (int)config::byKey('exclure_cmd', __CLASS__, 0))
       foreach ($A::intervalles(self::evs($x), time()) as $i) $p[] = [$i[0], $i[1]];
-    return $p;
+    return $A::fusion($p); // chevauchements réunis : une heure n'est retirée qu'une fois
   }
 
   /* Découverte : propositions tirées des 30 derniers jours, à confirmer sur la page (rien n'est enregistré ici).
@@ -446,7 +451,8 @@ class presencehabituelle extends eqLogic {
     $verif = [];
     foreach ($copies as $p => $g) { if ($g < 0) $verif[$p] = 1; $g = abs($g); if (($doublon[$g] ?? null) == $p) unset($doublon[$g]); $doublon[$p] = $g; } // l'originale gardée, jamais doublon de sa copie
     foreach ($doublon as $p => $g) { // a doublon de b, puis b doublon de c : a doublon de c
-      for ($n = 0; isset($doublon[$g]) && $n < 50; $n++) $g = $doublon[$g];
+      for ($vu = [$p => 1]; isset($doublon[$g]) && !isset($vu[$g]); ) { $vu[$g] = 1; $g = $doublon[$g]; }
+      if (isset($vu[$g])) { log::add(__CLASS__, 'debug', 'Découverte : doublons en boucle autour de #' . $p . ', non proposé'); unset($doublon[$p]); continue; } // a doublon de b doublon de a : aucun des deux retiré
       $doublon[$p] = $g;
     }
     foreach ($doublon as $p => $g) { // par une 3e commande (relais, virtuel) : deux lampes d'un même détecteur jamais fusionnées
@@ -504,7 +510,9 @@ class presencehabituelle extends eqLogic {
   const VIDE = ['etages' => [], 'marqueurs' => [], 'pieces' => [], 'passages' => [], 'zones' => [], 'liens' => []];
   public static function planFichier() { return __DIR__ . '/../../data/plan.json'; }
   public static function planImage($e) { return __DIR__ . '/../../data/plan_' . $e . '.jpg'; }
-  private static function ecrire($f, $d) { // fichier temporaire puis rename : jamais de fichier à moitié écrit
+  private static function ecrire($f, $d) { // fichier temporaire puis rename : jamais de fichier à moitié écrit ; $d tableau = JSON
+    if (!is_string($d)) $d = json_encode($d, JSON_INVALID_UTF8_SUBSTITUTE); // un nom mal encodé ne vide pas le fichier
+    if ($d === false) throw new Exception(__('Données impossibles à enregistrer (encodage) : rien n\'a été enregistré', __FILE__));
     $t = $f . '.' . getmypid() . mt_rand() . '.tmp'; // un temporaire par écriture : deux envois en même temps ne se mélangent pas
     if (@file_put_contents($t, $d) !== strlen($d) || !@rename($t, $f)) { @unlink($t); throw new Exception(__('Écriture impossible sur la box (disque plein ?) : rien n\'a été enregistré', __FILE__)); }
   }
@@ -519,6 +527,8 @@ class presencehabituelle extends eqLogic {
 
   // Valide tout ce qui vient de la page (jamais pris tel quel) puis enregistre ; les images des étages retirés partent
   public static function planEnregistrer(array $p) {
+    $date = (int)(self::plan()['date'] ?? 0);
+    if ((int)($p['date'] ?? 0) !== $date) throw new Exception(__('Plan modifié ailleurs (autre onglet ?) depuis son ouverture : rechargez la page, rien n\'a été enregistré', __FILE__));
     $pc = fn($v) => is_numeric($v) ? round(max(0, min(100, (float)$v)), 2) : null;
     $pts = function ($l, $min, $max) use ($pc) {
       if (!is_array($l) || count($l) < $min || count($l) > $max) return null;
@@ -551,10 +561,10 @@ class presencehabituelle extends eqLogic {
     $r['passages'] = presencehabituelle_analyse::fusionner($r['passages'], $r['pieces']);
     foreach (array_slice((array)($p['liens'] ?? []), 0, 500, true) as $o => $pc) // pièce Jeedom → pièce du plan ('' : aucune)
       if ((int)$o > 0 && is_object(jeeObject::byId((int)$o)) && is_string($pc) && ($pc === '' || isset($pieces[$pc]))) $r['liens'][(int)$o] = $pc;
-    $avant = self::plan()['etages'];
-    self::ecrire(self::planFichier(), json_encode($r));
-    foreach ($avant as $e) if (!isset($et[$e['id']]) && is_file($f = self::planImage($e['id']))) unlink($f); // seulement les étages retirés : un plan illisible n'efface rien
-    // ponytail: image déposée puis étage jamais enregistré : le fichier reste (quelques centaines de Ko)
+    $r['date'] = max(time(), $date + 1); // version : un 2e onglet resté sur l'ancien plan est refusé
+    self::ecrire(self::planFichier(), $r);
+    foreach (glob(self::planImage('*')) ?: [] as $f) // images des étages retirés, et celles déposées pour un étage jamais enregistré
+      if (preg_match('/plan_([a-z0-9]{1,16})\.jpg$/', $f, $m) && !isset($et[$m[1]]) && filemtime($f) < time() - 86400) unlink($f); // ponytail: un jour de grâce pour l'image d'un étage pas encore enregistré
     return self::plan();
   }
 
@@ -562,8 +572,8 @@ class presencehabituelle extends eqLogic {
   public static function planImageEnregistrer($e, $data) {
     if (!($e = self::idPlan($e))) throw new Exception(__('Étage inconnu', __FILE__));
     if (!preg_match('#^data:image/jpeg;base64,([A-Za-z0-9+/=]+)$#', (string)$data, $m) || ($b = base64_decode($m[1], true)) === false
-      || strlen($b) > 6000000 || !($i = @getimagesizefromstring($b)) || $i[2] != IMAGETYPE_JPEG || $i[0] > 4000 || $i[1] > 4000)
-      throw new Exception(__('Image refusée : JPEG de 4000 × 4000 pixels au plus', __FILE__));
+      || strlen($b) > 3000000 || !($i = @getimagesizefromstring($b)) || $i[2] != IMAGETYPE_JPEG || $i[0] > 4000 || $i[1] > 4000)
+      throw new Exception(__('Image refusée : JPEG de 4000 × 4000 pixels et 3 Mo au plus', __FILE__));
     self::ecrire(self::planImage($e), $b);
   }
   public static function planImageLire($e) {
@@ -629,11 +639,12 @@ class presencehabituelle extends eqLogic {
     }
     $res = ['date' => date('Y-m-d H:i:s'), 'groupes' => [], 'volets' => [], 'passages' => []]; $parPiece = [];
     foreach ($groupes as $g => $ids) {
-      $iv = []; $debut = null; $exG = $excl; $noms = [];
+      $iv = []; $debut = null; $exG = $excl; $noms = []; $bloq = [];
       foreach ($ids as $id) {
         if (!$ev = self::evs($id)) continue;
         $debut = min($debut ?? PHP_INT_MAX, $ev[0][0]); // ponytail: avant sa 1re ligne, une lampe ajoutée plus tard compte éteinte ; le groupe garde l'historique des autres
-        [$iv[$id], $x] = $A::longues($A::intervalles($ev, $fin), $max);
+        [$iv[$id], $x, $bl] = $A::longues($A::intervalles($ev, $fin), $max, $fin);
+        if ($bl) $bloq[] = self::nom($id) . ' (' . date('d/m H:i', $bl) . ')'; // allumée sans fin connue depuis plus de session_max
         if (isset($piece[$id])) $parPiece[$piece[$id]][$id] = $iv[$id];
         foreach ($x as $p) $exG[] = $p; // extinction manquée : jours touchés non comptés pour tout le groupe
         $noms[$id] = self::nom($id);
@@ -647,7 +658,7 @@ class presencehabituelle extends eqLogic {
       $j = $A::jours($debut, $fin, $exG); $se = $A::sessions($parNom); $p = $A::profil($se, $j);
       $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'piece' => $pi, 'ids' => $ids, 'lampes' => array_values($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
         'S' => $p['S'], 'W' => $p['W'], 'cS' => $p['cS'], 'cW' => $p['cW'], 'lS' => $A::lisser($p['S']), 'lW' => $A::lisser($p['W']),
-        'ex' => $p['ex'], 'durees' => $A::durees($se, $j), 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmerS' => $p['nS'] < self::FIABLE, 'confirmerW' => $p['nW'] < self::FIABLE];
+        'ex' => $p['ex'], 'durees' => $A::durees($se, $j), 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmerS' => $p['nS'] < self::FIABLE, 'confirmerW' => $p['nW'] < self::FIABLE, 'bloquees' => $bloq];
     }
     foreach ($volets as $id => $s) {
       $ev = self::evs($id); $nom = self::nom($id);
@@ -673,7 +684,7 @@ class presencehabituelle extends eqLogic {
         elseif (!empty($x['piece'])) $res[$t][$i]['nom'] .= ' (' . __('pièce', __FILE__) . ')'; // pièce et groupe saisi de même nom
       }
     }
-    self::ecrire(self::fichier(), json_encode($res));
+    self::ecrire(self::fichier(), $res);
     try { self::majWidget($res); } catch (Throwable $e) { log::add(__CLASS__, 'error', 'widget : ' . $e->getMessage()); } // les tendances sont enregistrées quoi qu'il arrive
     return $res;
   }
@@ -759,13 +770,13 @@ class presencehabituelle extends eqLogic {
         $faits[] = [$c, $x];
       }
       if (!$faits) return [];
-      self::ecrire(self::historiserFichier(), json_encode($avant)); // sauvegarde AVANT toute écriture
+      self::ecrire(self::historiserFichier(), $avant); // sauvegarde AVANT toute écriture
       $r = []; $noms = [];
       foreach ($faits as [$c, $x]) {
         $c->setIsHistorized(1); // ph:historiser
         if ($c->getSubType() != 'binary') $c->setConfiguration('historizeMode', 'none'); // ph:historiser
         $c->save(); // ph:historiser
-        $avant[$x['id']]['apres'] = [1, $c->getConfiguration('historizeMode', null)]; self::ecrire(self::historiserFichier(), json_encode($avant));
+        $avant[$x['id']]['apres'] = [1, $c->getConfiguration('historizeMode', null)]; self::ecrire(self::historiserFichier(), $avant);
         $r[$x['id']] = self::etatHisto($c); $noms[] = $x['nom'];
       }
       log::add(__CLASS__, 'info', 'Historique activé : ' . implode(', ', $noms));
@@ -786,7 +797,7 @@ class presencehabituelle extends eqLogic {
             $r['remis'][] = self::nom($id, true); $r['etats'][$id] = self::etatHisto($c);
           }
         }
-        unset($reste[$id]); self::ecrire(self::historiserFichier(), json_encode((object)$reste)); // une erreur plus loin : celles-ci ne sont pas retentées
+        unset($reste[$id]); self::ecrire(self::historiserFichier(), (object)$reste); // une erreur plus loin : celles-ci ne sont pas retentées
       }
       if (is_file($f = self::historiserFichier())) unlink($f);
       log::add(__CLASS__, 'info', 'Historique remis comme avant : ' . implode(', ', $r['remis']) . ($r['laisses'] ? ' ; laissées (changées depuis) : ' . implode(', ', $r['laisses']) : ''));
@@ -798,7 +809,7 @@ class presencehabituelle extends eqLogic {
      (sinon un « On » purgé laisserait un « Off » seul : absence ou allumage perdus). */
   public static function purger($jours) {
     $lim = time() - 86400 * $jours;
-    foreach (self::ids() as $id) {
+    foreach (array_column(DB::Prepare('SELECT DISTINCT cmd_id FROM ' . self::TABLE, [], DB::FETCH_TYPE_ALL) ?: [], 'cmd_id') as $id) { // toutes : aussi les restes d'une observation finie
       $d = DB::Prepare('SELECT id FROM ' . self::TABLE . ' WHERE cmd_id = ? AND ts < ? ORDER BY ts DESC, id DESC LIMIT 1', [$id, $lim], DB::FETCH_TYPE_ROW);
       if (!is_array($d)) continue;
       DB::Prepare('DELETE FROM ' . self::TABLE . ' WHERE cmd_id = ? AND ts < ? AND id <> ?', [$id, $lim, $d['id']], DB::FETCH_TYPE_ROW);

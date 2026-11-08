@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.1
+- Corrections après la revue générale : deux enregistrements simultanés (deux onglets) passent l'un après l'autre, et tout est vérifié avant le moindre effacement ; données illisibles refusées au lieu d'être prises pour « vide » ; la page reprend le suivi retenu par la box.
+- Guide : un doublon dont la commande gardée n'est pas encore choisie ne compte pas ; changer d'avis sur une commande remet en ordre ses doublons ; « Remettre le Guide à zéro » rend aussi leur type aux commandes.
+- Tendances : une lampe restée allumée (oubliée, bloquée) est signalée « allumée sans fin » au lieu d'effacer les jours qui suivent ; périodes exclues qui se chevauchent réunies ; un variateur ne note plus chaque changement d'intensité ; lampe allumée chaque soir vers minuit reconnue (23:58 et 00:02).
+- Plan : version du plan (un autre onglet resté sur l'ancien plan est refusé), images d'étages jamais enregistrés effacées après un jour, image de 3 Mo au plus, tracé gardé si on annule le nom de la pièce ou le passage, détail d'une pastille d'un clic (tablettes), vieux Safari / iPad (image, grille, noms) ; commande d'absence supprimée signalée ; les noms d'étage à chiffres (« Lampe 1 ») ne disent plus « 1er étage ».
+- Selftest : accès administrateur et `.htaccess` vérifiés, « // » dans une chaîne ne masque plus une écriture ; `.htaccess` pour Apache 2.2 et 2.4.
+
 ## 0.12
 - Boutons **Configuration** (configuration du plugin) et **Widget** en haut de la page : un équipement « Présence habituelle » (état, pièces allumées d'habitude maintenant, date des tendances, commandes suivies, Recalculer), objet et visibilité réglables ; les pièces allumées d'habitude seulement si vous cochez l'option (elles laissent deviner quand la maison est vide).
 - Guide : **Activer leur historique…** pour les commandes suivies non historisées ou lissées, sur confirmation, réglage d'avant gardé et **Remettre l'historique comme avant** ; ou la marche à suivre à la main.

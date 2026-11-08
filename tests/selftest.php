@@ -61,9 +61,16 @@ $ok($A::nommee('Lumière', 'PriseLumiereBoite') && $A::nommee('Etat', 'Ruban LED
 $ok($A::voletNomme('Volet', 'Module RTS') && $A::voletNomme('Position', 'Store Salon') && $A::voletNomme('Etat', 'Shutter kitchen') && $A::voletNomme('Rideau', 'Relais')
   && !$A::voletNomme('Batterie', 'Volet Salon') && !$A::voletNomme('Luminosité', 'Store') && !$A::voletNomme('Position', 'Thermostat') && !$A::voletNomme('Restore', 'Box') && !$A::voletNomme('Volet auto', 'Virtuel') && !$A::voletNomme('Mode', 'Volet Salon'), 'volets d’après le nom');
 $ok($A::suspect('Démon Volet proportionel', 'Jeedom interne') && $A::voletNomme('Démon Volet proportionel', 'Jeedom interne') && !$A::suspect('Volet', 'Salon'), 'volet à vérifier (état d’un démon), pas écarté');
+// lampe restée allumée à la fin (oubliée, bloquée) : retirée sans exclure ses jours ; extinction manquée au milieu : jours exclus
+[$g, $x, $bl] = $A::longues([[0, 100, true], [200, 99999, true], [100000, 200000, false]], 1000, 200000);
+$ok(count($g) == 1 && $x == [[200, 99999]] && $bl === 100000, 'longues : ' . json_encode([$g, $x, $bl]));
+$ok($A::fusion([[50, 60], [0, 10], [5, 20], [20, 30]]) == [[0, 30], [50, 60]], 'fusion des intervalles');
+$mn = []; for ($q = 0; $q < 8; $q++) { $d0 = $q % 2 ? $jr($q, 23, 58) : $jr($q, 0, 2); $mn[] = [$d0, $d0 + 1800, true]; } // 23:58 un jour, 00:02 un autre : 4 min d'écart
+$au = $A::automatique($mn);
+$ok(isset($au['heure']) && in_array($au['heure'], [2, 1438], true), 'automatique autour de minuit : ' . json_encode($au));
 echo "découverte OK\n";
 $rp = $A::reponses(['5' => ['r' => 'oui'], '6' => ['r' => 'doublon', 'de' => '5'], '7' => ['r' => 'doublon', 'de' => 7], '8' => ['r' => 'peut-être'], 'x' => ['r' => 'oui'], '9' => ['r' => 'groupe', 'm' => ['5', 6, 9, 6, 'z']], '10' => ['r' => 'groupe', 'm' => 'x']]);
-$ok($rp == [5 => ['r' => 'oui'], 6 => ['r' => 'doublon', 'de' => 5], 7 => ['r' => 'doublon'], 9 => ['r' => 'groupe', 'm' => [5, 6]], 10 => ['r' => 'groupe']], 'réponses : ' . json_encode($rp));
+$ok($rp == [5 => ['r' => 'oui'], 6 => ['r' => 'doublon', 'de' => 5], 9 => ['r' => 'groupe', 'm' => [5, 6]], 10 => ['r' => 'groupe']], 'réponses (doublon sans commande gardée ignoré) : ' . json_encode($rp));
 $dt = $A::detecteurs([['nom' => ' RDJ ', 'cmd' => '12', 'm' => ['5', 6, 6, 0, 'x']], ['nom' => '', 'm' => [5]], ['nom' => 'Vide', 'm' => []], 'x', ['nom' => 'Libre', 'cmd' => -3, 'm' => [7]]]);
 $ok($dt == [['nom' => 'RDJ', 'cmd' => 12, 'm' => [5, 6]], ['nom' => 'Libre', 'cmd' => 0, 'm' => [7]]], 'détecteurs : nom, commande facultative, lampes');
 $ok($A::memeDetecteur($dt, 6, 5) && !$A::memeDetecteur($dt, 5, 7) && count($A::detecteurs(array_fill(0, 40, ['nom' => 'a', 'm' => [1]]))) == 30, 'détecteurs : même détecteur, 30 au plus');
@@ -195,7 +202,8 @@ foreach ($it as $f) {
       // seul l'appel permis est ôté ; le reste de la ligne passe les mêmes contrôles
       $l = $mq[1] == 'propre' ? preg_replace('/\$wc?->\w+\(/', '(', $l) : preg_replace('/\$c->(setIsHistorized|setConfiguration\(\'historizeMode\'|save)\(?/', '(', $l);
     }
-    $l = preg_replace('#^\s*(/?\*).*$|\s//.*$#', '', $l); // commentaires ôtés : « history::archive » cité n'est pas un appel
+    $b = preg_replace_callback('/\'(?:[^\'\\\\]|\\\\.)*\'|"(?:[^"\\\\]|\\\\.)*"/', fn($m) => str_repeat('x', strlen($m[0])), $l); // chaînes masquées : un « // » dans une chaîne n'ouvre pas un commentaire
+    if (preg_match('#^\s*/?\*|\s//#', $b, $cm, PREG_OFFSET_CAPTURE)) $l = substr($l, 0, $cm[0][1]); // commentaires ôtés : « history::archive » cité n'est pas un appel
     if (basename($f) != 'presencehabituelle_analyse.class.php') $ok(!preg_match('/\bas\s+(\$\w+\s*=>\s*)?\$wc?\b|\[[^\]]*\$wc?\b[^\]]*\]\s*=(?!=)/', $l), "\$w / \$wc affecté par une boucle ou une déstructuration ($o)");
     $ok(!preg_match('/->(save|remove)\(/', preg_replace('/\$l->(save|remove)\(\)/', '', $l)), "enregistrement ou suppression d'un objet de la box ($o)");
     $ok(!preg_match('/->(set[A-Z]\w*|event|checkAndUpdateCmd|addHistoryValue)\(/', preg_replace('/\$l->set(Class|Function|Option)\(/', '(', $l)), "modification d'un objet de la box ($o)"); // tout setter, sauf ceux de l'écouteur du plugin ($l)
@@ -207,6 +215,9 @@ foreach ($it as $f) {
 }
 $ok(($marques['historiser'] ?? 0) == 6, 'écritures « historiser » : 6 attendues (historiser, remettre)');
 $ok(($marques['propre'] ?? 0) == 11, 'écritures « propre » : 11 attendues (equipement, majWidget, ajax widget) : ' . ($marques['propre'] ?? 0));
+foreach (['core/ajax/presencehabituelle.ajax.php', 'desktop/php/presencehabituelle.php', 'plugin_info/configuration.php'] as $f)
+  $ok(preg_match("/if \\(!isConnect\\('admin'\\)\\)/", file_get_contents(__DIR__ . '/../' . $f)), "accès administrateur seulement : $f");
+foreach (['data', 'tests', 'plugin_info'] as $d) $ok(preg_match('/Require all denied/', (string)@file_get_contents(__DIR__ . "/../$d/.htaccess")), "$d/.htaccess refuse l'accès (Apache 2.4)");
 echo 'aucune modification des objets de la box OK (sauf widget du plugin : ' . ($marques['propre'] ?? 0) . ' lignes ; historique à la demande : ' . ($marques['historiser'] ?? 0) . " lignes)\n";
 
 if (is_file(__DIR__ . '/../../../core/php/core.inc.php')) { // sur la box : analyse réelle, rien n'est écrit sauf data/habitudes.json et les valeurs du widget du plugin

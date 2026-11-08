@@ -59,6 +59,7 @@
       D.candidats.forEach(function (c) { c.type0 = c.type == 'volet' ? 'volet' : c.tg }); SENS = {} // rendu sur « Non » après un « Oui » (une prise prise pour une lampe redevient prise)
       if (r.jamais) D.candidats.forEach(function (c) { if (c.coche && c.actif) D.suivi[c.id] = { g: '', t: c.type } }) // première fois : préconisation
       $('#ph_exclure').val(r.exclure); $('#ph_exclusions').val(r.exclusions)
+      if (r.exclure_perdu) alerte('{{La commande d’absence choisie n’existe plus dans Jeedom : choisissez-en une autre (ou laissez vide), puis enregistrez.}}', 'warning')
       $('#ph_precedent').toggle(!!r.precedent).attr('data-date', r.precedent ? r.precedent.date : '')
       liste(); dessiner()
     })
@@ -116,7 +117,7 @@
     alerte('{{Propositions reportées dans la liste : vérifiez, puis cliquez sur Enregistrer.}}', 'info')
   }
   function garder(ids, s) { // la lampe gardée d'un doublon, les lampes d'un groupe : suivies (avec le groupe saisi de celle qu'elles remplacent)
-    ids.forEach(function (id) { if (!D.suivi[id] && cand(id)) D.suivi[id] = { g: s ? s.g : '', t: cand(id).type0 == 'volet' ? 'volet' : 'lumiere' } })
+    ids.forEach(function (id) { var c = cand(id); if (!D.suivi[id] && c) { c.type = c.type0 == 'volet' ? 'volet' : 'lumiere'; D.suivi[id] = { g: s ? s.g : '', t: c.type } } }) // type aussi : lire() le relit de la ligne
   }
   function cand(id) { return D.candidats.find(function (c) { return c.id == id }) }
   function lire() { // reporte les cases et les groupes de l'écran dans D.suivi
@@ -128,12 +129,13 @@
   }
 
   /* ---- Guide : quatre questions, les réponses remplissent le suivi ---- */
+  var TOUCHE = {} // répondue au moins une fois : reste dans le Guide même remise « à répondre »
   var DET = [], REP = {}, REG = {}, VU = [], SENS = {}, FT = '', FS = '', FH = '', HIST = null // réponses {id: {r, de, m}} (m : lampes d'un groupe), filtres type et provenance, règles {id: {jamais, plages}}, changements vus en écoutant
   var JOURS = { tous: '{{tous les jours}}', S: '{{en semaine}}', W: '{{le week-end}}' }
   function aDemander() { // lumières, volets, une prise binaire par équipement, et ce qui est déjà suivi, répondu ou signalé
     var prises = {}
     return D.candidats.filter(function (c) {
-      if (D.suivi[c.id] || REP[c.id] || NOTES[c.id] || VU.some(function (v) { return v.id == c.id })) return true
+      if (D.suivi[c.id] || REP[c.id] || NOTES[c.id] || TOUCHE[c.id] || VU.some(function (v) { return v.id == c.id })) return true
       if (!c.actif) return false
       if (c.type == 'prise') { if (c.sub != 'binary' || prises[c.eqid]) return false; return prises[c.eqid] = true }
       return (c.type == 'lumiere' || c.type == 'volet') && c.coche
@@ -141,24 +143,28 @@
   }
   function memeDet(a, b) { var x = cand(a), y = cand(b); if (x && x.copie && x.copie == b || y && y.copie && y.copie == a) return false // une recopie reste un doublon
     return DET.some(function (d) { return d.m.indexOf(+a) >= 0 && d.m.indexOf(+b) >= 0 }) } // comme memeDetecteur côté box
-  function repondre(id, r, de) { // false : refusée (doublon d'un doublon)
+  function repondre(id, r, de) { // false : refusée
     var c = cand(id), s = D.suivi[id]
-    if (!r) { delete REP[id]; return true }
     if (r == 'doublon' && de && memeDet(id, de)) { alerte(libelle(id) + ' {{et}} ' + libelle(de) + ' {{sont sur le même détecteur : deux lampes, pas un doublon.}}', 'warning'); return false }
     if (r == 'doublon' && de && REP[de] && REP[de].r == 'doublon') { alerte(libelle(de) + ' {{est déjà un doublon : choisissez la commande gardée.}}', 'warning'); return false }
     if (r == 'doublon' && de && REP[de] && REP[de].r == 'groupe') { alerte(libelle(de) + ' {{est un groupe de lampes : un doublon recopie une seule lampe.}}', 'warning'); return false }
-    REP[id] = r == 'doublon' && de ? { r: r, de: de } : { r: r }
+    if (r == 'doublon' && de && REP[de] && REP[de].r == 'non') { alerte(libelle(de) + ' {{est répondue « Non » : choisissez une commande suivie.}}', 'warning'); return false }
+    TOUCHE[id] = 1
+    if (r) delete NOTES[id]
+    if (r == 'doublon' && !de) { REP[id] = { r: r }; return true } // en attente du « de… » : rien d'autre ne change (bilan : à compléter)
+    if (r) REP[id] = r == 'doublon' ? { r: r, de: de } : { r: r }; else delete REP[id]
     if (c) c.type = r == 'oui' && c.type0 != 'volet' ? 'lumiere' : c.type0
     if (r == 'oui') D.suivi[id] = { g: s ? s.g : '', t: c ? c.type : 'lumiere', i: s && s.i }
-    else {
+    else { // « Non », doublon, groupe, ou remise « à répondre » : plus suivie
       delete D.suivi[id]
       Object.keys(REP).forEach(function (y) { // ses doublons : vers la commande gardée à sa place, sinon à revoir
         if (REP[y].de != id) return
-        if (r == 'doublon' && de && de != y) REP[y].de = de
+        if (r == 'doublon' && de == y) return delete REP[y] // échange : y devient la gardée (ci-dessous)
+        if (r == 'doublon' && !memeDet(y, de)) REP[y].de = de
         else { delete REP[y]; NOTES[y] = '{{à revoir : la commande gardée n’est plus suivie}}' }
       })
     }
-    if (r == 'doublon' && de) { garder([de], s); if (!REP[de] || REP[de].r != 'oui') REP[de] = { r: 'oui' } }
+    if (r == 'doublon') { garder([de], s); if (!REP[de] || REP[de].r != 'oui') REP[de] = { r: 'oui' }; delete NOTES[de] }
     return true
   }
   function jours(id) { return (D.donnees || {})[id] || 0 }
@@ -169,6 +175,7 @@
     var g = REG[id] || {}, n = jours(id), f = D.fiable || 10
     if (g.jamais) return ['{{jamais simulée}}', false]
     if (!REP[id]) return ['{{à confirmer (question 1)}}', true]
+    if (REP[id].r == 'doublon' && !REP[id].de) return ['{{doublon : choisissez la commande gardée (« de… »)}}', true]
     if ((D.figes || []).indexOf(+id) >= 0 && !marche(id)) return ['{{aucun changement relevé : volet sans retour d’état (Somfy RTS…) ? Ses habitudes ne peuvent pas être tirées : donnez-lui une plage « peut s’ouvrir » (question 3)}}', true]
     if (n >= f) return ['{{habitudes}} (' + Math.floor(n) + ' {{j de relevés}})', false]
     if (marche(id)) return ['{{plages données}}', false]
@@ -185,7 +192,7 @@
     if (!D) return
     var l = aDemander(), suivis = Object.keys(D.suivi), h = ''
     if (!HIST) HIST = { vu: {}, sc: {} } // points des 90 derniers jours et scénarios qui la commandent, demandés une fois par commande
-    var neuf = l.filter(function (c) { return !HIST.vu[c.id] }).map(function (c) { return c.id }).slice(0, 2000) // la box n'en lit pas plus à la fois
+    var neuf = l.filter(function (c) { return !HIST.vu[c.id] }).map(function (c) { return c.id }).slice(0, 200) // la box n'en lit pas plus à la fois ; les suivantes au prochain passage
     if (neuf.length && !HIST.attente) {
       HIST.attente = 1
       ajax('historiques', { ids: JSON.stringify(neuf) }, function (r) { var rh = (r && r.h) || {}, rs = (r && r.s) || {}; neuf.forEach(function (id) { HIST.vu[id] = 1; if (rh[id]) HIST[id] = rh[id]; if (rs[id]) HIST.sc[id] = rs[id] }); HIST.attente = 0; lireDet(); lireRegles(); guide() },
@@ -209,7 +216,7 @@
     }
     var vis = l.filter(function (c) { return (!FT || c.type == FT) && (!FS || c.src == FS) && (!FH || (FH == 'riche' ? riche(c) : FH == 'oui' ? !!HIST[c.id] : HIST.vu[c.id] && !HIST[c.id])) }), obj = null
     vis.map(function (c, n) { return [cle(c) + '|' + ('000' + n).slice(-4), c] }).sort(function (a, b) { return a[0] < b[0] ? -1 : 1 }).forEach(function (x) {
-      var c = x[1], r = REP[c.id] || {}, note = NOTES[c.id] || (D.suivi[c.id] ? '{{suivie}}' : c.coche ? '{{proposée}}' : ''), o = c.objid || 0
+      var c = x[1], r = REP[c.id] || {}, note = NOTES[c.id] || (D.suivi[c.id] ? '{{suivie}}' : c.coche && !REP[c.id] ? '{{proposée}}' : ''), o = c.objid || 0
       if (o !== obj) { // en-tête de la pièce Jeedom (sans data-id : les boucles du Guide ne le voient pas)
         obj = o; var pl = o && lien(o, c.objet)
         h += '<tr class="ph_gobj"><th colspan="2" style="padding-top:10px">' + (o ? esc(c.objet) : '{{Sans objet}}') + (pl ? ' <small class="text-muted">→ {{plan}} : ' + esc(pieceNom(pl)) + '</small>' : '') + '</th></tr>'
@@ -300,8 +307,11 @@
     if (on) $('body').on('cmd::update.phg', function (e, d) {
       var l = [].concat(d !== undefined ? d : (e.originalEvent && e.originalEvent.detail) || []), ids = {}, n = 0
       D.candidats.forEach(function (c) { if (c.sub == 'binary' || c.type != 'autre') ids[c.id] = 1 }) // aussi les virtuels et 2es commandes : les doublons cherchés
+      var av = aDemander().map(function (c) { return c.id }).join()
       l.forEach(function (o) { if (o && ids[o.cmd_id]) { VU.unshift({ id: String(o.cmd_id), v: o.value, t: Date.now() }); n++ } })
-      if (n) { VU = VU.slice(0, 30); lireDet(); lireRegles(); guide() } // les nouvelles venues deviennent répondables ; plages en cours de saisie gardées
+      if (!n) return
+      VU = VU.slice(0, 30)
+      if (aDemander().map(function (c) { return c.id }).join() != av) { lireDet(); lireRegles(); guide() } else vus() // redessiné seulement si une nouvelle venue devient répondable : la saisie en cours (nom, plage, liste ouverte) n'est pas perdue
     })
     guide()
   }
@@ -368,8 +378,9 @@
   $('#ph_gcontenu').on('click', '#ph_ecoute', function () { VU = []; ecouter(!ECOUTE) })
   $('#ph_gcontenu').on('click', '.ph_garder', function () {
     lire(); var id = $(this).attr('data-id')
+    repondre(id, 'oui') // d'abord : sinon « est déjà un doublon » si elle l'était d'une des autres
     $(this).attr('data-ens').split(',').forEach(function (o) { if (o != id && !memeDet(o, id)) repondre(o, 'doublon', id) })
-    repondre(id, 'oui'); VU = []; changeGuide()
+    VU = []; changeGuide()
   })
   $('#ph_gcontenu').on('click', '.ph_gplacer', function () {
     var id = String($(this).attr('data-id'))
@@ -379,7 +390,7 @@
   $('#ph_gcontenu').on('change', '.ph_rjamais, .ph_pk, .ph_pj, .ph_pde, .ph_pa', function () { lireRegles(); bilan() })
   $('#ph_gcontenu').on('click', '.ph_pplus', function () { lireRegles(); var id = $(this).closest('tr').attr('data-id'); REG[id] = REG[id] || { jamais: 0, plages: [] }; if (REG[id].plages.length < 10) REG[id].plages.push({ k: 'marche', j: 'tous', de: '18:00', a: '23:00' }); guide() })
   $('#ph_gcontenu').on('click', '.ph_pmoins', function () { var tr = $(this).closest('tr'), i = tr.find('.ph_plage').index($(this).closest('.ph_plage')); lireRegles(); var g = REG[tr.attr('data-id')]; if (g) { g.plages.splice(i, 1); if (!g.jamais && !g.plages.length) delete REG[tr.attr('data-id')] } guide() })
-  $('#ph_genregistrer').on('click', function () { lireRegles(); sauver(function () { if (PL) planEnr() }) }) // plan après le suivi : ses tendances sur le suivi neuf
+  $('#ph_genregistrer').on('click', function () { lireRegles(); sauver(function () { if (PL && UNDO.length) planEnr() }) }) // plan après le suivi : ses tendances sur le suivi neuf
 
   function profil(g, k) {
     var h = '<tr><th style="width:90px">' + (k == 'S' ? '{{Semaine}}' : '{{Week-end}}') + ' <small>(' + esc(g['n' + k]) + ' {{j}})</small>'
@@ -411,6 +422,7 @@
       for (var i = 0; i < 24; i++) if (!(g.cS || g.S)[i] && !(g.cW || g.W)[i]) jamais.push(i) // comptes bruts (habitudes.json d’avant 0.4 : %) : un allumage sur 300 jours arrondit à 0 %
       var rq = []
       if (g.confirmer || g.confirmerS || g.confirmerW) rq.push('<span class="label label-warning">{{à confirmer}}</span>')
+      if ((g.bloquees || []).length) rq.push('<span class="label label-danger" title="{{Allumée sans arrêt depuis plus que la durée maximale d’un allumage (configuration) : oubliée, ou commande bloquée. Cet allumage n’est pas compté.}}">{{allumée sans fin}} : ' + esc(g.bloquees.join(', ')) + '</span>')
       var sur = DET.filter(function (x) { return x.m.some(function (id) { return (g.ids || []).map(Number).indexOf(+id) >= 0 }) }).map(function (x) { return x.nom })
       if (sur.length) rq.push('<span class="label label-default">{{sur détecteur}} « ' + esc(sur.join(' », « ')) + ' »</span>')
       else if (d.n && d.passages >= 90) rq.push('<span title="{{Presque tous les allumages durent moins de 3 min : sans doute une lampe sur détecteur de mouvement. Déclarez-le dans le Guide (Détecteurs de présence).}}">{{allumages éclair (détecteur ? déclarez-le dans le Guide)}}</span>')
@@ -458,7 +470,7 @@
   $('#ph_resultats').on('click', '.ph_ouvrir', function (e) { e.preventDefault(); var d = document.getElementById($(this).attr('href').slice(1)); if (d) { d.open = true; d.scrollIntoView({ behavior: 'smooth' }) } })
 
   /* ---- Plan : un par étage, coordonnées en % de l'image ---- */
-  var PL = null, H = null, ET = null, IMG = {}, OUTIL = 'deplacer', TRACE = [], PLACER = null, DESIGNS = [], GLISSE = false, SEL = null, UNDO = []
+  var MINFO = null, PL = null, H = null, ET = null, IMG = {}, OUTIL = 'deplacer', TRACE = [], PLACER = null, DESIGNS = [], GLISSE = false, SEL = null, UNDO = []
   var AIDE = {
     deplacer: '{{Glissez une pastille ou un coin pour le déplacer ; cliquez une pièce, un passage ou une zone pour le modifier ou le supprimer ; cliquez une commande de « Pas sur le plan », puis le plan, pour la placer.}}',
     piece: '{{Cliquez les coins de la pièce, puis « Terminer la forme ».}}',
@@ -480,12 +492,12 @@
     var nomme = PL.pieces.filter(function (o) { return contient(L, mots(o.nom)) })
     nomme = nomme.filter(function (o) { return !nomme.some(function (q) { return norm(q.nom) != norm(o.nom) && contient(mots(q.nom), mots(o.nom)) }) }) // « Chambre 2 » l'emporte sur « Chambre »
     if (nomme.length && !nomme.some(meme)) return '{{son nom dit}} « ' + nomme.map(function (o) { return o.nom }).join(' », « ') + ' »'
-    var ici_e = mots((etage(m.e) || {}).nom), propre = function (e) { return mots(e.nom).filter(function (w) { return GENERIQUE.indexOf(w) < 0 }) }
+    var ici_e = mots((etage(m.e) || {}).nom), propre = function (e) { return mots(e.nom).filter(function (w) { return GENERIQUE.indexOf(w) < 0 && !/^\d+$/.test(w) }) } // « Lampe 1 » ne dit pas « 1er étage »
     var autre = PL.etages.filter(function (e) { return e.id != m.e && propre(e).some(function (w) { return L.indexOf(w) >= 0 && ici_e.indexOf(w) < 0 }) })
     return autre.length ? '{{son nom dit}} « ' + autre[0].nom + ' »' : ''
   }
   var GENERIQUE = ['etage', 'niveau', 'level', 'floor', 'de', 'du', 'la', 'le']
-  function mots(s) { return String(s || '').replace(/([a-zà-ÿ])([A-ZÀ-Þ][a-zà-ÿ])/g, '$1 $2').split(/[^\p{L}\p{N}]+/u).map(norm).filter(Boolean) } // mots entiers : « étagère » n'est pas « étage »
+  function mots(s) { return String(s || '').replace(/([a-zà-ÿ])([A-ZÀ-Þ][a-zà-ÿ])/g, '$1 $2').split(/[^0-9A-Za-zÀ-ÖØ-öø-ÿ]+/).map(norm).filter(Boolean) } // mots entiers : « étagère » n'est pas « étage »
   function contient(L, W) { for (var i = 0; W.length && i + W.length <= L.length; i++) if (W.every(function (w, k) { return L[i + k] == w })) return true; return false }
   function pieceNom(id) { var p = piece(id), e = p && etage(p.e); return p ? (PL.etages.length > 1 && e ? e.nom + ' – ' : '') + p.nom : '?' }
   function dans(x, y, pts) { // même règle que presencehabituelle_analyse::dans
@@ -561,7 +573,7 @@
     $('#ph_aide').text(AIDE[OUTIL] || '')
     var img = ET && IMG[ET]
     var h = img ? '<img src="' + esc(img) + '" style="width:100%;display:block;pointer-events:none" draggable="false">'
-      : '<div style="aspect-ratio:3/2;background:repeating-linear-gradient(0deg,transparent 0 39px,rgba(128,128,128,.15) 39px 40px),repeating-linear-gradient(90deg,transparent 0 39px,rgba(128,128,128,.15) 39px 40px)"><p style="padding:20px;opacity:.7">'
+      : '<div style="height:0;padding-bottom:66.67%;background:repeating-linear-gradient(0deg,transparent 0 39px,rgba(128,128,128,.15) 39px 40px),repeating-linear-gradient(90deg,transparent 0 39px,rgba(128,128,128,.15) 39px 40px)"><p style="padding:20px;opacity:.7">'
         + (ET ? '{{Pas d’image pour cet étage : « Image… » pour en déposer une (photo, capture), ou dessinez sur la grille.}}' : '{{Ajoutez un étage pour commencer.}}') + '</p></div>'
     function pts(l) { return l.map(function (p) { return p[0] + ',' + p[1] }).join(' ') }
     var trait = ' vector-effect="non-scaling-stroke" style="cursor:pointer"'
@@ -594,8 +606,8 @@
       return '<a class="btn btn-xs ' + (PLACER == id ? 'btn-warning' : 'btn-default') + ' ph_placer" data-id="' + esc(id) + '" style="margin:0 3px 3px 0"><i class="fas fa-' + (estDet(id) ? 'walking' : D.suivi[id].t == 'volet' ? 'bars' : 'lightbulb') + '"></i> ' + esc(libelle(id)) + '</a>'
     }).join('') : '<small>{{Tout est placé.}}</small>')
     var ico = function (k, i, f, t) { return ' <a class="ph_act" data-k="' + k + '" data-i="' + i + '" data-f="' + f + '" style="cursor:pointer" title="' + t + '"><i class="fas fa-' + { choisir: 'mouse-pointer', nom: 'pen', modifier: 'pen', suppr: 'trash' }[f] + '"></i></a>' }
-    var o = SEL && PL[SEL.k][SEL.i]
-    $('#ph_sel').html(o ? '<div class="well well-sm" style="margin-bottom:6px"><b>' + esc(SEL.k == 'pieces' ? o.nom : SEL.k == 'zones' ? '{{Zone à exclure}}' : pieceNom(o.a) + ' ↔ ' + pieceNom(o.b)) + '</b><br>'
+    var o = SEL && PL[SEL.k][SEL.i], mi = !o && MINFO && $('#ph_carte .ph_m[data-id="' + MINFO + '"]').attr('title')
+    $('#ph_sel').html(mi ? '<div class="well well-sm" style="margin-bottom:6px">' + esc(mi).replace(/\n/g, '<br>') + '</div>' : o ? '<div class="well well-sm" style="margin-bottom:6px"><b>' + esc(SEL.k == 'pieces' ? o.nom : SEL.k == 'zones' ? '{{Zone à exclure}}' : pieceNom(o.a) + ' ↔ ' + pieceNom(o.b)) + '</b><br>'
       + (SEL.k == 'pieces' ? '<a class="btn btn-xs btn-default ph_act" data-k="pieces" data-i="' + SEL.i + '" data-f="nom"><i class="fas fa-pen"></i> {{Renommer}}</a> ' : '')
       + (SEL.k == 'passages' ? '<a class="btn btn-xs btn-default ph_act" data-k="passages" data-i="' + SEL.i + '" data-f="modifier"><i class="fas fa-pen"></i> {{Modifier}}</a> ' : '')
       + '<a class="btn btn-xs btn-danger ph_act" data-k="' + SEL.k + '" data-i="' + SEL.i + '" data-f="suppr"><i class="fas fa-trash"></i> {{Supprimer}}</a>'
@@ -625,8 +637,8 @@
   }
   function image() { // image de l'étage, demandée une fois
     if (!ET && PL && PL.etages.length) ET = PL.etages[0].id // à l'ouverture et après « Supprimer l'étage » : le premier
-    var e = ET // la réponse va à l'étage demandé, même si on en a changé entre-temps
     dessiner() // tout de suite : grille en attendant l'image, et la carte suit l'étage même si la demande échoue
+    var e = ET // après dessiner() (qui peut corriger l'étage) ; la réponse va à l'étage demandé, même si on en a changé entre-temps
     if (e && IMG[e] === undefined) ajax('plan_image', { etage: e }, function (r) { IMG[e] = r; dessiner() })
   }
   function nettoyer() { Object.keys(PL.liens).forEach(function (o) { if (PL.liens[o] !== '' && !piece(PL.liens[o])) delete PL.liens[o] }) } // lien vers une pièce retirée : revient au nom
@@ -644,20 +656,21 @@
   function nomPiece(titre, val, ok) {
     bootbox.prompt({ title: titre, value: val || '', callback: function (n) {
       n = n === null ? '' : n.trim().slice(0, 40)
-      if (n && PL.pieces.some(function (o) { return o.nom == n && o.nom != val })) alerte('{{Une autre pièce porte ce nom : leurs lampes seront analysées ensemble.}}', 'warning')
+      if (n && PL.pieces.some(function (o) { return norm(o.nom) == norm(n) && norm(o.nom) != norm(val) })) alerte('{{Une autre pièce porte ce nom : leurs lampes seront analysées ensemble.}}', 'warning')
       if (n && n != val) { avant(); ok(n) }
       dessiner()
     } })
   }
   function finir() {
-    if (OUTIL == 'passage') { if (TRACE.length >= 2) passage(TRACE); return }
+    if (OUTIL == 'passage') { if (TRACE.length >= 2) passage(TRACE.slice()); return }
     if (TRACE.length < 3) return
-    var l = TRACE; TRACE = []
-    if (OUTIL == 'zone') { avant(); PL.zones.push({ id: uid(), e: ET, pts: l }); return dessiner() }
-    nomPiece('{{Nom de la pièce}}', '', function (n) { PL.pieces.push({ id: uid(), e: ET, nom: n, pts: l }) })
+    var l = TRACE.slice()
+    if (OUTIL == 'zone') { TRACE = []; avant(); PL.zones.push({ id: uid(), e: ET, pts: l }); return dessiner() }
+    nomPiece('{{Nom de la pièce}}', '', function (n) { TRACE = []; PL.pieces.push({ id: uid(), e: ET, nom: n, pts: l }) }) // nom annulé : le tracé reste, à reprendre
   }
   function passage(l, i) { // l : points d'un nouveau passage ; i : passage à modifier
-    var o0 = i === undefined ? null : PL.passages[i], e = o0 ? o0.e : ET; TRACE = []
+    var o0 = i === undefined ? null : PL.passages[i], e = o0 ? o0.e : ET
+    if (o0) TRACE = []
     if (PL.pieces.length < 2) { alerte('{{Dessinez d’abord au moins deux pièces.}}', 'warning'); return dessiner() }
     var o = PL.pieces.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(pieceNom(p.id)) + '</option>' }).join('')
     bootbox.dialog({ title: o0 ? '{{Modifier le passage}}' : '{{Passage}}', message: '<div class="form-group"><label>{{De}}</label><select class="form-control" id="ph_pa">' + o + '</select></div>'
@@ -671,7 +684,7 @@
         if (au && PL.passages.some(function (x, k) { return k !== i && x.t == n.t && (x.a == n.a && x.b == n.b || x.a == n.b && x.b == n.a) })) { alerte('{{Cet escalier existe déjà : il est montré sur les deux étages. Choisissez-le pour l’ajuster.}}', 'warning'); return false }
         avant()
         if (o0) { if (au != autre(o0)) delete o0.pts2; o0.a = n.a; o0.b = n.b; o0.t = n.t } // autre étage changé : son tracé est à refaire
-        else PL.passages.push({ id: uid(), e: e, a: n.a, b: n.b, t: n.t, pts: l })
+        else { PL.passages.push({ id: uid(), e: e, a: n.a, b: n.b, t: n.t, pts: l }); TRACE = [] } // annulé : le tracé reste
         dessiner()
       } } } })
     if (o0) { $('#ph_pa').val(o0.a); $('#ph_pb').val(o0.b); $('#ph_pt').val(o0.t); return }
@@ -713,7 +726,7 @@
     if (OUTIL == 'effacer') { if (m.length) { avant(); delete PL.marqueurs[m.attr('data-id')]; return dessiner() } if (k) supprimer(k, +$t.attr('data-i')); return }
     if (OUTIL == 'deplacer') {
       if (PLACER) { avant(); PL.marqueurs[PLACER] = { e: ET, x: p[0], y: p[1] }; PLACER = null; return dessiner() }
-      SEL = k && !m.length ? { k: k, i: +$t.attr('data-i') } : null
+      SEL = k && !m.length ? { k: k, i: +$t.attr('data-i') } : null; MINFO = m.length ? m.attr('data-id') : null
       return dessiner()
     }
     if (TRACE.length >= 200) return alerte('{{200 coins au plus : terminez la forme.}}', 'warning')
@@ -769,6 +782,7 @@
   $('#ph_heure, #ph_jour').on('change', dessiner)
   $('#ph_etage').on('change', function () { ET = $(this).val(); TRACE = []; PLACER = null; image() })
   $('#ph_etage_plus').on('click', function () {
+    if (!PL) return // plan pas encore chargé
     bootbox.prompt('{{Nom de l’étage (ex. Rez-de-chaussée). Il est ajouté en haut : réglez sa place avec les flèches.}}', function (n) {
       if (!n || !n.trim()) return
       if (PL.etages.length >= 20) return alerte('{{20 étages au plus.}}', 'warning')
@@ -795,7 +809,11 @@
   $('#ph_image').on('change', function () { // réduite à 2000 px et passée en JPEG ici : la box ne garde qu'un JPEG vérifié
     var f = this.files[0], e = ET; this.value = ''
     if (!f || !e) return
-    createImageBitmap(f).then(function (b) {
+    var lire = window.createImageBitmap ? createImageBitmap(f) : new Promise(function (ok, ko) { // Safari d'avant 15 : pas de createImageBitmap
+      var im = document.createElement('img'), u = URL.createObjectURL(f) // blob: local, aucun réseau
+      im.onload = function () { URL.revokeObjectURL(u); ok(im) }; im.onerror = function () { URL.revokeObjectURL(u); ko() }; im.src = u
+    })
+    lire.then(function (b) {
       var k = Math.min(1, 2000 / Math.max(b.width, b.height)), c = document.createElement('canvas')
       c.width = Math.round(b.width * k); c.height = Math.round(b.height * k)
       var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(b, 0, 0, c.width, c.height)
@@ -814,7 +832,7 @@
       })
     })
   })
-  function planEnr() { var env = JSON.stringify(PL); ajax('plan_enregistrer', { plan: env }, function (r) { if (JSON.stringify(PL) != env) return alerte('{{Plan modifié pendant l’enregistrement : enregistrez-le à nouveau.}}', 'warning'); PL = r.plan; SEL = null; UNDO = []; habitudes(r.habitudes); guide(); alerte('{{Plan enregistré}}', 'success') }) }
+  function planEnr() { var env = JSON.stringify(PL); ajax('plan_enregistrer', { plan: env }, function (r) { if (JSON.stringify(PL) != env) { PL.date = r.plan.date; return alerte('{{Plan modifié pendant l’enregistrement : enregistrez-le à nouveau.}}', 'warning') } PL = r.plan; SEL = null; UNDO = []; habitudes(r.habitudes); guide(); alerte('{{Plan enregistré}}', 'success') }) }
   $('#ph_plan_enregistrer').on('click', function () { if (PL) planEnr() })
   ajax('plan', {}, function (r) {
     PL = r.plan; DESIGNS = r.designs
@@ -846,8 +864,8 @@
       $('#ph_precedent').toggle(!!r.precedent).attr('data-date', r.precedent || '')
       var partis = DET.filter(function (d) { return !r.detecteurs.some(function (e) { return e.nom == $.trim(d.nom) }) }).map(function (d) { return d.nom })
       if (partis.length) alerte('{{Détecteur(s) retiré(s) : leurs lampes n’existent plus dans Jeedom}} : ' + partis.join(', '), 'warning')
-      SAUVE = $.extend({}, D.suivi); REP = $.extend({}, r.reponses); REG = $.extend(true, {}, r.regles); DET = $.extend(true, [], r.detecteurs); D.donnees = r.donnees; D.figes = r.figes // ce que la box a retenu
-      habitudes(r.habitudes); guide(); histo()
+      D.suivi = $.extend({}, r.suivi); SAUVE = $.extend({}, r.suivi); REP = $.extend({}, r.reponses); REG = $.extend(true, {}, r.regles); DET = $.extend(true, [], r.detecteurs); D.donnees = r.donnees; D.figes = r.figes // ce que la box a retenu
+      habitudes(r.habitudes); liste(); guide(); histo()
       if (ok) ok()
     })
   }
@@ -880,7 +898,8 @@
     if (!D) return
     bootbox.confirm('{{Effacer toutes les réponses du Guide (lampe ou volet, doublons, groupes, sens des volets), ses règles et ses détecteurs ? Le choix des commandes, le plan et les relevés sont gardés. Rien n’est enregistré tant que vous ne cliquez pas sur Enregistrer ; ensuite, « Revenir au choix d’avant » les rend.}}', function (oui) {
       if (!oui) return
-      lire(); DET.forEach(oublier); DET = []; REP = {}; REG = {}; NOTES = {}; SENS = {}; VU = []
+      lire(); var l = DET; DET = []; l.forEach(oublier); REP = {}; REG = {}; NOTES = {}; SENS = {}; VU = []; TOUCHE = {} // DET vidé d'abord : oublier() retire aussi la pastille d'un détecteur déclaré deux fois
+      D.candidats.forEach(function (c) { if (!D.suivi[c.id]) c.type = c.type0 })
       Object.keys(D.suivi).forEach(function (id) { delete D.suivi[id].i })
       changeGuide(); alerte('{{Guide remis à zéro : cliquez sur Enregistrer pour le garder.}}', 'info')
     })

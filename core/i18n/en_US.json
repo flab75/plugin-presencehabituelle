@@ -43,7 +43,10 @@
 		"Recalculer": "Recompute",
 		"Recalculer : réservé aux administrateurs": "Recompute: administrators only",
 		"Tendances déjà calculées il y a moins d'une minute": "Trends already computed less than a minute ago",
-		"Présence habituelle (plugin)": "Usual presence (plugin)"
+		"Présence habituelle (plugin)": "Usual presence (plugin)",
+		"Image refusée : JPEG de 4000 × 4000 pixels et 3 Mo au plus": "Image refused: JPEG of 4000 × 4000 pixels and 3 MB at most",
+		"Plan modifié ailleurs (autre onglet ?) depuis son ouverture : rechargez la page, rien n'a été enregistré": "Plan changed elsewhere (another tab?) since it was opened: reload the page, nothing was saved",
+		"Données impossibles à enregistrer (encodage) : rien n'a été enregistré": "Data that cannot be saved (encoding): nothing was saved"
 	},
 	"plugins/presencehabituelle/core/ajax/presencehabituelle.ajax.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",
@@ -51,7 +54,8 @@
 		"Aucune méthode correspondante à": "No matching method for",
 		"Choix des commandes illisible : rien n'a été enregistré": "Unreadable command choice: nothing was saved",
 		"Plan illisible : rien n'a été enregistré": "Unreadable plan: nothing was saved",
-		"Objet introuvable": "Object not found"
+		"Objet introuvable": "Object not found",
+		"Données illisibles : rien n'a été enregistré": "Unreadable data: nothing was saved"
 	},
 	"plugins/presencehabituelle/desktop/js/presencehabituelle.js": {
 		"Réponse illisible : session expirée ? Recharger la page.": "Unreadable answer: session expired? Reload the page.",
@@ -385,7 +389,12 @@
 		"Détecteur : aucune lampe choisie": "Sensor: no lamp chosen",
 		"Cette commande est déjà celle d’un autre détecteur.": "This command already belongs to another sensor.",
 		"Effacer toutes les réponses du Guide (lampe ou volet, doublons, groupes, sens des volets), ses règles et ses détecteurs ? Le choix des commandes, le plan et les relevés sont gardés. Rien n’est enregistré tant que vous ne cliquez pas sur Enregistrer ; ensuite, « Revenir au choix d’avant » les rend.": "Clear all the Guide's answers (lamp or shutter, duplicates, groups, shutter direction), its rules and its sensors? The choice of commands, the plan and the records are kept. Nothing is saved until you click Save; afterwards, \"Back to the previous choice\" brings them back.",
-		"Guide remis à zéro : cliquez sur Enregistrer pour le garder.": "Guide reset: click Save to keep it."
+		"Guide remis à zéro : cliquez sur Enregistrer pour le garder.": "Guide reset: click Save to keep it.",
+		"est répondue « Non » : choisissez une commande suivie.": "is answered \"No\": choose a followed command.",
+		"allumée sans fin": "on without end",
+		"La commande d’absence choisie n’existe plus dans Jeedom : choisissez-en une autre (ou laissez vide), puis enregistrez.": "The chosen absence command no longer exists in Jeedom: choose another one (or leave empty), then save.",
+		"Allumée sans arrêt depuis plus que la durée maximale d’un allumage (configuration) : oubliée, ou commande bloquée. Cet allumage n’est pas compté.": "On without a break for longer than the maximum switch-on duration (configuration): forgotten, or stuck command. This switch-on is not counted.",
+		"doublon : choisissez la commande gardée (« de… »)": "duplicate: choose the kept command (\"of…\")"
 	},
 	"plugins/presencehabituelle/desktop/php/presencehabituelle.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",
