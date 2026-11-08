@@ -919,7 +919,8 @@ class presencehabituelle extends eqLogic {
     if ($capteur && ($lc = (int)trim((string)config::byKey('lux_cmd', __CLASS__, ''), '# ')) && is_object($c = cmd::byId($lc)) && $c->getType() == 'info' && is_numeric($v = $c->execCmd())) {
       $E['lux'] = isset($E['lux']) ? .88 * $E['lux'] + .12 * (float)$v : (float)$v; $lux = $E['lux']; // lissé : un nuage ne rallume pas la maison
     }
-    $bas = is_numeric($x = str_replace(',', '.', trim((string)config::byKey('lux_bas', __CLASS__, '')))) ? max(0, (float)$x) : 350; // 0 permis : nuit noire seulement $haut = (float)config::byKey('lux_haut', __CLASS__, 1000) ?: 1000;
+    $bas = is_numeric($x = str_replace(',', '.', trim((string)config::byKey('lux_bas', __CLASS__, '')))) ? max(0, (float)$x) : 350; // 0 permis : nuit noire seulement
+    $haut = (float)config::byKey('lux_haut', __CLASS__, 1000) ?: 1000;
     $max = ($x = (int)config::byKey('presences_max', __CLASS__, 3)) > 0 ? $x : 3;
     $sans = array_values(array_filter(array_map(fn($x) => mb_strtolower(trim($x)), explode(',', (string)config::byKey('sans_jour', __CLASS__, ''))), 'strlen')); // sans tenir compte de la casse
     return ['t' => $t, 'm' => (int)date('G', $t) * 60 + (int)date('i', $t), 'k' => $A::cle((int)date('N', $t), (int)date('G', $t), (int)date('i', $t)),

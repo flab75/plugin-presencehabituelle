@@ -297,6 +297,7 @@ $ok(($marques['propre'] ?? 0) == 12, 'écritures « propre » : 12 attendues (eq
 $ok(($marques['envoyer'] ?? 0) == 1, 'envoi aux équipements : 1 ligne attendue (envoyer)');
 $cl = file_get_contents(__DIR__ . '/../core/class/presencehabituelle.class.php');
 // bascule de l'envoi réel, état enregistré avant d'agir (ces fonctions écrivent la configuration : lues ici, pas exécutées)
+$ok(preg_match('/^\s*\$haut = \(float\)config::byKey\(\'lux_haut\'/m', $cl) === 1, 'seuil haut de luminosité lu (pas avalé par un commentaire)');
 $ok(strpos($cl, 'public static function preConfig_reel($v)') !== false && strpos($cl, 'if ($avant) self::arretMoteur(); else config::remove(\'moteur\', __CLASS__);') !== false, 'envoi réel décoché : extinction ; coché : nouveau départ');
 $ok(preg_match('/config::save\(\'moteur\'[^\n]*\n\s*self::agir\(\$dec, \$reel\);/', $cl) && preg_match('/config::remove\(\'moteur\'[^\n]*\n\s*self::agir\(presencehabituelle_moteur::arret/', $cl), 'état enregistré avant d\'envoyer');
 $ok(preg_match('/public static function envoyer\(array \$d\) \{\s*if \(self::blanc\(\)\) return /', $cl) && strpos($cl, "function blanc() { return (string)config::byKey('reel', __CLASS__, '0') !== '1'; }") !== false, 'à blanc par défaut, et rien n\'est envoyé à blanc');

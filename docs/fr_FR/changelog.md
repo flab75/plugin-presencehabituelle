@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.13.2
+- Correction : le seuil haut de luminosité (« lux_haut ») n'était plus lu depuis la 0.13.1 ; avec un capteur, la pénombre passait d'un coup de 0 à 1 au seuil bas.
+
 ## 0.13.1
 - Corrections après la revue adverse de la 0.13 :
   - « Envoyer vraiment » décoché pendant Simulation On : les lampes vraiment allumées sont éteintes, puis la simulation continue à blanc ; coché : elle repart de zéro (l'état de l'essai à blanc n'est plus pris pour la maison) ;

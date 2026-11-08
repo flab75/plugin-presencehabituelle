@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.13.2
+- Fix: the upper light threshold ("lux_haut") was no longer read since 0.13.1; with a sensor, dimness jumped from 0 to 1 at the lower threshold.
+
 ## 0.13.1
 - Fixes after the adverse review of 0.13:
   - "Really send" unticked during Simulation On: the lamps really switched on are switched off, then the simulation goes on as a dry run; ticked: it starts again from scratch (the dry-run state is no longer taken for the house);
