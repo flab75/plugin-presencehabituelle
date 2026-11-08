@@ -220,6 +220,13 @@ for ($x = $t('2026-03-02 23:00'); $x < $t('2026-03-03 04:00') && $hc === null; $
   foreach ($d as $y) if ($y['action'] == 'off') $hc = date('H:i', $x) . ' ' . $y['motif'];
 }
 $ok($hc !== null && $hc <= '01:00 jamais', 'cuisine éteinte à la 1re heure jamais allumée : ' . $hc);
+$Ec['jour']['ex'] = true; $Ec['g']['Cuisine'] = ['on' => 1, 'fin' => $t('2026-03-03 03:00'), 'l' => [3], 'pause' => 0, 'vis' => 0]; $hx = null;
+for ($x = $t('2026-03-02 23:00'); $x < $t('2026-03-03 05:00') && $hx === null; $x += 300) {
+  [$Ec, $d] = $M::pas($Ec, ['t' => $x, 'm' => (int)date('G', $x) * 60 + (int)date('i', $x), 'k' => 'S', 'pk' => 1, 'sources' => $sc, 'max' => 3, 'sansJour' => [], 'regles' => []], $r);
+  foreach ($d as $y) if ($y['action'] == 'off') $hx = date('H:i', $x);
+}
+$ok($hx >= '03:00', "jour d'exception : cuisine allumée jusqu'au bout de sa durée ($hx)");
+$nx = 0; for ($i = 0; $i < 3000; $i++) $nx += $M::jour($r)['ex'] ? 1 : 0; $ok($nx > 50 && $nx < 150, "jours d'exception : $nx sur 3000");
 $E['g']['Chambre'] = ['on' => 1, 'fin' => 0, 'l' => [6], 'pause' => 0, 'vis' => 0];
 $ar = $M::arret($E); $ok($ar && !array_filter($ar, fn($y) => $y['action'] != 'off') && count($ar) == count(array_filter($E['g'], fn($e) => $e['on'])), "l'arrêt éteint tout");
 $Ev = $M::visiteurs(['g' => ['Salon' => ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => 0]]], $src, [1 => true], 1000, 60);

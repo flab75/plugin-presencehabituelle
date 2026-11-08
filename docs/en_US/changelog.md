@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.13
-- Fix: a room lit for long (kitchen on all day) is switched off as soon as it reaches an hour when it has never been on, instead of running until the end of the drawn duration (kitchen on until 03:20).
+- Fix: a room lit for long (kitchen on all day) is switched off as soon as it reaches an hour when it has never been on, instead of running until the end of the drawn duration (kitchen on until 03:20); the exception stays possible, about one day in 30.
 - **Simulation** tab and **Simulation On / Off** commands of the widget: room by room, from its trends when it has enough counted days, otherwise from provisional times for its room type (kitchen, living room, bedroom…); only in the dusk (light sensor or sun), shift and activity drawn each day, scenes, Guide rules, at most 3 rooms at once, shutters opened and closed, someone switching a lamp left alone 60 min; Off switches off what it switched on.
 - **Dry run by default**: nothing is sent, every decision is logged (7 days); "Dry-run day" replays the next 24 h at once; "Really send to the devices" in the configuration. A Simulation On period is excluded from the analysis.
 

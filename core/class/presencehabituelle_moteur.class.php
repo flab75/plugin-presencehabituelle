@@ -5,6 +5,7 @@
    Heures en minutes d'horloge depuis 00:00 ; l'aléa vient de $r (callable → [0, 1[), pour rejouer une journée. */
 class presencehabituelle_moteur {
   const PAS = 5;  // min entre deux passages du cron
+  const EXCEPTION = 1 / 30; // ponytail: un jour sur 30 environ, une pièce allumée peut aller au bout de sa durée tirée, même à une heure jamais allumée (oubli, soirée tardive) ; réglage si besoin
   const GAP = 20; // min : fenêtre de prolongation à la fin d'une durée tirée
 
   // Type de pièce d'après les noms (groupe, pièce Jeedom des lampes) ; le premier trouvé dans cet ordre
@@ -92,7 +93,7 @@ class presencehabituelle_moteur {
   }
 
   // Aléa du jour : décalage de ±45 min, facteur d'activité de 0,7 à 1,3
-  public static function jour(callable $r) { return ['dec' => (int)round(-45 + 90 * $r()), 'f' => round(.7 + .6 * $r(), 2)]; }
+  public static function jour(callable $r) { return ['dec' => (int)round(-45 + 90 * $r()), 'f' => round(.7 + .6 * $r(), 2), 'ex' => $r() < self::EXCEPTION]; }
 
   /* Volets de la journée : ouverture et fermeture (minutes ; f null = pas fermé la nuit). $volets = sortie volets d'analyser(),
      $n = jour ISO, $kM / $kS = semaine ou week-end du matin et du soir, $lever / $coucher en minutes.
@@ -140,7 +141,7 @@ class presencehabituelle_moteur {
       $p = min(1, $s['profil'][$k][$h] / 100 * $pk * $J['f']);
       $d = ['g' => 1, 'nom' => $nom, 'src' => $s['src'][$k], 'p' => round($p, 3)];
       if ($e['on']) {
-        $fin = !$ok ? 'plage' : ($s['profil'][$k][$h] <= 0 ? 'jamais' : ($t >= $e['fin'] && $r() >= 1 - pow(1 - $p, self::GAP / 60) ? 'fin' : null)); // heure où la pièce n'a jamais été allumée : éteinte, même au milieu d'une longue durée tirée (une cuisine allumée toute la journée ne file pas jusqu'à 3 h)
+        $fin = !$ok ? 'plage' : ($s['profil'][$k][$h] <= 0 && empty($J['ex']) ? 'jamais' : ($t >= $e['fin'] && $r() >= 1 - pow(1 - $p, self::GAP / 60) ? 'fin' : null)); // heure où la pièce n'a jamais été allumée : éteinte, même au milieu d'une longue durée tirée (une cuisine allumée toute la journée ne file pas jusqu'à 3 h), sauf un jour d'exception
         if ($t >= $e['fin'] && !$fin) $e['fin'] = $t + 60 * self::duree($s, $r); // prolongée
         if ($fin) { $dec[] = $d + ['ids' => $e['l'], 'action' => 'off', 'motif' => $fin]; $e = ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => $t + 60 * (10 + 30 * $r()), 'vis' => 0]; $on--; }
       } elseif ($ok && $p > 0 && $t >= $e['pause'] && $on < $C['max'] && $r() < 1 - pow(1 - $p, self::PAS / 60)) {

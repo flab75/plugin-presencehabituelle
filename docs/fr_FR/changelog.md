@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.13
-- Correction : une pièce allumée longtemps (cuisine allumée toute la journée) est éteinte dès qu'elle arrive à une heure où elle n'a jamais été allumée, au lieu d'aller jusqu'au bout de la durée tirée (cuisine allumée jusqu'à 3 h 20).
+- Correction : une pièce allumée longtemps (cuisine allumée toute la journée) est éteinte dès qu'elle arrive à une heure où elle n'a jamais été allumée, au lieu d'aller jusqu'au bout de la durée tirée (cuisine allumée jusqu'à 3 h 20) ; l'exception reste possible, un jour sur 30 environ.
 - Onglet **Simulation** et commandes **Simulation On / Off** du widget : pièce par pièce, d'après ses tendances quand elle a assez de jours comptés, sinon d'après des horaires provisoires de son type de pièce (cuisine, salon, chambre…) ; seulement à la pénombre (capteur de luminosité ou soleil), décalage et activité tirés chaque jour, scènes, règles du Guide, au plus 3 pièces à la fois, volets ouverts et fermés, pièce changée par quelqu'un laissée 60 min ; Off éteint ce qu'elle a allumé.
 - **À blanc par défaut** : rien n'est envoyé, chaque décision est notée au journal (7 jours) ; « Journée à blanc » rejoue tout de suite les 24 prochaines heures ; « Envoyer vraiment aux équipements » dans la configuration. Une période Simulation On est exclue de l'analyse.
 
