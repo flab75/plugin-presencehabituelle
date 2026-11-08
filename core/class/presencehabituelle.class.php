@@ -55,6 +55,8 @@ class presencehabituelle extends eqLogic {
     DB::Prepare('DELETE FROM ' . self::TABLE, [], DB::FETCH_TYPE_ROW);
     if (is_file($f = self::fichier())) unlink($f);
     if (is_file($f = self::journalFichier())) unlink($f); // journal de la simulation : heures de la maison aussi
+    config::remove('calage', __CLASS__); // profil réel par pièce et par heure ; recalage refait d'office s'il est coché
+    // ponytail: pas de verrou ; un clic pendant le recaler() de la nuit (quelques secondes) le laisse réécrire l'ancien calage
   }
 
   // {cmdId: {g: groupe, t: type}} ; config::byKey décode déjà le JSON (piège JD-54)

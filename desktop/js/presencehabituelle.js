@@ -908,7 +908,7 @@
   })
   $('#ph_recalculer').on('click', function () { ajax('recalculer', {}, habitudes) })
   $('#ph_effacer').on('click', function () {
-    bootbox.confirm('{{Effacer les changements d’état relevés et les tendances calculées ? Le choix des commandes est gardé ; l’historique de Jeedom n’est pas repris.}}', function (oui) {
+    bootbox.confirm('{{Effacer les changements d’état relevés, les tendances calculées et le calage ? Le choix des commandes est gardé ; l’historique de Jeedom n’est pas repris.}}', function (oui) {
       if (oui) ajax('effacer', {}, function (r) { habitudes(r); alerte('{{Relevés effacés}}', 'success') })
     })
   })
