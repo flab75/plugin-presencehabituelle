@@ -211,6 +211,15 @@ for ($x = $t('2026-03-02 04:00'); $x < $t('2026-03-09 04:00'); $x += 300) {
   $max = max($max, count(array_filter($E['g'], fn($e) => $e['on'])));
 }
 $ok($nb > 20 && $max <= 2 && $fv == 7 && $ov == 6, "semaine simulée : $nb allumages, au plus $max pièces, volet fermé $fv / ouvert $ov fois");
+// longue durée tirée (cuisine allumée des heures) : éteinte à la 1re heure jamais allumée, pas à la fin de la durée
+$pc = array_fill(0, 24, 0); for ($i = 17; $i < 24; $i++) $pc[$i] = 80; $pc[0] = 6;
+$sc = $M::sources([['nom' => 'Cuisine', 'ids' => [3], 'jours' => 20, 'nS' => 14, 'nW' => 6, 'lS' => $pc, 'lW' => $pc, 'durees' => ['n' => 9, 'q25' => 600, 'q75' => 700, 'passages' => 0]]], [], [], 10);
+$Ec = ['jour' => ['d' => 'x', 'dec' => 0, 'f' => 1, 'volets' => []], 'g' => ['Cuisine' => ['on' => 1, 'fin' => $t('2026-03-03 04:00'), 'l' => [3], 'pause' => 0, 'vis' => 0]]]; $hc = null;
+for ($x = $t('2026-03-02 23:00'); $x < $t('2026-03-03 04:00') && $hc === null; $x += 300) {
+  [$Ec, $d] = $M::pas($Ec, ['t' => $x, 'm' => (int)date('G', $x) * 60 + (int)date('i', $x), 'k' => 'S', 'pk' => 1, 'sources' => $sc, 'max' => 3, 'sansJour' => [], 'regles' => []], $r);
+  foreach ($d as $y) if ($y['action'] == 'off') $hc = date('H:i', $x) . ' ' . $y['motif'];
+}
+$ok($hc !== null && $hc <= '01:00 jamais', 'cuisine éteinte à la 1re heure jamais allumée : ' . $hc);
 $E['g']['Chambre'] = ['on' => 1, 'fin' => 0, 'l' => [6], 'pause' => 0, 'vis' => 0];
 $ar = $M::arret($E); $ok($ar && !array_filter($ar, fn($y) => $y['action'] != 'off') && count($ar) == count(array_filter($E['g'], fn($e) => $e['on'])), "l'arrêt éteint tout");
 $Ev = $M::visiteurs(['g' => ['Salon' => ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => 0]]], $src, [1 => true], 1000, 60);

@@ -975,7 +975,7 @@
   var SRC = { hist: '{{tendances}}', prov: '{{provisoire}}', jamais: '{{jamais simulée}}' }
   var TYP = { cuisine: '{{cuisine}}', salon: '{{salon}}', chambre: '{{chambre}}', sdb: '{{salle de bains}}', passage: '{{passage}}', bureau: '{{bureau}}', autre: '{{autre}}' }
   var ACT = { on: '{{allumer}}', off: '{{éteindre}}', ouvrir: '{{ouvrir}}', fermer: '{{fermer}}', 'mode on': '{{Simulation On}}', 'mode off': '{{Simulation Off}}' }
-  var MOT = { tirage: '{{tirage}}', fin: '{{durée finie}}', plage: '{{hors plage}}', arret: '{{arrêt}}', soir: '{{soir}}', matin: '{{matin}}' }
+  var MOT = { tirage: '{{tirage}}', fin: '{{durée finie}}', plage: '{{hors plage}}', jamais: '{{heure jamais allumée}}', arret: '{{arrêt}}', soir: '{{soir}}', matin: '{{matin}}' }
   function nomG(n) { return String(n || '').replace(/^[\x00\x01]/, '') } // groupes « lampe seule » et « pièce du plan »
   function heure(t) { var d = new Date(t * 1000); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) }
   function lignes(js) {

@@ -469,7 +469,8 @@
 		"salon": "living room",
 		"Aucune lampe allumée sur ces 24 h.": "No lamp switched on over these 24 h.",
 		"provisoire": "provisional",
-		"envoyé": "sent"
+		"envoyé": "sent",
+		"heure jamais allumée": "hour never on"
 	},
 	"plugins/presencehabituelle/desktop/php/presencehabituelle.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",
