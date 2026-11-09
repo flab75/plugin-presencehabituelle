@@ -53,9 +53,9 @@ if (!isConnect('admin')) {
     </div>
     <div class="form-group">
       <label class="col-md-4 control-label">{{Pièces allumées en même temps, au plus}}
-        <sup><i class="fas fa-question-circle tooltips" title="{{Vide ou 0 : 3.}}"></i></sup>
+        <sup><i class="fas fa-question-circle tooltips" title="{{Vide ou 0 : relevé dans vos historiques (le nombre de pièces allumées ensemble, dépassé un jour sur dix au plus), 3 tant qu'il n'est pas relevé. Voir l'onglet Calage.}}"></i></sup>
       </label>
-      <div class="col-md-2"><input class="configKey form-control" data-l1key="presences_max" placeholder="3"></div>
+      <div class="col-md-2"><input class="configKey form-control" data-l1key="presences_max" placeholder="{{auto}}"></div>
     </div>
     <div class="form-group">
       <label class="col-md-4 control-label">{{Pièce changée par quelqu'un : laissée}} ({{minutes}})

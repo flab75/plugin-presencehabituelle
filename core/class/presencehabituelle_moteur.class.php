@@ -61,6 +61,7 @@ class presencehabituelle_moteur {
         $l = array_values(array_intersect(array_map(fn($n) => $parNom[$n] ?? 0, explode(' + ', $sc)), $ids));
         if ($l) $s['scenes'][] = [$l, $pc];
       }
+      $s['soleil'] = $g['soleil'] ?? [];
       $r[$g['nom']] = $s;
     }
     return $r;
@@ -149,6 +150,17 @@ class presencehabituelle_moteur {
     return $p;
   }
 
+  /* % du profil à la minute $mb (décalée du jour), à l'horloge, au soleil ou entre les deux selon la pièce (analyse soleil() : part b de 0 à 1).
+     Le soir, l'allumage glisse de b × (coucher du jour − coucher moyen des jours analysés), le matin l'extinction de b × (lever du jour − lever moyen).
+     Plus tôt : le plus grand du profil et du profil décalé ; plus tard : le plus petit. L'heure du coucher et le lever des habitants restent ceux de l'horloge. */
+  public static function profilSoleil(array $s, $k, $mb, array $J) {
+    $at = fn($x) => (int)$s['profil'][$k][intdiv((($x % 1440) + 1440) % 1440, 60)];
+    $mb = (($mb % 1440) + 1440) % 1440; $v = $at($mb); $h = intdiv($mb, 60);
+    $g = fn($x, $d) => $d > 0 ? max($v, $x) : min($v, $x);
+    if ($h >= 12 && ($o = $s['soleil']['soir'] ?? null) && isset($J['cm']) && ($d = (int)round($o['b'] * ($o['c'] - $J['cm']))) && $mb + $d < 1440 && $mb + $d >= 720) $v = $g($at($mb + $d), $d);
+    if ($h >= 4 && $h < 12 && ($o = $s['soleil']['matin'] ?? null) && isset($J['lm']) && ($d = (int)round($o['b'] * ($J['lm'] - $o['c']))) && $mb - $d >= 240 && $mb - $d < 720) $v = $g($at($mb - $d), $d);
+    return $v;
+  }
   private static function duree(array $s, callable $r) { // minutes
     if ($r() * 100 < $s['pas']) return 0; // passage éclair : éteint au passage suivant (5 min)
     return max(self::PAS, $s['d'][0] + $r() * ($s['d'][1] - $s['d'][0]));
@@ -169,16 +181,16 @@ class presencehabituelle_moteur {
   public static function pas(array $E, array $C, callable $r) {
     $t = $C['t']; $m = $C['m']; $k = $C['k']; $J = $E['jour']; $dec = [];
     $on = 0; foreach ($E['g'] ?? [] as $e) if (!empty($e['on'])) $on++;
-    $h = intdiv(((($m - $J['dec']) % 1440) + 1440) % 1440, 60); // heure du profil, décalée du jour
     foreach ($C['sources'] as $nom => $s) {
       $e = ($E['g'][$nom] ?? []) + ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => 0];
       if ($e['vis'] > $t) { $E['g'][$nom] = $e; continue; } // visiteur : quelqu'un l'a changée, laissée tranquille
       $ok = $s['src'][$k] != 'jamais' && self::permis($s['plages'], $k, $m, !empty($J['ex']));
       $pk = in_array(mb_strtolower((string)$nom), $C['sansJour'], true) ? 1 : $C['pk']; // (string) : un nom fait de chiffres devient une clé entière
-      $p = min(1, $s['profil'][$k][$h] / 100 * $pk * $J['f']);
+      $v = self::profilSoleil($s, $k, $m - $J['dec'], $J);
+      $p = min(1, $v / 100 * $pk * $J['f']);
       $d = ['g' => 1, 'nom' => $nom, 'src' => $s['src'][$k], 'p' => round($p, 3)];
       if ($e['on']) {
-        $fin = !$ok ? 'plage' : (!empty($e['ec']) ? 'eclair' : ($s['profil'][$k][$h] <= 0 && empty($J['ex']) ? 'jamais' : ($t >= $e['fin'] && $r() >= 1 - pow(1 - $p, self::GAP / 60) ? 'fin' : null))); // heure où la pièce n'a jamais été allumée : éteinte, même au milieu d'une longue durée tirée (une cuisine allumée toute la journée ne file pas jusqu'à 3 h), sauf un jour d'exception
+        $fin = !$ok ? 'plage' : (!empty($e['ec']) ? 'eclair' : ($v <= 0 && empty($J['ex']) ? 'jamais' : ($t >= $e['fin'] && $r() >= 1 - pow(1 - $p, self::GAP / 60) ? 'fin' : null))); // heure où la pièce n'a jamais été allumée : éteinte, même au milieu d'une longue durée tirée (une cuisine allumée toute la journée ne file pas jusqu'à 3 h), sauf un jour d'exception
         if ($t >= $e['fin'] && !$fin) $e['fin'] = $t + 60 * self::duree($s, $r); // prolongée
         if ($fin) { $dec[] = $d + ['ids' => $e['l'], 'action' => 'off', 'motif' => $fin]; $e = ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => $t + 60 * (10 + 30 * $r()), 'vis' => 0, 'off' => $t, 'lo' => $e['l']]; $on--; }
       } elseif ($ok && $p > 0 && $t >= $e['pause'] && $on < $C['max'] && $r() < 1 - pow(1 - min(1, $p * ($s['cf'] ?? 1)), self::PAS / 60)) {

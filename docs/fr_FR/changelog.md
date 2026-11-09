@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16
+- Horloge ou soleil : pour chaque pièce, l'analyse mesure si l'allumage du soir suit le coucher du soleil ou l'horloge, et si l'extinction du matin suit le lever (une part de 0, l'horloge, à 1, le soleil ; entre les deux, un mélange). Il faut 10 jours au moins et un soleil qui a bougé (pas en juin). La simulation fait glisser ces heures avec la saison selon cette part ; l'heure du coucher et du lever des habitants reste à l'horloge. L'onglet Calage nomme les pièces qui suivent le soleil.
+
+## 0.15
+- Pièces allumées en même temps : relevées dans vos historiques (sur les 28 derniers jours comptés, le maximum de chaque jour tenu 3 minutes au moins, sans les pièces aux allumages éclair, dépassé un jour sur dix au plus) au lieu de 3 fixes. Le réglage de la configuration reste possible (vide = relevé). Avec 3, une maison souvent éclairée dans 5 ou 6 pièces le soir ne pouvait pas être calée : salons et cuisine prenaient les 3 places, l'étage restait sous le réel même × 3.
+- Calage : les pièces aux allumages éclair (presque tous moins de 3 min : détecteur de mouvement) restent hors calage, avec leurs réglages d'origine, et sont nommées dans l'onglet Calage. Une lampe sur détecteur aux allumages de quelques minutes (WC) reste calée.
+
 ## 0.14.1
 - « Tout effacer » efface aussi le calage, qui garde pour chaque pièce le profil réel heure par heure (il laissait deviner quand la maison est vide). Message de confirmation complété.
 

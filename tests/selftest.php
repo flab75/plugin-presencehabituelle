@@ -261,6 +261,19 @@ $ok(($A::regles([5 => ['plages' => [$px[0], ['k' => 'marche', 'j' => 'tous', 'de
 $jb = [['d' => '2026-03-02', 'a' => $t('2026-03-02'), 'b' => $t('2026-03-03')], ['d' => '2026-03-03', 'a' => $t('2026-03-03'), 'b' => $t('2026-03-04')]];
 $bl = $A::bilan([[$t('2026-03-02 19:00'), $t('2026-03-02 21:00')], [$t('2026-03-03 23:00'), $t('2026-03-04 01:00')]], $jb);
 $ok($bl['h'] == 1.5 && $bl['n'] == 1 && $bl['mn'] == 90 && $bl['p'][19] == 50 && $bl['p'][23] == 50 && $bl['p'][0] == 0, 'bilan : ' . json_encode($bl));
+// pièces allumées en même temps : jour 1 = 3 ensemble, jour 2 = 1 (relais à 21:00 : pas deux) → 9e décile de [3, 1] = 2,8 → 3
+$sm = $A::simultanees([[[$t('2026-03-02 19:00'), $t('2026-03-02 22:00')], [$t('2026-03-03 20:00'), $t('2026-03-03 21:00')]], [[$t('2026-03-02 20:00'), $t('2026-03-02 21:00')], [$t('2026-03-03 21:00'), $t('2026-03-03 22:00')]], [[$t('2026-03-02 20:30'), $t('2026-03-02 20:45')]]], $jb);
+$ok($A::simultanees([[[$t('2026-03-02 19:00'), $t('2026-03-02 20:00')]], [[$t('2026-03-02 19:59:50'), $t('2026-03-02 21:00')]]], [$jb[0]]) === 1, 'simultanees : 10 s de croisement ne font pas deux pièces');
+$ok($sm === 3 && $A::simultanees([], $jb) === 1 && $A::simultanees([[[1, 2]]], []) === null, 'simultanees : ' . var_export($sm, true));
+// soleil : 60 jours d'automne à Paris ; lampe allumée 20 min après le coucher → b ≈ 1 ; à 19:00 tous les jours → rien
+$js = $A::jours(strtotime('2026-09-01 00:00'), strtotime('2026-11-01 00:00'), []); $sSol = []; $sFix = [];
+foreach ($js as $x) { $c = date_sun_info($x['a'] + 43200, 48.85, 2.35)['sunset']; $sSol[] = [$c + 1200, $c + 7200]; $sFix[] = [$x['a'] + 68400, $x['a'] + 75600]; }
+$so = $A::soleil($sSol, $js, 48.85, 2.35); $sf = $A::soleil($sFix, $js, 48.85, 2.35);
+$ok(($so['soir']['b'] ?? 0) >= .95 && ($sf['soir']['b'] ?? 0) <= .1 && !isset($so['matin']), 'soleil : ' . json_encode([$so, $sf]));
+$src = ['profil' => ['S' => array_merge(array_fill(0, 18, 0), [80, 80, 80, 80, 0, 0])], 'soleil' => ['soir' => ['b' => 1, 'c' => 19 * 60]]];
+$ok($M::profilSoleil($src, 'S', 17 * 60 + 30, ['cm' => 18 * 60]) === 80 && $M::profilSoleil($src, 'S', 18 * 60 + 30, ['cm' => 20 * 60]) === 0
+  && $M::profilSoleil($src, 'S', 22 * 60 + 30, ['cm' => 18 * 60]) === 0 && $M::profilSoleil($src, 'S', 21 * 60 + 30, ['cm' => 20 * 60]) === 80
+  && $M::profilSoleil(['soleil' => []] + $src, 'S', 17 * 60 + 30, ['cm' => 18 * 60]) === 0, 'profilSoleil : avance, retarde, garde la fin');
 $sc = $M::caler(['X' => ['profil' => ['S' => [0, 40], 'W' => [10, 0]], 'd' => [10, 20]]], ['X' => ['cf' => 2, 'cd' => .5], 'Y' => ['cf' => 3]]);
 $ok($sc['X']['profil']['S'] == [0, 40] && $sc['X']['cf'] == 2 && $sc['X']['d'] == [5, 10] && !isset($sc['Y']), 'caler');
 [$cf, $v] = $M::ajuster(['A' => ['h' => 4, 'n' => 2], 'B' => ['h' => 2, 'n' => 1], 'C' => ['h' => 1, 'n' => 1]], ['A' => ['h' => 1, 'n' => .5], 'B' => ['h' => 2.1, 'n' => 1.1], 'C' => ['h' => 1, 'n' => 1]], ['C' => ['cf' => 3, 'cd' => 1]], [.15, .25]);

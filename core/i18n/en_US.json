@@ -37,7 +37,8 @@
 		"Non coché (défaut) : la simulation est « à blanc », elle décide et note tout au journal de l'onglet Simulation, mais n'allume, n'éteint, n'ouvre ni ne ferme rien. Cochez-la seulement après avoir lu quelques journées à blanc. Décochée pendant une simulation On : les lampes qu'elle a allumées sont éteintes, puis elle continue à blanc ; cochée : elle repart de zéro.": "Unticked (default): the simulation is a \"dry run\", it decides and logs everything in the Simulation tab, but switches nothing on or off and opens or closes nothing. Tick it only after reading a few dry-run days. Unticked during a Simulation On: the lamps it switched on are switched off, then it goes on as a dry run; ticked: it starts again from scratch.",
 		"Envoi réel seulement. Si une lampe suivie est allumée ou éteinte par quelqu'un d'autre pendant la simulation (visiteur, voisin qui arrose), la pièce n'est plus touchée pendant ce temps. Vide ou 0 : 60.": "Real sending only. If a followed lamp is switched on or off by someone else during the simulation (visitor, neighbour watering), the room is left alone for that time. Empty or 0: 60.",
 		"id de la commande (ou #id#)": "command id (or #id#)",
-		"Vide ou 0 : 3.": "Empty or 0: 3."
+		"Vide ou 0 : relevé dans vos historiques (le nombre de pièces allumées ensemble, dépassé un jour sur dix au plus), 3 tant qu'il n'est pas relevé. Voir l'onglet Calage.": "Empty or 0: measured from your history (rooms lit together, exceeded at most one day in ten), 3 until measured. See the Calibration tab.",
+		"auto": "auto"
 	},
 	"plugins/presencehabituelle/core/class/presencehabituelle.class.php": {
 		"Période illisible (attendu AAAA-MM-JJ HH:MM → AAAA-MM-JJ HH:MM)": "Unreadable period (expected YYYY-MM-DD HH:MM → YYYY-MM-DD HH:MM)",

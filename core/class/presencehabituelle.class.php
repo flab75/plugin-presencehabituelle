@@ -631,6 +631,7 @@ class presencehabituelle extends eqLogic {
 
   public static function analyser() {
     $A = 'presencehabituelle_analyse'; $fin = time(); $excl = self::exclusions();
+    [$lat, $lon] = self::lieu();
     self::semaine();
     $max = 3600 * (($h = (float)config::byKey('session_max', __CLASS__, 18)) > 0 ? max(1, $h) : 18); // 0 ou illisible : 18 h, comme jours()
     $groupes = []; $volets = []; $plan = self::plan(); $lieux = self::lieux($plan); $piece = [];
@@ -642,7 +643,7 @@ class presencehabituelle extends eqLogic {
       if ($s['g'] === '' && $l['piece']) $s['g'] = "\1" . $l['piece']['nom']; // pièce du plan = groupe, sauf groupe saisi ; \1 : jamais confondue avec un groupe saisi de même nom
       $groupes[$s['g'] !== '' ? $s['g'] : "\0" . $id][] = (int)$id; // \0 : une lampe seule, jamais confondue avec un groupe saisi « #12 » ; un groupe « 12 » devient la clé entière 12 : (string) plus bas
     }
-    $res = ['date' => date('Y-m-d H:i:s'), 'groupes' => [], 'volets' => [], 'passages' => []]; $parPiece = [];
+    $res = ['date' => date('Y-m-d H:i:s'), 'groupes' => [], 'volets' => [], 'passages' => []]; $parPiece = []; $seG = []; $jrT = [];
     foreach ($groupes as $g => $ids) {
       $iv = []; $debut = null; $exG = $excl; $noms = []; $bloq = [];
       foreach ($ids as $id) {
@@ -662,11 +663,16 @@ class presencehabituelle extends eqLogic {
       $parNom = []; foreach ($iv as $id => $i) $parNom[$noms[$id]] = $i;
       $j = $A::jours($debut, $fin, $exG); $se = $A::sessions($parNom); $p = $A::profil($se, $j);
       $jr = array_slice(array_values(array_filter($j, fn($x) => $x['a'] >= $fin - self::CAL_SPAN * 86400)), -self::CAL_JOURS); // recalage : derniers jours comptés
+      $du = $A::durees($se, $j);
+      if (!self::eclair(['durees' => $du])) $seG[] = $se; // pièces allumées en même temps (sans les pièces éclair), sur les jours du recalage
+      foreach ($jr as $x) $jrT[$x['d']] = $x;
       $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'piece' => $pi, 'ids' => $ids, 'lampes' => array_values($noms), 'lids' => array_keys($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
         'S' => $p['S'], 'W' => $p['W'], 'cS' => $p['cS'], 'cW' => $p['cW'], 'lS' => $A::lisser($p['S']), 'lW' => $A::lisser($p['W']),
-        'ex' => $p['ex'], 'durees' => $A::durees($se, $j), 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmerS' => $p['nS'] < self::FIABLE, 'confirmerW' => $p['nW'] < self::FIABLE, 'bloquees' => $bloq,
-        'jr' => array_column($jr, 'd'), 'reel' => $A::bilan($se, $jr), 'reel14' => $A::bilan($se, array_slice($jr, -14))];
+        'ex' => $p['ex'], 'durees' => $du, 'scenes' => count($iv) > 1 ? $A::scenes($se, $j) : [], 'confirmerS' => $p['nS'] < self::FIABLE, 'confirmerW' => $p['nW'] < self::FIABLE, 'bloquees' => $bloq,
+        'jr' => array_column($jr, 'd'), 'reel' => $A::bilan($se, $jr), 'reel14' => $A::bilan($se, array_slice($jr, -14)), 'soleil' => $A::soleil($se, $j, $lat, $lon)];
     }
+    ksort($jrT); // ponytail: un jour exclu pour un seul groupe (extinction manquée) y compte ce groupe éteint : sous-estime à peine
+    $res['presences'] = ['max' => $A::simultanees($seG, array_values($jrT)), 'jours' => count($jrT)];
     foreach ($volets as $id => $s) {
       $ev = self::evs($id); $nom = self::nom($id);
       if (!empty($s['i'])) $ev = $A::inverser($ev);
@@ -904,6 +910,12 @@ class presencehabituelle extends eqLogic {
   /* Contexte d'un passage à l'instant $t ; tire l'aléa et le plan des volets à chaque nouvelle journée (04:00) dans $E.
      $capteur = false : pas de capteur de luminosité (journée rejouée à l'avance), le soleil seul ;
      $coef = coefficients du recalage à essayer (null : ceux du calage, si le recalage est activé). */
+  // Latitude et longitude de la configuration de Jeedom (« 48,85 » saisi à la française)
+  private static function lieu() {
+    $geo = fn($k) => (float)str_replace(',', '.', (string)config::byKey($k, 'core', 0));
+    $lat = $geo('info::latitude'); $lon = $geo('info::longitude');
+    return $lat || $lon ? [$lat, $lon] : [46.6, 2.4]; // ponytail: coordonnées absentes de la configuration de Jeedom, centre de la France
+  }
   private static $ctx = null; // tendances lues une fois par appel (journée rejouée : 288 passages), oubliées à chaque analyse
   public static function contexte($t, array &$E, $capteur = true, ?array $coef = null) {
     $M = 'presencehabituelle_moteur'; $A = 'presencehabituelle_analyse'; $r = fn() => mt_rand() / (mt_getrandmax() + 1);
@@ -917,14 +929,12 @@ class presencehabituelle extends eqLogic {
     if ($coef === null) $coef = self::recalage() ? (self::calage()['coef'] ?? []) : [];
     $ck = json_encode($coef);
     if (!isset($cache['cal'][$ck])) $cache['cal'] = [$ck => $M::caler($cache['sources'], $coef)]; // un seul jeu gardé
-    $geo = fn($k) => (float)str_replace(',', '.', (string)config::byKey($k, 'core', 0));
-    $lat = $geo('info::latitude'); $lon = $geo('info::longitude');
-    if (!$lat && !$lon) { $lat = 46.6; $lon = 2.4; } // ponytail: coordonnées absentes de la configuration de Jeedom, centre de la France
+    [$lat, $lon] = self::lieu();
     $jd = (int)date('G', $t) < 4 ? date('Y-m-d', strtotime('yesterday', $t)) : date('Y-m-d', $t); // la nuit appartient au jour d'avant (heures d'horloge : juste au changement d'heure)
     if (($E['jour']['d'] ?? '') !== $jd) {
       $mid = strtotime($jd . ' 12:00'); $n = (int)date('N', $mid); $sj = date_sun_info($mid, $lat, $lon);
       $mn = fn($x) => is_int($x) ? (int)date('G', $x) * 60 + (int)date('i', $x) : null;
-      $E['jour'] = ['d' => $jd] + $M::jour($r) + ['volets' => $M::planVolets($cache['h']['volets'] ?? [], $cache['regles'], $A::cle($n, 8), $A::cle($n, 21), $mn($sj['sunrise'] ?? null) ?? 480, $mn($sj['sunset'] ?? null) ?? 1200, $r, self::FIABLE)];
+      $E['jour'] = ['d' => $jd, 'lm' => $mn($sj['sunrise'] ?? null), 'cm' => $mn($sj['sunset'] ?? null)] + $M::jour($r) + ['volets' => $M::planVolets($cache['h']['volets'] ?? [], $cache['regles'], $A::cle($n, 8), $A::cle($n, 21), $mn($sj['sunrise'] ?? null) ?? 480, $mn($sj['sunset'] ?? null) ?? 1200, $r, self::FIABLE)];
     }
     $lux = null;
     if ($capteur && ($lc = (int)trim((string)config::byKey('lux_cmd', __CLASS__, ''), '# ')) && is_object($c = cmd::byId($lc)) && $c->getType() == 'info' && is_numeric($v = $c->execCmd())) {
@@ -932,7 +942,7 @@ class presencehabituelle extends eqLogic {
     }
     $bas = is_numeric($x = str_replace(',', '.', trim((string)config::byKey('lux_bas', __CLASS__, '')))) ? max(0, (float)$x) : 350; // 0 permis : nuit noire seulement
     $haut = (float)config::byKey('lux_haut', __CLASS__, 1000) ?: 1000;
-    $max = ($x = (int)config::byKey('presences_max', __CLASS__, 3)) > 0 ? $x : 3;
+    $max = self::presencesMax($cache['h']);
     $sans = array_values(array_filter(array_map(fn($x) => mb_strtolower(trim($x)), explode(',', (string)config::byKey('sans_jour', __CLASS__, ''))), 'strlen')); // sans tenir compte de la casse
     return ['t' => $t, 'm' => (int)date('G', $t) * 60 + (int)date('i', $t), 'k' => $A::cle((int)date('N', $t), (int)date('G', $t), (int)date('i', $t)),
       'pk' => $M::penombre($t, date_sun_info(strtotime(date('Y-m-d', $t) . ' 12:00'), $lat, $lon), $lux, $bas, max($bas + 1, $haut)),
@@ -1081,18 +1091,31 @@ class presencehabituelle extends eqLogic {
     $V = []; foreach ($vo as $id => $x) $V[$id] = array_map(fn($l) => $A::quantile($l, .5), $x);
     return [$P, $V];
   }
+  // Pièces allumées en même temps, au plus : la configuration, sinon ce que l'analyse a relevé (habitudes['presences']), sinon 3
+  public static function presencesMax(array $h) {
+    if (($x = (int)config::byKey('presences_max', __CLASS__, 0)) > 0) return $x;
+    return ($x = (int)($h['presences']['max'] ?? 0)) > 0 ? $x : 3;
+  }
+  /* Pièce « éclair » : presque tous ses allumages sont des passages de moins de 3 min (lampe sur détecteur de mouvement, déclaré ou non).
+     Des dizaines d'allumages brefs par jour : rien qu'une simulation de présence ait à imiter, la pièce reste hors calage (réglages d'origine)
+     et ne compte pas dans les pièces allumées en même temps. Une lampe sur détecteur aux allumages de quelques minutes (WC) reste calée. */
+  private static function eclair(array $g) {
+    return ($g['durees']['n'] ?? 0) > 0 && ($g['durees']['passages'] ?? 0) >= 90; // même seuil que l'étiquette « allumages éclair » des Tendances
+  }
   private static function sources0() { $E = []; return self::contexte(time(), $E, false, [])['sources']; } // sources sans coefficient
   // {nom: bilan réel} des pièces assez relevées et que la simulation a le droit d'allumer
   // ponytail: une lampe « jamais » d'une pièce simulée compte encore dans le réel de sa pièce
   private static function reels($cle, $min) {
     $S = self::sources0(); $R = [];
     foreach (self::habitudes()['groupes'] ?? [] as $g) { $s = $S[$g['nom']] ?? null;
-      if (($g[$cle]['j'] ?? 0) >= $min && $s && $s['ids'] && ($s['src']['S'] != 'jamais' || $s['src']['W'] != 'jamais')) $R[$g['nom']] = $g[$cle]; }
+      if (($g[$cle]['j'] ?? 0) >= $min && $s && $s['ids'] && ($s['src']['S'] != 'jamais' || $s['src']['W'] != 'jamais') && !self::eclair($g)) $R[$g['nom']] = $g[$cle]; }
     return $R;
   }
+  private static function detectes() { return array_values(array_map(fn($g) => $g['nom'], array_filter(self::habitudes()['groupes'] ?? [], fn($g) => !empty($g['jours']) && self::eclair($g)))); }
   // Ce qui rend les coefficients caducs : lampes, source (tendances / provisoire), durées mesurées ou du type, plages du Guide
   private static function signature() {
-    return md5(json_encode(array_map(fn($s) => [$s['ids'], $s['src'], $s['d'] == presencehabituelle_moteur::PROV[$s['type']]['d'], $s['plages']], self::sources0())));
+    // ponytail: le maximum appris entre dans la signature ; s'il oscille d'une nuit à l'autre, le calage repart (borne : le fixer en configuration)
+    return md5(json_encode([array_map(fn($s) => [$s['ids'], $s['src'], $s['d'] == presencehabituelle_moteur::PROV[$s['type']]['d'], $s['plages']], self::sources0()), self::presencesMax(self::habitudes()), self::detectes()]));
   }
   // Chaque nuit (cronDaily, après analyser) ou au bouton : jusqu'à CAL_TOURS tours pendant un calage, sinon le contrôle léger
   public static function recaler() {
@@ -1119,6 +1142,8 @@ class presencehabituelle extends eqLogic {
     $R = self::reels('reel', self::CAL_MIN);
     if (!$R) { $c['note'] = __('Pas encore assez de jours relevés', __FILE__); self::calageSauver($c); return $c; }
     unset($c['note']);
+    $c['coef'] = array_intersect_key($c['coef'], $R); // pièce passée hors calage (éclair) : réglages d'origine
+    $c['hors'] = self::detectes();
     for ($i = 0; $i < self::CAL_TOURS; $i++) {
       [$P, $V] = self::rejeu($c['coef']);
       [$coef, $v] = $M::ajuster($R, $P, $c['coef'], $tol);

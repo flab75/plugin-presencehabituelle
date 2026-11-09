@@ -1044,6 +1044,9 @@
     var ok = n.filter(function (k) { return c.table[k].ok }).length
     var h = '<p>' + ok + ' / ' + n.length + ' {{pièces dans les tolérances}} (±' + Math.round(r.tol[0] * 100) + ' % {{heures}}, ±' + Math.round(r.tol[1] * 100) + ' % {{allumages}})'
       + (c.t ? ', {{dernier tour le}} ' + esc(new Date(c.t * 1000).toLocaleString()) : '') + '.</p>'
+      + (r.pres ? '<p>{{Pièces allumées en même temps, au plus}} : <b>' + r.pres.max + '</b> ' + (r.pres.cfg ? '{{(configuration du plugin)}}' : r.pres.appris && r.pres.appris.max ? '({{relevé sur}} ' + r.pres.appris.jours + ' {{jours : dépassé un jour sur dix au plus}})' : '{{(par défaut, pas encore relevé)}}') + '</p>' : '')
+      + (r.pres && (r.pres.soleil || []).length ? '<p>{{Suivent le soleil}} : ' + r.pres.soleil.map(function (x) { return esc(nomG(x.nom)) + ' (' + [x.soir ? '{{allumage du soir}} ×' + nb(x.soir.b) : '', x.matin ? '{{extinction du matin}} ×' + nb(x.matin.b) : ''].filter(String).join(', ') + ')' }).join(', ') + ' <small>{{(1 = suit le soleil minute pour minute, 0 = l’horloge ; la simulation avance ou retarde ces heures avec la saison)}}</small></p>' : '')
+      + ((c.hors || []).length ? '<p>{{Hors calage, allumages éclair (presque tous moins de 3 min : détecteur de mouvement ; réglages d’origine)}} : ' + esc(c.hors.map(nomG).join(', ')) + '</p>' : '')
       + '<table class="table table-condensed"><thead><tr><th>{{Pièce}}</th><th>{{Heures / jour}}<br><small>{{réel → simulé}}</small></th><th>{{Allumages / jour}}<br><small>{{réel → simulé}}</small></th><th>{{Durée moyenne}}<br><small>{{réel → simulé}}</small></th><th>{{Réglages}}<br><small>{{fréquence × durée}}</small></th><th style="width:30%">{{0 h → 24 h}}<br><small>{{réel (haut) / simulé (bas)}}</small></th></tr></thead><tbody>'
     n.forEach(function (k) {
       var x = c.table[k], ctl = ((c.controle || {}).v || {})[k]

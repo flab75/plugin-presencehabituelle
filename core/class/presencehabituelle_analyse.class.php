@@ -190,7 +190,55 @@ class presencehabituelle_analyse {
     return ['h' => round($tot / 3600 / $N, 2), 'n' => round($n / $N, 2), 'mn' => $n ? (int)round($tot / 60 / $n) : 0, 'p' => array_map(fn($x) => (int)round(100 * $x / $N), $p), 'j' => $N];
   }
 
+  /* Pièces allumées en même temps : chaque jour compté, le plus grand nombre de groupes allumés ensemble pendant $tenu secondes au moins
+     (un croisement de quelques secondes n'en est pas un) ; → le 9e décile de ces maxima (dépassé un jour sur dix au plus), arrondi au-dessus,
+     1 au moins ; null sans jour. $parGroupe = [groupe => sessions()] ; deux sessions d'un même groupe ne se chevauchent pas (sessions() les fusionne) */
+  public static function simultanees(array $parGroupe, array $jours, $tenu = self::PASSAGE) {
+    $max = [];
+    foreach ($jours as $j) {
+      $ev = [];
+      foreach ($parGroupe as $se) foreach ($se as $s) { $a = max($s[0], $j['a']); $b = min($s[1], $j['b']); if ($b > $a) { $ev[] = [$a, 1]; $ev[] = [$b, -1]; } }
+      usort($ev, fn($x, $y) => $x[0] <=> $y[0] ?: $x[1] <=> $y[1]); // au même instant, l'extinction d'abord : un relais n'est pas deux pièces
+      $n = 0; $m = 0;
+      foreach ($ev as $i => $e) { $n += $e[1]; if (($ev[$i + 1][0] ?? $j['b']) - $e[0] >= $tenu) $m = max($m, $n); } // niveau tenu jusqu'à l'événement suivant
+      $max[] = $m;
+    }
+    return $max ? max(1, (int)ceil(self::quantile($max, .9) - 1e-9)) : null;
+  }
+
   // Lissage 1-2-1 sur 24 h (minuit relié à 23 h) ; une heure jamais allumée reste à 0
+  /* Le soir, la 1re lampe allumée (15:00-24:00) suit-elle le coucher du soleil ou l'horloge ? Le matin, la dernière éteinte (04:00-12:00), le lever ?
+     Pente b de l'heure relevée (minutes d'horloge) sur l'heure du soleil, jour par jour, gardée si elle dépasse deux fois son erreur type, entre 0 et 1.
+     → ['soir' => ['b', 'c' (heure moyenne du soleil, minutes), 'n' (jours)] | absent, 'matin' => idem] ; 10 jours au moins et un soleil qui a bougé
+     d'au moins 15 min (écart type) : en juin, rien ne peut se dire. ponytail: régression linéaire simple, une lampe allumée à 15:30 pour lire pèse comme les autres */
+  public static function soleil(array $sessions, array $jours, $lat, $lon) {
+    $mn = fn($t) => (int)date('G', $t) * 60 + (int)date('i', $t);
+    $v = ['soir' => [], 'matin' => []];
+    foreach ($jours as $j) {
+      $sun = date_sun_info($j['a'] + 43200, $lat, $lon);
+      if (!is_int($sun['sunset'] ?? null) || !is_int($sun['sunrise'] ?? null)) continue;
+      $soir = null; $matin = null;
+      foreach ($sessions as [$a, $b]) {
+        if ($a >= $j['a'] + 54000 && $a < $j['b'] && $soir === null) $soir = $a; // sessions triées : la 1re du soir
+        if ($b >= $j['a'] + 14400 && $b < $j['a'] + 43200 && $a < $b) $matin = $b; // la dernière éteinte du matin
+      }
+      if ($soir !== null) $v['soir'][] = [$mn($sun['sunset']), $mn($soir)];
+      if ($matin !== null) $v['matin'][] = [$mn($sun['sunrise']), $mn($matin)];
+    }
+    $r = [];
+    foreach ($v as $k => $xy) {
+      if (($n = count($xy)) < 10) continue;
+      $mx = array_sum(array_column($xy, 0)) / $n; $my = array_sum(array_column($xy, 1)) / $n; $sxx = 0; $sxy = 0;
+      foreach ($xy as [$x, $y]) { $sxx += ($x - $mx) ** 2; $sxy += ($x - $mx) * ($y - $my); }
+      if (sqrt($sxx / $n) < 15) continue;
+      $b = $sxy / $sxx; $res = 0;
+      foreach ($xy as [$x, $y]) $res += ($y - $my - $b * ($x - $mx)) ** 2;
+      if ($b <= 2 * sqrt($res / ($n - 2) / $sxx)) continue; // pas plus net que le hasard
+      $r[$k] = ['b' => round(min(1, $b), 2), 'c' => (int)round($mx), 'n' => $n];
+    }
+    return $r;
+  }
+
   public static function lisser(array $p) {
     $r = [];
     for ($h = 0; $h < 24; $h++) $r[$h] = $p[$h] ? min($p[$h] < 100 ? 99 : 100, (int)round(($p[($h + 23) % 24] + 2 * $p[$h] + $p[($h + 1) % 24]) / 4)) : 0; // 100 seulement si vraiment toujours
