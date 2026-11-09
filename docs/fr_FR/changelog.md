@@ -1,8 +1,15 @@
 # Changelog
 
+## 0.17.2
+- Corrections de la 2e revue adverse de la 0.17 : la part des départs suivis d'un trajet ne compte plus que les extinctions de nuit (entre coucher et lever du soleil), comme la simulation qui ne fait de trajet que dans la pénombre (elle était sous-estimée par les extinctions de jour) ; un trajet qui revient dans le groupe de départ n'est plus une suite ; la pièce d'arrivée est vérifiée avant d'allumer les pièces traversées (plus de couloir allumé pour rien) ; le calage ne repart plus quand un groupe gagne ou perd un trajet rare (moins de 5 vus).
+- Au déploiement de la 0.17 puis de la 0.17.2, le calage repart une fois (sa signature change), puis seulement quand les trajets d'une pièce apparaissent ou disparaissent.
+
+## 0.17.1
+- Corrections de la revue adverse de la 0.17 : une pièce éteinte au même passage n'est plus rallumée aussitôt par un trajet ; un passage lumineux ne prend plus de place parmi les pièces allumées en même temps (la pièce d'arrivée n'est plus coupée) ; part des départs suivis d'un trajet comptée sur tous les trajets ; un groupe réparti sur deux pièces ne se suit plus lui-même ; noms de pièces départagés avant d'être reliés aux trajets ; heure d'un trajet de nuit juste (00:10 n'est plus « vers 12:00 ») ; une arrivée pendant une absence n'est plus apprise.
+
 ## 0.17
 - Passages : pris dans les deux sens, et un chemin peut en enchaîner jusqu'à 3, à travers des pièces restées éteintes. Les « enchaînements » (pièce voisine directe seulement) deviennent des **trajets** : une pièce s'éteint, une pièce reliée s'allume dans les 3 min ; une pièce allumée moins de 3 min en passant (passage lumineux) prolonge le trajet. Onglet Plan : trajets les plus fréquents, passages comptés dans chaque sens, ordre d'allumage du soir, pièces sans passage signalées.
-- Simulation : quand une pièce s'éteint d'elle-même, un trajet relevé est tiré (aussi souvent que dans les habitudes) : pièces traversées en passage lumineux, pièce d'arrivée allumée pour une durée habituelle ; jamais de jour, hors des règles du Guide, ni au-delà du nombre de pièces allumées en même temps. Le calage en tient compte.
+- Simulation : quand une pièce s'éteint d'elle-même, un trajet relevé est tiré (aussi souvent que dans les habitudes) : pièces traversées en passage lumineux, pièce d'arrivée allumée pour une durée habituelle ; jamais de jour (sauf pièces allumées même de jour), hors des règles du Guide, ni au-delà du nombre de pièces allumées en même temps. Le calage en tient compte : il repart quand une pièce gagne ou perd ses trajets, et son réglage de fréquence retient aussi les arrivées par trajet.
 
 ## 0.16
 - Horloge ou soleil : pour chaque pièce, l'analyse mesure si l'allumage du soir suit le coucher du soleil ou l'horloge, et si l'extinction du matin suit le lever (une part de 0, l'horloge, à 1, le soleil ; entre les deux, un mélange). Il faut 10 jours au moins et un soleil qui a bougé (pas en juin). La simulation fait glisser ces heures avec la saison selon cette part ; l'heure du coucher et du lever des habitants reste à l'horloge. L'onglet Calage nomme les pièces qui suivent le soleil.

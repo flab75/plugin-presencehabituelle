@@ -254,12 +254,30 @@ $s12 = ['12' => ['nom' => '12', 'ids' => [43], 'type' => 'autre', 'src' => ['S' 
 $mo = array_column($d, 'motif', 'nom');
 $ok(($mo['Partie'] ?? '') == 'disparu' && !isset($Ed['g']['Partie']) && ($mo[12] ?? '') == 'eclair' && $Ed['g'][12]['lo'] == [43], 'pièce disparue éteinte, passage éclair 5 min : ' . json_encode($d));
 // 0.17 suite simulée : S s'éteint d'elle-même → H en passage lumineux, C allumée pour une durée normale
-$sx = fn($n, $su = [], $de = 0) => ['nom' => $n, 'ids' => [ord($n)], 'type' => 'autre', 'src' => ['S' => 'prov', 'W' => 'prov'], 'profil' => ['S' => array_fill(0, 24, 50), 'W' => array_fill(0, 24, 50)], 'plages' => [], 'd' => [5, 5], 'pas' => 0, 'scenes' => [], 'suites' => $su, 'departs' => $de];
-$s17 = ['S' => $sx('S', [[['H', 'C'], 2]], 2), 'H' => $sx('H'), 'C' => $sx('C')];
+$sx = fn($n, $su = [], $q = 0) => ['nom' => $n, 'ids' => [ord($n)], 'type' => 'autre', 'src' => ['S' => 'prov', 'W' => 'prov'], 'profil' => ['S' => array_fill(0, 24, 50), 'W' => array_fill(0, 24, 50)], 'plages' => [], 'd' => [5, 5], 'pas' => 0, 'scenes' => [], 'suites' => $su, 'q' => $q];
+$s17 = ['S' => $sx('S', [[['H', 'C'], 2]], 1), 'H' => $sx('H'), 'C' => $sx('C')];
 [$E17, $d] = $M::pas(['jour' => ['d' => 'x', 'dec' => 0, 'f' => 1, 'volets' => []], 'g' => ['S' => ['on' => 1, 'fin' => 0, 'l' => [83], 'pause' => 0, 'vis' => 0]]], ['t' => 1000, 'm' => 1200, 'k' => 'S', 'pk' => 1, 'sources' => $s17, 'max' => 3, 'sansJour' => [], 'regles' => []], fn() => .99);
 $ok(array_map(fn($x) => $x['nom'] . ':' . $x['motif'], $d) == ['S:fin', 'H:trajet', 'C:trajet'] && !empty($E17['g']['H']['ec']) && empty($E17['g']['C']['ec']) && $E17['g']['C']['fin'] == 1300, 'suite simulée : ' . json_encode($d));
 [, $d] = $M::pas(['jour' => ['d' => 'x', 'dec' => 0, 'f' => 1, 'volets' => []], 'g' => ['S' => ['on' => 1, 'fin' => 0, 'l' => [83], 'pause' => 0, 'vis' => 0]]], ['t' => 1000, 'm' => 1200, 'k' => 'S', 'pk' => 0, 'sources' => $s17, 'max' => 3, 'sansJour' => [], 'regles' => []], fn() => .99);
 $ok(count($d) == 1, 'pas de trajet de jour : ' . json_encode($d));
+// revue 0.17 : pièce éteinte au même passage pas rallumée (pause) ; plafond : le couloir éclair ne compte pas, la pièce d'arrivée est atteinte ; calage cf < 1 retient l'arrivée
+$g17 = fn($x = []) => ['jour' => ['d' => 'x', 'dec' => 0, 'f' => 1, 'volets' => []], 'g' => ['S' => ['on' => 1, 'fin' => 0, 'l' => [83], 'pause' => 0, 'vis' => 0]] + $x];
+$C17 = fn($src, $max = 3) => ['t' => 1000, 'm' => 1200, 'k' => 'S', 'pk' => 1, 'sources' => $src, 'max' => $max, 'sansJour' => [], 'regles' => []];
+[, $d] = $M::pas($g17(['C' => ['on' => 1, 'fin' => 0, 'l' => [67], 'pause' => 0, 'vis' => 0]]), $C17(['S' => $sx('S', [[['C'], 2]], 1), 'C' => $sx('C')]), fn() => .99);
+$ok(array_map(fn($x) => $x['nom'] . ':' . $x['action'], $d) == ['S:off', 'C:off'], 'pièce tout juste éteinte pas rallumée : ' . json_encode($d));
+[, $d] = $M::pas($g17(['K' => ['on' => 1, 'fin' => 9e9, 'l' => [75], 'pause' => 0, 'vis' => 0]]), $C17($s17 + ['K' => $sx('K')], 2), fn() => .99);
+$ok(array_map(fn($x) => $x['nom'] . ':' . $x['motif'], $d) == ['S:fin', 'H:trajet', 'C:trajet'], 'plafond : le passage lumineux ne prend pas de place : ' . json_encode($d));
+[, $d] = $M::pas($g17(), $C17(['S' => $s17['S'], 'H' => $s17['H'], 'C' => $sx('C') + ['cf' => .5]]), fn() => .99);
+$ok(array_map(fn($x) => $x['nom'], $d) == ['S'], 'calage : arrivée retenue par cf, couloir pas allumé pour rien : ' . json_encode($d));
+[, $d] = $M::pas($g17(['C' => ['on' => 1, 'fin' => 9e9, 'l' => [67], 'pause' => 0, 'vis' => 0]]), $C17($s17), fn() => .99);
+$ok(array_map(fn($x) => $x['nom'], $d) == ['S'], 'arrivée déjà allumée : couloir pas allumé : ' . json_encode($d));
+// trajets : heure médiane autour de minuit ; arrivée pendant une absence écartée
+$tm = ['S' => [], 'C' => []];
+foreach (['2026-03-02 23:30', '2026-03-03 23:50', '2026-03-05 00:10', '2026-03-06 00:20'] as $x) { $tm['S'][] = [$t($x) - 3600, $t($x), true]; $tm['C'][] = [$t($x) + 60, $t($x) + 1800, true]; }
+$ok($A::trajets($tm, $A::chemins([['S', 'C']]))['trajets']['S>C']['h'] == 0, 'heure d\'un trajet autour de minuit : ' . json_encode($A::trajets($tm, $A::chemins([['S', 'C']]))['trajets']));
+$Tn = $A::trajets($tm, $A::chemins([['S', 'C']]), [], fn($x) => $x < $t('2026-03-05 00:00')); // 2 départs sur 4 « de nuit »
+$ok($Tn['departs']['S'] == 2 && $Tn['trajets']['S>C']['n'] == 4 && $Tn['trajets']['S>C']['nn'] == 2, 'q : départs et trajets comptés de nuit : ' . json_encode($Tn));
+$ok(!$A::trajets(['S' => [$tm['S'][0]], 'C' => [$tm['C'][0]]], $A::chemins([['S', 'C']]), [[$t('2026-03-02 23:30') + 30, $t('2026-03-03 06:00')]])['trajets'], 'arrivée pendant une absence écartée');
 // volet : pas rouvert le soir (plage « peut » du soir) ; sorti du plan alors que fermé : rouvert le matin, pas la nuit
 $pv = [['k' => 'marche', 'j' => 'tous', 'de' => '17:00', 'a' => '23:00']];
 $Ev = ['jour' => ['d' => 'j2', 'dec' => 0, 'f' => 1, 'volets' => [9 => ['nom' => 'V', 'o' => 450, 'f' => 1300, 'src' => 'prov/prov']]], 'g' => [], 'v' => [9 => ['ferme' => 1, 'fj' => 'j1']]];

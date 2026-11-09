@@ -388,10 +388,12 @@ class presencehabituelle_analyse {
      une pièce restée éteinte) s'allume entre 1 min avant et PASSAGE s après ; si celle-ci n'est allumée qu'en passant (moins de PASSAGE s :
      « passage lumineux »), le trajet continue depuis elle (allumage de la suivante pendant qu'elle est allumée ou PASSAGE s après), 5 pièces au plus.
      $parPiece = [pièce => sessions()], $chemins = chemins(), hors périodes exclues.
-     → ['trajets' => ['A>B>C' => ['ch' => [A, B, C], 'n', 'h' => heure médiane du départ]], 'departs' => [pièce => départs possibles],
+     $nuit(t) : extinction de nuit (le moteur ne fait de trajet que dans la pénombre) ; departs et nn ne comptent qu'elles, pour une part q juste.
+     → ['trajets' => ['A>B>C' => ['ch' => [A, B, C], 'n', 'nn' => dont la nuit, 'h' => heure médiane du départ]], 'departs' => [pièce => départs possibles de nuit],
         'portes' => ['x|y' => fois passée de x vers y (chaque passage du chemin, pièces éteintes comprises)]]
      ponytail: le premier allumage qui convient gagne ; deux personnes qui bougent en même temps se mêlent */
-  public static function trajets(array $parPiece, array $chemins, array $excl = []) {
+  public static function trajets(array $parPiece, array $chemins, array $excl = [], ?callable $nuit = null) {
+    $nuit ??= fn($t) => true;
     $hors = function ($t) use ($excl) { foreach ($excl as [$a, $b]) if ($t >= $a && $t < $b) return false; return true; };
     $ev = [];
     foreach ($parPiece as $pc => $se) foreach ($se as $x) $ev[] = [$x[0], $x[1], !empty($x[2]), (string)$pc];
@@ -405,19 +407,20 @@ class presencehabituelle_analyse {
     $r = ['trajets' => [], 'departs' => [], 'portes' => []]; $heures = [];
     foreach ($ev as $e) {
       if (!$e[2] || $e[1] - $e[0] < self::PASSAGE || !isset($chemins[$e[3]]) || !$hors($e[1])) continue;
-      $r['departs'][$e[3]] = ($r['departs'][$e[3]] ?? 0) + 1;
+      if ($nn = $nuit($e[1])) $r['departs'][$e[3]] = ($r['departs'][$e[3]] ?? 0) + 1;
       $ch = [$e[3]]; $cur = $e; $a = max($e[0], $e[1] - 60); $b = $e[1] + self::PASSAGE;
       while (count($ch) < 5 && ($x = $suivant(end($ch), $a, $b, $ch))) {
+        if (!$hors($x[0])) { $ch = []; break; } // arrivée pendant une absence (Simulation On) : pas un trajet
         $ch[] = $x[3];
-        if (!$x[2] || $x[1] - $x[0] >= self::PASSAGE) break; // arrivé : la pièce reste allumée
+        if ($x[1] - $x[0] >= self::PASSAGE) break; // arrivé : la pièce reste allumée (encore allumée : sa durée court jusqu'à maintenant)
         $a = $x[0]; $b = $x[1] + self::PASSAGE; // passage lumineux : on continue
       }
       if (count($ch) < 2) continue;
       $k = implode('>', $ch);
-      $r['trajets'][$k] = ['ch' => $ch, 'n' => ($r['trajets'][$k]['n'] ?? 0) + 1]; $heures[$k][] = (int)date('G', $e[1]) + (int)date('i', $e[1]) / 60;
+      $r['trajets'][$k] = ['ch' => $ch, 'n' => ($r['trajets'][$k]['n'] ?? 0) + 1, 'nn' => ($r['trajets'][$k]['nn'] ?? 0) + (int)$nn]; $heures[$k][] = fmod((int)date('G', $e[1]) + (int)date('i', $e[1]) / 60 + 20, 24); // heures depuis 04:00 : la nuit reste après le soir
       for ($i = 1; $i < count($ch); $i++) { $c = $chemins[$ch[$i - 1]][$ch[$i]]; for ($j = 1; $j < count($c); $j++) { $kk = $c[$j - 1] . '|' . $c[$j]; $r['portes'][$kk] = ($r['portes'][$kk] ?? 0) + 1; } }
     }
-    foreach ($r['trajets'] as $k => $x) $r['trajets'][$k]['h'] = round(self::quantile($heures[$k], .5), 1);
+    foreach ($r['trajets'] as $k => $x) $r['trajets'][$k]['h'] = round(fmod(self::quantile($heures[$k], .5) + 4, 24), 1);
     uasort($r['trajets'], fn($x, $y) => $y['n'] <=> $x['n']);
     return $r;
   }

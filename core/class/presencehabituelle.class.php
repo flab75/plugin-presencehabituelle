@@ -659,7 +659,7 @@ class presencehabituelle extends eqLogic {
       foreach ($noms as $id => $n) if ($dbl[$n] > 1) $noms[$id] = $n . ' #' . $id;
       $g = (string)$g; $seule = $g[0] === "\0" ? (int)substr($g, 1) : 0; $nom = $seule ? self::nom($seule) : ltrim($g, "\1");
       $pi = $g[0] === "\1"; // groupe d'une pièce du plan
-      foreach ($ids as $id) if (isset($piece[$id])) $pg[$piece[$id]] ??= $nom; // pièce du plan → groupe de ses lampes (trajets)
+      foreach ($ids as $id) if (isset($piece[$id])) $pg[$piece[$id]] ??= count($res['groupes']); // pièce du plan → index du groupe de ses lampes (trajets ; le nom peut encore changer, plus bas)
       if (!$iv) { $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'piece' => $pi, 'ids' => $ids, 'jours' => 0]; continue; }
       $parNom = []; foreach ($iv as $id => $i) $parNom[$noms[$id]] = $i;
       $j = $A::jours($debut, $fin, $exG); $se = $A::sessions($parNom); $p = $A::profil($se, $j);
@@ -686,27 +686,39 @@ class presencehabituelle extends eqLogic {
       }
       $res['volets'][] = ['nom' => $nom, 'id' => $id, 'groupe' => $s['g'], 'jours' => count($j)] + $v;
     }
-    $se = array_map(fn($p) => $A::sessions($p), $parPiece); // pièce du plan allumée tant qu'une de ses lampes l'est
-    $T = $A::trajets($se, $A::chemins(array_map(fn($p) => [$p['a'], $p['b']], $plan['passages'])), $excl);
-    $nomP = array_column($plan['pieces'], 'nom', 'id');
-    foreach ($plan['passages'] as $o) $res['passages'][] = ['id' => $o['id'], 'a' => $nomP[$o['a']], 'b' => $nomP[$o['b']], 't' => $o['t'], 'ab' => $T['portes'][$o['a'] . '|' . $o['b']] ?? 0, 'ba' => $T['portes'][$o['b'] . '|' . $o['a']] ?? 0];
-    $res['trajets'] = []; $suites = [];
-    foreach (array_slice($T['trajets'], 0, 30) as $x) {
-      $res['trajets'][] = ['ch' => array_map(fn($p) => $nomP[$p], $x['ch']), 'n' => $x['n'], 'h' => $x['h']];
-      if ($x['n'] >= 2 && !array_diff_key(array_flip($x['ch']), $pg)) $suites[$pg[$x['ch'][0]]][] = [array_map(fn($p) => $pg[$p], array_slice($x['ch'], 1)), $x['n']]; // suite simulée : 2 fois au moins
-    }
-    $res['ordre'] = [];
-    foreach ($A::ordre($se, $A::jours($fin - self::CAL_SPAN * 86400, $fin, $excl)) as $p => $x) $res['ordre'][] = ['nom' => $nomP[$p]] + $x;
-    foreach ($res['groupes'] as $i => $g) if (isset($suites[$g['nom']])) { // départs : les extinctions de toutes les pièces du groupe
-      $dep = 0; foreach ($pg as $p => $n) if ($n === $g['nom']) $dep += $T['departs'][$p] ?? 0;
-      $res['groupes'][$i]['suites'] = $suites[$g['nom']]; $res['groupes'][$i]['departs'] = $dep;
-    }
     foreach (['groupes', 'volets'] as $t) { // même nom dans deux pièces : la pièce les départage (un groupe saisi garde son nom)
       $n = array_count_values(array_column($res[$t], 'nom'));
       foreach ($res[$t] as $i => $x) if ($n[$x['nom']] > 1) {
         if ($x['id']) $res[$t][$i]['nom'] = self::nom($x['id'], true);
         elseif (!empty($x['piece'])) $res[$t][$i]['nom'] .= ' (' . __('pièce', __FILE__) . ')'; // pièce et groupe saisi de même nom
       }
+    }
+    $pg = array_map(fn($i) => $res['groupes'][$i]['nom'], $pg); // noms définitifs
+    $se = array_map(fn($p) => $A::sessions($p), $parPiece); // pièce du plan allumée tant qu'une de ses lampes l'est
+    $sol = []; $nuit = function ($t) use (&$sol, $lat, $lon) { // entre coucher et lever du soleil (pôles : jamais de nuit connue → tout compte)
+      $d = date('Y-m-d', $t); $x = $sol[$d] ??= date_sun_info(strtotime($d . ' 12:00'), $lat, $lon);
+      return !is_int($x['sunrise'] ?? null) || !is_int($x['sunset'] ?? null) || $t < $x['sunrise'] || $t > $x['sunset'];
+    };
+    $T = $A::trajets($se, $A::chemins(array_map(fn($p) => [$p['a'], $p['b']], $plan['passages'])), $excl, $nuit);
+    $nomP = array_column($plan['pieces'], 'nom', 'id');
+    foreach ($plan['passages'] as $o) $res['passages'][] = ['id' => $o['id'], 'a' => $nomP[$o['a']], 'b' => $nomP[$o['b']], 't' => $o['t'], 'ab' => $T['portes'][$o['a'] . '|' . $o['b']] ?? 0, 'ba' => $T['portes'][$o['b'] . '|' . $o['a']] ?? 0];
+    $res['trajets'] = []; $suites = []; $tous = []; $i = 0;
+    foreach ($T['trajets'] as $x) {
+      if ($i++ < 30) $res['trajets'][] = ['ch' => array_map(fn($p) => $nomP[$p], $x['ch']), 'n' => $x['n'], 'h' => $x['h']];
+      if (array_diff_key(array_flip($x['ch']), $pg)) continue; // une pièce sans lampe simulée
+      $de = $pg[$x['ch'][0]]; $c = [];
+      if ($pg[end($x['ch'])] === $de) continue; // retour dans le groupe de départ : pas une suite (le groupe ne se rallume pas lui-même)
+      foreach (array_slice($x['ch'], 1) as $p) if ($pg[$p] !== $de && $pg[$p] !== end($c)) $c[] = $pg[$p]; // en groupes : un groupe sur deux pièces ne se suit pas lui-même
+      if (!$c) continue;
+      $tous[$de] = ($tous[$de] ?? 0) + $x['nn']; // de nuit, comme les départs
+      if ($x['n'] >= 2) $suites[$de][] = [$c, $x['n']]; // suite simulée : vue 2 fois au moins
+    }
+    $res['ordre'] = [];
+    foreach ($A::ordre($se, $A::jours($fin - self::CAL_SPAN * 86400, $fin, $excl)) as $p => $x) $res['ordre'][] = ['nom' => $nomP[$p]] + $x;
+    foreach ($res['groupes'] as $i => $g) if (isset($suites[$g['nom']])) { // départs : les extinctions de toutes les pièces du groupe
+      $dep = 0; foreach ($pg as $p => $n) if ($n === $g['nom']) $dep += $T['departs'][$p] ?? 0;
+      $res['groupes'][$i]['suites'] = $suites[$g['nom']]; $res['groupes'][$i]['departs'] = $dep;
+      $res['groupes'][$i]['q'] = round(min(1, $tous[$g['nom']] / max(1, $dep)), 3); // tous les trajets comptent (les rares aussi), le tirage se fait parmi les fréquents
     }
     self::ecrire(self::fichier(), $res); self::$ctx = null; // contexte() relit les tendances
     try { self::majWidget($res); } catch (Throwable $e) { log::add(__CLASS__, 'error', 'widget : ' . $e->getMessage()); } // les tendances sont enregistrées quoi qu'il arrive
@@ -1126,7 +1138,7 @@ class presencehabituelle extends eqLogic {
   // Ce qui rend les coefficients caducs : lampes, source (tendances / provisoire), durées mesurées ou du type, plages du Guide
   private static function signature() {
     // ponytail: le maximum appris entre dans la signature ; s'il oscille d'une nuit à l'autre, le calage repart (borne : le fixer en configuration)
-    return md5(json_encode([array_map(fn($s) => [$s['ids'], $s['src'], $s['d'] == presencehabituelle_moteur::PROV[$s['type']]['d'], $s['plages']], self::sources0()), self::presencesMax(self::habitudes()), self::detectes()]));
+    return md5(json_encode([array_map(fn($s) => [$s['ids'], $s['src'], $s['d'] == presencehabituelle_moteur::PROV[$s['type']]['d'], $s['plages'], !empty($s['suites']) && array_sum(array_column($s['suites'], 1)) >= 5], self::sources0()), self::presencesMax(self::habitudes()), self::detectes()]));
   }
   // Chaque nuit (cronDaily, après analyser) ou au bouton : jusqu'à CAL_TOURS tours pendant un calage, sinon le contrôle léger
   public static function recaler() {
