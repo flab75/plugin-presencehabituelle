@@ -368,22 +368,74 @@ class presencehabituelle_analyse {
     return $in;
   }
 
-  /* Enchaînements par les passages du plan : une lumière de A s'éteint, une de B s'allume moins de PASSAGE s après.
-     $parPiece = [pièce => intervalles allumés (toutes ses lampes)], $passages = [[a, b]] ; hors périodes exclues.
-     → [clé du passage => [a, b, ab, ba]] (ab = fois A → B, ba = fois B → A)
-     ponytail: un seul passage entre deux pièces compte ; un trajet A → C → B sans lumière en C n'est pas vu */
-  public static function enchainements(array $parPiece, array $passages, array $excl = []) {
-    $hors = function ($t) use ($excl) { foreach ($excl as [$a, $b]) if ($t >= $a && $t < $b) return false; return true; };
-    $fois = function ($de, $vers) use ($parPiece, $hors) {
-      $on = array_column($parPiece[$vers] ?? [], 0); sort($on); $n = 0;
-      foreach ($parPiece[$de] ?? [] as $i) {
-        if (!$i[2] || !$hors($i[1])) continue; // extinction connue seulement
-        foreach ($on as $t) if ($t >= $i[1] && $t - $i[1] <= self::PASSAGE) { $n++; break; } elseif ($t > $i[1]) break;
-      }
-      return $n;
-    };
+  /* Réseau des passages du plan : une porte se passe dans les deux sens, et deux portes en série font un chemin.
+     $passages = [[a, b]] → [x => [y => chemin [x, …, y]]] des plus courts chemins de PORTES passages au plus (largeur d'abord) */
+  const PORTES = 3;
+  public static function chemins(array $passages) {
+    $adj = [];
+    foreach ($passages as [$a, $b]) if ($a !== $b) { $adj[$a][$b] = 1; $adj[$b][$a] = 1; }
     $r = [];
-    foreach ($passages as $k => [$a, $b]) if ($a !== $b) $r[$k] = [$a, $b, $fois($a, $b), $fois($b, $a)]; // clé gardée : celle du passage
+    foreach (array_keys($adj) as $x) {
+      $r[$x] = [$x => [$x]]; $file = [$x];
+      while ($file) { $u = array_shift($file); if (count($r[$x][$u]) > self::PORTES) continue;
+        foreach (array_keys($adj[$u]) as $v) if (!isset($r[$x][$v])) { $r[$x][$v] = array_merge($r[$x][$u], [$v]); $file[] = $v; } }
+      unset($r[$x][$x]);
+    }
+    return $r;
+  }
+
+  /* Trajets : une pièce s'éteint (allumée 3 min au moins, extinction connue), une pièce reliée par le plan (PORTES passages au plus, même à travers
+     une pièce restée éteinte) s'allume entre 1 min avant et PASSAGE s après ; si celle-ci n'est allumée qu'en passant (moins de PASSAGE s :
+     « passage lumineux »), le trajet continue depuis elle (allumage de la suivante pendant qu'elle est allumée ou PASSAGE s après), 5 pièces au plus.
+     $parPiece = [pièce => sessions()], $chemins = chemins(), hors périodes exclues.
+     → ['trajets' => ['A>B>C' => ['ch' => [A, B, C], 'n', 'h' => heure médiane du départ]], 'departs' => [pièce => départs possibles],
+        'portes' => ['x|y' => fois passée de x vers y (chaque passage du chemin, pièces éteintes comprises)]]
+     ponytail: le premier allumage qui convient gagne ; deux personnes qui bougent en même temps se mêlent */
+  public static function trajets(array $parPiece, array $chemins, array $excl = []) {
+    $hors = function ($t) use ($excl) { foreach ($excl as [$a, $b]) if ($t >= $a && $t < $b) return false; return true; };
+    $ev = [];
+    foreach ($parPiece as $pc => $se) foreach ($se as $x) $ev[] = [$x[0], $x[1], !empty($x[2]), (string)$pc];
+    usort($ev, fn($x, $y) => $x[0] <=> $y[0]);
+    $deb = array_column($ev, 0); $n = count($ev);
+    $suivant = function ($de, $a, $b, array $vu) use ($ev, $deb, $n, $chemins) { // 1re pièce reliée allumée dans [a, b]
+      for ($lo = 0, $hi = $n; $lo < $hi;) { $m = ($lo + $hi) >> 1; if ($deb[$m] < $a) $lo = $m + 1; else $hi = $m; }
+      for ($i = $lo; $i < $n && $ev[$i][0] <= $b; $i++) if (!in_array($ev[$i][3], $vu, true) && isset($chemins[$de][$ev[$i][3]])) return $ev[$i];
+      return null;
+    };
+    $r = ['trajets' => [], 'departs' => [], 'portes' => []]; $heures = [];
+    foreach ($ev as $e) {
+      if (!$e[2] || $e[1] - $e[0] < self::PASSAGE || !isset($chemins[$e[3]]) || !$hors($e[1])) continue;
+      $r['departs'][$e[3]] = ($r['departs'][$e[3]] ?? 0) + 1;
+      $ch = [$e[3]]; $cur = $e; $a = max($e[0], $e[1] - 60); $b = $e[1] + self::PASSAGE;
+      while (count($ch) < 5 && ($x = $suivant(end($ch), $a, $b, $ch))) {
+        $ch[] = $x[3];
+        if (!$x[2] || $x[1] - $x[0] >= self::PASSAGE) break; // arrivé : la pièce reste allumée
+        $a = $x[0]; $b = $x[1] + self::PASSAGE; // passage lumineux : on continue
+      }
+      if (count($ch) < 2) continue;
+      $k = implode('>', $ch);
+      $r['trajets'][$k] = ['ch' => $ch, 'n' => ($r['trajets'][$k]['n'] ?? 0) + 1]; $heures[$k][] = (int)date('G', $e[1]) + (int)date('i', $e[1]) / 60;
+      for ($i = 1; $i < count($ch); $i++) { $c = $chemins[$ch[$i - 1]][$ch[$i]]; for ($j = 1; $j < count($c); $j++) { $kk = $c[$j - 1] . '|' . $c[$j]; $r['portes'][$kk] = ($r['portes'][$kk] ?? 0) + 1; } }
+    }
+    foreach ($r['trajets'] as $k => $x) $r['trajets'][$k]['h'] = round(self::quantile($heures[$k], .5), 1);
+    uasort($r['trajets'], fn($x, $y) => $y['n'] <=> $x['n']);
+    return $r;
+  }
+
+  /* Ordre d'allumage du soir : chaque jour compté, les pièces rangées par leur 1er allumage tenu (PASSAGE s au moins) après 15:00.
+     → [pièce => ['soirs' => jours allumée, 'premiere' => % de ces soirs où elle est la 1re, 'rang' => rang médian (1 = la 1re)]] ; soirs à 2 pièces au moins */
+  public static function ordre(array $parPiece, array $jours) {
+    $rangs = []; $prem = [];
+    foreach ($jours as $j) {
+      $t = [];
+      foreach ($parPiece as $pc => $se) foreach ($se as $x) if ($x[0] >= $j['a'] + 54000 && $x[0] < $j['b'] && $x[1] - $x[0] >= self::PASSAGE) { $t[(string)$pc] = $x[0]; break; }
+      if (count($t) < 2) continue;
+      asort($t); $i = 0;
+      foreach ($t as $pc => $x) { $rangs[$pc][] = ++$i; if ($i == 1) $prem[$pc] = ($prem[$pc] ?? 0) + 1; }
+    }
+    $r = [];
+    foreach ($rangs as $pc => $v) $r[$pc] = ['soirs' => count($v), 'premiere' => self::pc($prem[$pc] ?? 0, count($v)), 'rang' => round(self::quantile($v, .5), 1)];
+    uasort($r, fn($x, $y) => $x['rang'] <=> $y['rang']);
     return $r;
   }
 

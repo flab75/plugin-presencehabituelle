@@ -625,7 +625,13 @@
         + esc(pieceNom(o.a)) + ' ↔ ' + esc(pieceNom(o.b)) + ' <small>(' + esc({ porte: '{{porte}}', couloir: '{{couloir}}', escalier: '{{escalier}}' }[o.t]) + ')'
         + (au && !o.pts2 ? ' <span class="text-warning">{{à ajuster sur}} ' + esc((etage(au) || {}).nom) + '</span>' : '')
         + (r ? '<br>→ ' + esc(r.ab) + ' {{fois}}, ← ' + esc(r.ba) + ' {{fois}}' : '') + '</small></div>'
-    }).join('') + (PL.passages.length ? '<p><small>{{Fois où une lumière de la seconde pièce s’allume moins de 3 min après l’extinction d’une lumière de la première.}}</small></p>' : '<small>{{Aucun passage.}}</small>'))
+    }).join('') + (PL.passages.length ? '<p><small>{{Fois où un trajet relevé (ci-dessous) passe par là, dans chaque sens, même si la pièce traversée est restée éteinte.}}</small></p>' : '<small>{{Aucun passage.}}</small>')
+      + (function () { var seules = PL.pieces.filter(function (p) { return !PL.passages.some(function (x) { return x.a == p.id || x.b == p.id }) }).map(function (p) { return esc(p.nom) })
+        return seules.length ? '<p class="text-warning"><small>{{Sans aucun passage (aucun trajet ne peut y mener) :}} ' + seules.join(', ') + '</small></p>' : '' })()
+      + (H && H.trajets && H.trajets.length ? '<p><b>{{Trajets}}</b> <small>({{une pièce s’éteint, une pièce reliée s’allume dans les 3 min ; en italique, allumée moins de 3 min en passant}})</small></p>'
+        + H.trajets.map(function (x) { return '<div><small>' + x.ch.map(function (n, i) { return i && i < x.ch.length - 1 ? '<i>' + esc(n) + '</i>' : esc(n) }).join(' → ') + ' : ' + esc(x.n) + ' {{fois}}, {{vers}} ' + esc(hm(x.h * 60)) + '</small></div>' }).join('') : '')
+      + (H && H.ordre && H.ordre.length ? '<p><b>{{Ordre d’allumage du soir}}</b> <small>({{rang habituel ; part des soirs où la pièce s’allume la première}})</small></p>'
+        + H.ordre.map(function (x) { return '<div><small>' + esc(x.rang) + '. ' + esc(x.nom) + ' — ' + esc(x.premiere) + ' % {{la 1re}} (' + esc(x.soirs) + ' {{soirs}})</small></div>' }).join('') : ''))
     $('#ph_zones').html(PL.zones.map(function (o, i) { return o.e == ET ? '<div>' + ico('zones', i, 'choisir', '{{Choisir}}') + ico('zones', i, 'suppr', '{{Supprimer}}') + ' {{Zone}} ' + (i + 1) + '</div>' : '' }).join('') || '<small>{{Aucune zone sur cet étage.}}</small>')
     var ob = objets(), opt = PL.etages.map(function (e) {
       var l = PL.pieces.filter(function (p) { return p.e == e.id })

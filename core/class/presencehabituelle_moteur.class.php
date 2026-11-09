@@ -62,6 +62,7 @@ class presencehabituelle_moteur {
         if ($l) $s['scenes'][] = [$l, $pc];
       }
       $s['soleil'] = $g['soleil'] ?? [];
+      $s['suites'] = $g['suites'] ?? []; $s['departs'] = (int)($g['departs'] ?? 0);
       $r[$g['nom']] = $s;
     }
     return $r;
@@ -179,7 +180,7 @@ class presencehabituelle_moteur {
      $C = {t, m (minute du jour), k (S|W), pk (pénombre), sources, max (présences simultanées), sansJour [noms], regles}.
      → [état, décisions [{g|v, nom, ids, action: on|off|ouvrir|fermer, src, p, motif}]] */
   public static function pas(array $E, array $C, callable $r) {
-    $t = $C['t']; $m = $C['m']; $k = $C['k']; $J = $E['jour']; $dec = [];
+    $t = $C['t']; $m = $C['m']; $k = $C['k']; $J = $E['jour']; $dec = []; $partis = [];
     $on = 0; foreach ($E['g'] ?? [] as $e) if (!empty($e['on'])) $on++;
     foreach ($C['sources'] as $nom => $s) {
       $e = ($E['g'][$nom] ?? []) + ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => 0];
@@ -192,6 +193,7 @@ class presencehabituelle_moteur {
       if ($e['on']) {
         $fin = !$ok ? 'plage' : (!empty($e['ec']) ? 'eclair' : ($v <= 0 && empty($J['ex']) ? 'jamais' : ($t >= $e['fin'] && $r() >= 1 - pow(1 - $p, self::GAP / 60) ? 'fin' : null))); // heure où la pièce n'a jamais été allumée : éteinte, même au milieu d'une longue durée tirée (une cuisine allumée toute la journée ne file pas jusqu'à 3 h), sauf un jour d'exception
         if ($t >= $e['fin'] && !$fin) $e['fin'] = $t + 60 * self::duree($s, $r); // prolongée
+        if ($fin == 'fin') $partis[] = $nom;
         if ($fin) { $dec[] = $d + ['ids' => $e['l'], 'action' => 'off', 'motif' => $fin]; $e = ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => $t + 60 * (10 + 30 * $r()), 'vis' => 0, 'off' => $t, 'lo' => $e['l']]; $on--; }
       } elseif ($ok && $p > 0 && $t >= $e['pause'] && $on < $C['max'] && $r() < 1 - pow(1 - min(1, $p * ($s['cf'] ?? 1)), self::PAS / 60)) {
         $du = self::duree($s, $r);
@@ -199,6 +201,22 @@ class presencehabituelle_moteur {
         $dec[] = $d + ['ids' => $e['l'], 'action' => 'on', 'motif' => 'tirage'];
       }
       $E['g'][$nom] = $e;
+    }
+    foreach ($partis as $de) { // trajet : une pièce éteinte d'elle-même, la suite tirée parmi les trajets relevés (analyse trajets())
+      $s = $C['sources'][$de];
+      if (empty($s['suites']) || $r() >= min(1, array_sum(array_column($s['suites'], 1)) / max(1, $s['departs'] ?? 0))) continue; // part des départs suivis d'un trajet
+      $x = $r() * array_sum(array_column($s['suites'], 1)); $ch = end($s['suites'])[0];
+      foreach ($s['suites'] as [$c, $n]) if (($x -= $n) < 0) { $ch = $c; break; }
+      foreach ($ch as $i => $nom) {
+        $sv = $C['sources'][$nom] ?? null; $e = ($E['g'][$nom] ?? []) + ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => 0, 'vis' => 0];
+        if (!$sv || (string)$nom === (string)$de || $e['on'] || $e['vis'] > $t || $on >= $C['max'] || $sv['src'][$k] == 'jamais' || !self::permis($sv['plages'], $k, $m, !empty($J['ex']))) break; // chemin coupé : on s'arrête là
+        $pk = in_array(mb_strtolower((string)$nom), $C['sansJour'], true) ? 1 : $C['pk'];
+        $der = $i == count($ch) - 1;
+        if ($pk <= 0 || ($der && self::profilSoleil($sv, $k, $m - $J['dec'], $J) <= 0)) break; // de jour, ou à une heure où la pièce n'est jamais allumée
+        $du = $der ? self::duree($sv, $r) : 0; // en chemin : passage lumineux, éteint au passage suivant
+        $E['g'][$nom] = ['on' => 1, 'fin' => $t + 60 * $du, 'l' => self::lampes($sv, $r), 'pause' => 0, 'vis' => 0] + ($du ? [] : ['ec' => 1]); $on++;
+        $dec[] = ['g' => 1, 'nom' => $nom, 'src' => $sv['src'][$k], 'p' => 1, 'ids' => $E['g'][$nom]['l'], 'action' => 'on', 'motif' => 'trajet'];
+      }
     }
     foreach ($E['g'] ?? [] as $nom => $e) if (!isset($C['sources'][$nom])) { // pièce sortie des sources (commande décochée, Guide) : éteinte, oubliée
       if (!empty($e['on'])) $dec[] = ['g' => 1, 'nom' => $nom, 'ids' => $e['l'], 'action' => 'off', 'src' => '', 'p' => 0, 'motif' => 'disparu'];

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17
+- Passages : pris dans les deux sens, et un chemin peut en enchaîner jusqu'à 3, à travers des pièces restées éteintes. Les « enchaînements » (pièce voisine directe seulement) deviennent des **trajets** : une pièce s'éteint, une pièce reliée s'allume dans les 3 min ; une pièce allumée moins de 3 min en passant (passage lumineux) prolonge le trajet. Onglet Plan : trajets les plus fréquents, passages comptés dans chaque sens, ordre d'allumage du soir, pièces sans passage signalées.
+- Simulation : quand une pièce s'éteint d'elle-même, un trajet relevé est tiré (aussi souvent que dans les habitudes) : pièces traversées en passage lumineux, pièce d'arrivée allumée pour une durée habituelle ; jamais de jour, hors des règles du Guide, ni au-delà du nombre de pièces allumées en même temps. Le calage en tient compte.
+
 ## 0.16
 - Horloge ou soleil : pour chaque pièce, l'analyse mesure si l'allumage du soir suit le coucher du soleil ou l'horloge, et si l'extinction du matin suit le lever (une part de 0, l'horloge, à 1, le soleil ; entre les deux, un mélange). Il faut 10 jours au moins et un soleil qui a bougé (pas en juin). La simulation fait glisser ces heures avec la saison selon cette part ; l'heure du coucher et du lever des habitants reste à l'horloge. L'onglet Calage nomme les pièces qui suivent le soleil.
 

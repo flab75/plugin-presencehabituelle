@@ -643,7 +643,7 @@ class presencehabituelle extends eqLogic {
       if ($s['g'] === '' && $l['piece']) $s['g'] = "\1" . $l['piece']['nom']; // pièce du plan = groupe, sauf groupe saisi ; \1 : jamais confondue avec un groupe saisi de même nom
       $groupes[$s['g'] !== '' ? $s['g'] : "\0" . $id][] = (int)$id; // \0 : une lampe seule, jamais confondue avec un groupe saisi « #12 » ; un groupe « 12 » devient la clé entière 12 : (string) plus bas
     }
-    $res = ['date' => date('Y-m-d H:i:s'), 'groupes' => [], 'volets' => [], 'passages' => []]; $parPiece = []; $seG = []; $jrT = [];
+    $res = ['date' => date('Y-m-d H:i:s'), 'groupes' => [], 'volets' => [], 'passages' => []]; $parPiece = []; $seG = []; $jrT = []; $pg = [];
     foreach ($groupes as $g => $ids) {
       $iv = []; $debut = null; $exG = $excl; $noms = []; $bloq = [];
       foreach ($ids as $id) {
@@ -659,6 +659,7 @@ class presencehabituelle extends eqLogic {
       foreach ($noms as $id => $n) if ($dbl[$n] > 1) $noms[$id] = $n . ' #' . $id;
       $g = (string)$g; $seule = $g[0] === "\0" ? (int)substr($g, 1) : 0; $nom = $seule ? self::nom($seule) : ltrim($g, "\1");
       $pi = $g[0] === "\1"; // groupe d'une pièce du plan
+      foreach ($ids as $id) if (isset($piece[$id])) $pg[$piece[$id]] ??= $nom; // pièce du plan → groupe de ses lampes (trajets)
       if (!$iv) { $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'piece' => $pi, 'ids' => $ids, 'jours' => 0]; continue; }
       $parNom = []; foreach ($iv as $id => $i) $parNom[$noms[$id]] = $i;
       $j = $A::jours($debut, $fin, $exG); $se = $A::sessions($parNom); $p = $A::profil($se, $j);
@@ -685,11 +686,21 @@ class presencehabituelle extends eqLogic {
       }
       $res['volets'][] = ['nom' => $nom, 'id' => $id, 'groupe' => $s['g'], 'jours' => count($j)] + $v;
     }
-    $noms = array_column($plan['pieces'], 'nom', 'id'); // enchaînements par les passages du plan (lumières seulement)
-    $se = array_map(fn($p) => $A::sessions($p), $parPiece); // allumée tant qu'une de ses lampes l'est
-    $pa = array_map(fn($p) => [$p['a'], $p['b']], $plan['passages']);
-    foreach ($A::enchainements($se, $pa, $excl) as $i => [$a, $b, $ab, $ba])
-      $res['passages'][] = ['id' => $plan['passages'][$i]['id'], 'a' => $noms[$a], 'b' => $noms[$b], 't' => $plan['passages'][$i]['t'], 'ab' => $ab, 'ba' => $ba];
+    $se = array_map(fn($p) => $A::sessions($p), $parPiece); // pièce du plan allumée tant qu'une de ses lampes l'est
+    $T = $A::trajets($se, $A::chemins(array_map(fn($p) => [$p['a'], $p['b']], $plan['passages'])), $excl);
+    $nomP = array_column($plan['pieces'], 'nom', 'id');
+    foreach ($plan['passages'] as $o) $res['passages'][] = ['id' => $o['id'], 'a' => $nomP[$o['a']], 'b' => $nomP[$o['b']], 't' => $o['t'], 'ab' => $T['portes'][$o['a'] . '|' . $o['b']] ?? 0, 'ba' => $T['portes'][$o['b'] . '|' . $o['a']] ?? 0];
+    $res['trajets'] = []; $suites = [];
+    foreach (array_slice($T['trajets'], 0, 30) as $x) {
+      $res['trajets'][] = ['ch' => array_map(fn($p) => $nomP[$p], $x['ch']), 'n' => $x['n'], 'h' => $x['h']];
+      if ($x['n'] >= 2 && !array_diff_key(array_flip($x['ch']), $pg)) $suites[$pg[$x['ch'][0]]][] = [array_map(fn($p) => $pg[$p], array_slice($x['ch'], 1)), $x['n']]; // suite simulée : 2 fois au moins
+    }
+    $res['ordre'] = [];
+    foreach ($A::ordre($se, $A::jours($fin - self::CAL_SPAN * 86400, $fin, $excl)) as $p => $x) $res['ordre'][] = ['nom' => $nomP[$p]] + $x;
+    foreach ($res['groupes'] as $i => $g) if (isset($suites[$g['nom']])) { // départs : les extinctions de toutes les pièces du groupe
+      $dep = 0; foreach ($pg as $p => $n) if ($n === $g['nom']) $dep += $T['departs'][$p] ?? 0;
+      $res['groupes'][$i]['suites'] = $suites[$g['nom']]; $res['groupes'][$i]['departs'] = $dep;
+    }
     foreach (['groupes', 'volets'] as $t) { // même nom dans deux pièces : la pièce les départage (un groupe saisi garde son nom)
       $n = array_count_values(array_column($res[$t], 'nom'));
       foreach ($res[$t] as $i => $x) if ($n[$x['nom']] > 1) {
