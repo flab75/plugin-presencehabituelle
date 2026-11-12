@@ -239,6 +239,37 @@ class presencehabituelle_analyse {
     return $r;
   }
 
+  /* Après-midi, jour par jour : minutes où au moins une lampe est allumée entre 13 h et le coucher du soleil. Jour gris : on allume
+     plus tôt, donc plus ; c'est ce qui rend une simulation crédible, les totaux sur 28 jours ne le voient pas. (L'heure du 1er allumage
+     ne marche pas : une lampe de bureau ou de couloir allumée à 13 h la bloque à 13 h presque chaque jour.)
+     $sessions = [[début, fin]] qui ne se chevauchent pas (fusion()) → [Y-m-d => minutes] */
+  public static function apresMidi(array $sessions, array $jours, $lat, $lon) {
+    $r = [];
+    foreach ($jours as $j) {
+      $c = date_sun_info($j['a'] + 43200, $lat, $lon)['sunset'] ?? null;
+      if (!is_int($c)) continue;
+      $h13 = $j['a'] + 46800; $n = 0; // ponytail: 13 h à l'heure près les jours de changement d'heure
+      foreach ($sessions as [$a, $b]) $n += max(0, min($b, $c) - max($a, $h13));
+      $r[$j['d']] = (int)round($n / 60);
+    }
+    return $r;
+  }
+  /* Série [Y-m-d => valeur] moins sa médiane glissante (±$w jours) : reste ce qui change d'un jour à l'autre (jour gris),
+     sans la saison ni le changement d'heure, qui feraient se ressembler n'importe quelles séries d'une même période */
+  public static function tendance(array $s, $w = 3) {
+    ksort($s); $k = array_keys($s); $v = array_values($s); $r = [];
+    foreach ($k as $i => $d) { $a = max(0, $i - $w); $r[$d] = $v[$i] - self::quantile(array_slice($v, $a, $i + $w + 1 - $a), .5); }
+    return $r;
+  }
+  // Corrélation de Pearson de deux séries [clé => valeur] sur leurs clés communes ; null sous 5 points ou sans variation
+  public static function correlation(array $x, array $y) {
+    $k = array_keys(array_intersect_key($x, $y)); $n = count($k);
+    if ($n < 5) return null;
+    $mx = array_sum(array_map(fn($i) => $x[$i], $k)) / $n; $my = array_sum(array_map(fn($i) => $y[$i], $k)) / $n; $sxy = 0; $sxx = 0; $syy = 0;
+    foreach ($k as $i) { $sxy += ($x[$i] - $mx) * ($y[$i] - $my); $sxx += ($x[$i] - $mx) ** 2; $syy += ($y[$i] - $my) ** 2; }
+    return $sxx && $syy ? round($sxy / sqrt($sxx * $syy), 2) : null;
+  }
+
   public static function lisser(array $p) {
     $r = [];
     for ($h = 0; $h < 24; $h++) $r[$h] = $p[$h] ? min($p[$h] < 100 ? 99 : 100, (int)round(($p[($h + 23) % 24] + 2 * $p[$h] + $p[($h + 1) % 24]) / 4)) : 0; // 100 seulement si vraiment toujours

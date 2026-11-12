@@ -119,10 +119,35 @@ class presencehabituelle_moteur {
     return [$coef, $v];
   }
 
-  /* Pénombre k de 0 (plein jour) à 1 (nuit) : capteur de luminosité si lu (entre $bas et $haut lux),
-     sinon le soleil ($sun = date_sun_info) : 1 avant l'aube civile (−6°), 0 une fois le soleil aussi haut qu'elle est basse, idem le soir */
+  const LUX_AGE = 7200; // s : capteur muet plus longtemps = source suivante (secours, puis soleil) ; 2 h : certains capteurs Zigbee n'envoient qu'un relevé par heure
+  const LUX_NUIT = 43200; // s : muet sur une mesure de nuit (≤ bas) : un capteur qui n'envoie qu'aux changements reste valable 12 h
+  /* Capteurs de luminosité par ordre de préférence. $m[i] = ['v' => lux ou null, 'age' => s depuis la dernière mesure,
+     'lampe' => true si la lampe qui fausse la mesure est allumée, 'bas', 'haut'] ; $L = valeurs lissées du passage d'avant.
+     Chaque source est lissée (~40 min, un nuage ne rallume pas la maison) ; lampe allumée : mesure faussée, source suivante
+     (le lissage d'avant est gardé pour l'extinction).
+     $nuit : le soleil dit nuit ou pénombre ; sinon pas de délai de nuit (un capteur gelé sur 0 lux la nuit forcerait la nuit le matin :
+     un capteur qui n'envoie qu'aux changements en envoie forcément un à l'aube).
+     Rend [[lux ou null, bas, haut, n° de la source utilisée (0 = soleil)], $L]. */
+  public static function lumiere(array $m, array $L, $nuit = true) {
+    $r = [null, 350, 1000, 0];
+    foreach (array_values($m) as $i => $x) {
+      if ($x['v'] === null || $x['age'] > ($x['v'] <= $x['bas'] && $nuit ? self::LUX_NUIT : self::LUX_AGE)) { unset($L[$i]); continue; } // muet : lissage repris de zéro à son retour
+      if (!empty($x['lampe'])) continue; // pas de valeur gelée : elle entretiendrait la nuit tant que la simulation laisse la lampe allumée
+      $L[$i] = isset($L[$i]) ? .88 * $L[$i] + .12 * (float)$x['v'] : (float)$x['v'];
+      if ($r[3] === 0) $r = [$L[$i], $x['bas'], $x['haut'], $i + 1];
+    }
+    return [$r, $L];
+  }
+
+  /* Pénombre k de 0 (plein jour) à 1 (nuit). Soleil ($sun = date_sun_info) : 1 avant l'aube civile (−6°), 0 une fois le soleil aussi haut
+     qu'elle est basse, idem le soir. Capteur lu (entre $bas et $haut lux) : le plus sombre des deux. Le capteur ne fait qu'avancer la
+     pénombre (jour gris) ; il ne peut pas faire le jour la nuit (capteur éclairé par une lampe, en panne). Un capteur trop sombre
+     (à l'ombre l'après-midi) avance toujours la pénombre : seuils plus bas. */
   public static function penombre($t, array $sun, $lux = null, $bas = 350, $haut = 1000) {
-    if ($lux !== null) return max(0, min(1, ($haut - $lux) / max(1, $haut - $bas)));
+    $k = self::penombreSoleil($t, $sun);
+    return $lux === null ? $k : max($k, min(1, ($haut - $lux) / max(1, $haut - $bas)));
+  }
+  private static function penombreSoleil($t, array $sun) {
     $a = $sun['civil_twilight_begin'] ?? null; $l = $sun['sunrise'] ?? null; $c = $sun['sunset'] ?? null; $z = $sun['civil_twilight_end'] ?? null;
     if (!is_int($a) || !is_int($l) || !is_int($c) || !is_int($z)) return 1; // nuit ou jour polaire : ponytail, la France n'en a pas
     if ($t <= $a || $t >= $z) return 1;

@@ -942,6 +942,25 @@ class presencehabituelle extends eqLogic {
     return $lat || $lon ? [$lat, $lon] : [46.6, 2.4]; // ponytail: coordonnées absentes de la configuration de Jeedom, centre de la France
   }
   private static $ctx = null; // tendances lues une fois par appel (journée rejouée : 288 passages), oubliées à chaque analyse
+  /* Capteurs de luminosité configurés (1 = capteur, 2 = secours) : commande info, seuils, lampe qui fausse la mesure.
+     Rien n'est exécuté sauf la lecture de commandes info. */
+  public static function capteursLux() {
+    $id = fn($k) => (int)trim((string)config::byKey($k, __CLASS__, ''), '# ');
+    $info = fn($i) => $i && is_object($c = cmd::byId($i)) && $c->getType() == 'info' ? $c : null;
+    $m = [];
+    foreach (['lux', 'lux2'] as $p) {
+      if (!($c = $info($id($p . '_cmd')))) { $m[] = ['v' => null, 'age' => PHP_INT_MAX, 'lampe' => false, 'bas' => 350, 'haut' => 1000, 'id' => 0, 'lid' => 0, 'lnon' => false]; continue; } // place gardée : le secours reste n° 2
+      $bas = is_numeric($x = str_replace(',', '.', trim((string)config::byKey($p . '_bas', __CLASS__, '')))) ? max(0, (float)$x) : 350; // 0 permis : nuit noire seulement
+      $haut = is_numeric($x = str_replace(',', '.', trim((string)config::byKey($p . '_haut', __CLASS__, '')))) && (float)$x > 0 ? (float)$x : 1000;
+      if ($bas > $haut) [$bas, $haut] = [$haut, $bas]; // seuils saisis à l'envers
+      $quand = max((int)strtotime((string)$c->getCollectDate()), (int)strtotime((string)$c->getValueDate())); // valeur reçue, même inchangée
+      $l = $info($id($p . '_lampe'));
+      $m[] = ['v' => $c->getType() == 'info' && is_numeric($v = $c->execCmd()) ? (float)$v : null, 'age' => $quand ? time() - $quand : PHP_INT_MAX,
+        'lampe' => $l && $l->getType() == 'info' && (float)$l->execCmd() > 0, 'bas' => $bas, 'haut' => max($bas + 1, $haut),
+        'id' => $c->getId(), 'lid' => $l ? $l->getId() : 0, 'lnon' => $id($p . '_lampe') && !$l]; // id : rejeu ; lnon : lampe saisie mais pas une info
+    }
+    return $m;
+  }
   public static function contexte($t, array &$E, $capteur = true, ?array $coef = null) {
     $M = 'presencehabituelle_moteur'; $A = 'presencehabituelle_analyse'; $r = fn() => mt_rand() / (mt_getrandmax() + 1);
     $cache = &self::$ctx;
@@ -961,16 +980,14 @@ class presencehabituelle extends eqLogic {
       $mn = fn($x) => is_int($x) ? (int)date('G', $x) * 60 + (int)date('i', $x) : null;
       $E['jour'] = ['d' => $jd, 'lm' => $mn($sj['sunrise'] ?? null), 'cm' => $mn($sj['sunset'] ?? null)] + $M::jour($r) + ['volets' => $M::planVolets($cache['h']['volets'] ?? [], $cache['regles'], $A::cle($n, 8), $A::cle($n, 21), $mn($sj['sunrise'] ?? null) ?? 480, $mn($sj['sunset'] ?? null) ?? 1200, $r, self::FIABLE)];
     }
-    $lux = null;
-    if ($capteur && ($lc = (int)trim((string)config::byKey('lux_cmd', __CLASS__, ''), '# ')) && is_object($c = cmd::byId($lc)) && $c->getType() == 'info' && is_numeric($v = $c->execCmd())) {
-      $E['lux'] = isset($E['lux']) ? .88 * $E['lux'] + .12 * (float)$v : (float)$v; $lux = $E['lux']; // lissé : un nuage ne rallume pas la maison
+    [$lux, $bas, $haut] = [null, 350, 1000]; $sun = date_sun_info(strtotime(date('Y-m-d', $t) . ' 12:00'), $lat, $lon);
+    if ($capteur && ($m = is_array($capteur) ? $capteur : self::capteursLux())) { // capteur, puis secours ; aucun frais : soleil seul (tableau : mesures rejouées)
+      [[$lux, $bas, $haut], $E['lux']] = $M::lumiere($m, is_array($E['lux'] ?? null) ? $E['lux'] : [], $M::penombre($t, $sun) > 0); // avant la 0.20 : un seul nombre
     }
-    $bas = is_numeric($x = str_replace(',', '.', trim((string)config::byKey('lux_bas', __CLASS__, '')))) ? max(0, (float)$x) : 350; // 0 permis : nuit noire seulement
-    $haut = (float)config::byKey('lux_haut', __CLASS__, 1000) ?: 1000;
     $max = self::presencesMax($cache['h']);
     $sans = array_values(array_filter(array_map(fn($x) => mb_strtolower(trim($x)), explode(',', (string)config::byKey('sans_jour', __CLASS__, ''))), 'strlen')); // sans tenir compte de la casse
     return ['t' => $t, 'm' => (int)date('G', $t) * 60 + (int)date('i', $t), 'k' => $A::cle((int)date('N', $t), (int)date('G', $t), (int)date('i', $t)),
-      'pk' => $M::penombre($t, date_sun_info(strtotime(date('Y-m-d', $t) . ' 12:00'), $lat, $lon), $lux, $bas, max($bas + 1, $haut)),
+      'pk' => $M::penombre($t, $sun, $lux, $bas, max($bas + 1, $haut)),
       'sources' => $cache['cal'][$ck], 'max' => $max, 'sansJour' => $sans, 'regles' => $cache['regles']];
   }
   // État réel des lampes (infos seulement) : [id => allumée]
@@ -1046,11 +1063,20 @@ class presencehabituelle extends eqLogic {
     $o[] = ''; $o[] = 'Commandes suivies (' . array_sum($k) . ', relevés sur ' . round($jours) . ' j) : type · plugin · type générique · sous-type · valeurs · actions trouvées';
     foreach ($k as $cle => $n) $o[] = "  {$n} × {$cle}";
     // fichier lu tel quel : le rapport ne lance pas d'analyse
-    $h = is_file(self::fichier()) ? (json_decode((string)file_get_contents(self::fichier()), true) ?: []) : []; $p = self::plan(); $lux = (int)trim((string)config::byKey('lux_cmd', __CLASS__, ''), '# ');
+    $h = is_file(self::fichier()) ? (json_decode((string)file_get_contents(self::fichier()), true) ?: []) : []; $p = self::plan();
     $o[] = ''; $o[] = 'Groupes (pièces) : ' . count($h['groupes'] ?? []) . ' · volets : ' . count($h['volets'] ?? []) . ' · détecteurs : ' . count(self::cfg('detecteurs'))
       . ' · plan : ' . count($p['etages'] ?? []) . ' étage(s), ' . count($p['pieces'] ?? []) . ' pièce(s), ' . count($p['passages'] ?? []) . ' passage(s)';
-    $o[] = 'Capteur de luminosité : ' . ($lux && is_object($c = cmd::byId($lux)) && is_object($c->getEqLogic()) && $c->getType() == 'info' ? $c->getEqLogic()->getEqType_name() . ' ' . $c->getSubType() . ' = ' . $c->execCmd() : 'non (soleil seul)')
-      . ' · commande d\'absence : ' . ((int)config::byKey('exclure_cmd', __CLASS__, 0) ? 'oui' : 'non') . ' · pièces en même temps : ' . self::presencesMax($h)
+    $ml = self::capteursLux();
+    $cl = function ($p, $x) { // capteur de luminosité : plugin, valeur, seuils utilisés, fraîcheur ; jamais son nom
+      $i = (int)trim((string)config::byKey($p . '_cmd', __CLASS__, ''), '# ');
+      if (!$i) return 'non';
+      if (!is_object($c = cmd::byId($i)) || !is_object($c->getEqLogic()) || $c->getType() != 'info') return 'commande introuvable ou pas info';
+      return $c->getEqLogic()->getEqType_name() . ' ' . $c->getSubType() . ' = ' . ($x['v'] ?? '?') . ' (seuils ' . $x['bas'] . ' / ' . $x['haut']
+        . ', mesure il y a ' . ($x['age'] < PHP_INT_MAX ? round($x['age'] / 60) . ' min' : '?') . ($x['lid'] ? ', lampe écartée' . ($x['lampe'] ? ' (allumée)' : '') : '') . ($x['lnon'] ? ', lampe : pas une info' : '') . ')';
+    };
+    $E = self::cfg('moteur');
+    $o[] = 'Capteur de luminosité : ' . $cl('lux', $ml[0]) . ' · secours : ' . $cl('lux2', $ml[1]) . ' · pénombre maintenant : soleil' . ['', ' et capteur (le plus sombre)', ' et secours (le plus sombre)'][presencehabituelle_moteur::lumiere($ml, is_array($E['lux'] ?? null) ? $E['lux'] : [], presencehabituelle_moteur::penombre(time(), date_sun_info(strtotime('today 12:00'), ...self::lieu())) > 0)[0][3]];
+    $o[] = 'Commande d\'absence : ' . ((int)config::byKey('exclure_cmd', __CLASS__, 0) ? 'oui' : 'non') . ' · pièces en même temps : ' . self::presencesMax($h)
       . ' · envoi réel : ' . (self::blanc() ? 'non (à blanc)' : 'OUI') . ' · recalage : ' . (self::recalage() ? 'oui' : 'non');
     $c = self::calage(); $ok = count(array_filter($c['table'], fn($x) => !empty($x['ok'])));
     $o[] = ''; $o[] = 'Calage : ' . $c['etat'] . ', ' . $c['tours'] . ' tour(s), ' . $ok . ' / ' . count($c['table']) . ' pièces dans les tolérances' . (!empty($c['hors']) ? ' · hors calage (éclair) : ' . count($c['hors']) : '');
@@ -1139,18 +1165,33 @@ class presencehabituelle extends eqLogic {
   // Jours ['d' => Y-m-d] → jours de jours() (00:00 → 00:00)
   private static function joursDe(array $d) { return array_map(fn($x) => ['d' => $x, 'a' => strtotime($x), 'b' => strtotime($x . ' +1 day'), 'n' => (int)date('N', strtotime($x))], $d); }
   /* Rejeu en mémoire (rien n'est envoyé ni gardé) sur les jours du recalage, soleil de ces jours, coefficients $coef.
-     → [{nom: bilan()}, {id volet: {f, o}}] (heures médianes en minutes, jours de semaine) */
-  public static function rejeu(array $coef) {
+     → [{nom: bilan()}, {id volet: {f, o}}, {nom: [[début, fin]]}] (heures médianes en minutes, jours de semaine) */
+  // $lux : avec les capteurs de luminosité tels que leur historique les a mesurés (sinon le soleil seul)
+  public static function rejeu(array $coef, $lux = false) {
     $M = 'presencehabituelle_moteur'; $A = 'presencehabituelle_analyse';
     $h = self::habitudes(); $d = [];
     foreach ($h['groupes'] ?? [] as $g) foreach ($g['jr'] ?? [] as $x) $d[$x] = 1;
-    if (!$d) return [[], []];
+    if (!$d) return [[], [], []];
     ksort($d); $d = array_keys($d);
     $t0 = strtotime($d[0]) - 3600; $t1 = strtotime(end($d) . ' +1 day'); // une heure avant : la soirée de la veille démarre
+    $gab = $lux ? self::capteursLux() : []; $hs = []; $ix = []; // historique [[t, valeur]] de chaque capteur et de sa lampe
+    foreach ($gab as $x) foreach ([$x['id'], $x['lid']] as $id) if ($id && !isset($hs[$id])) {
+      $hs[$id] = []; $ix[$id] = -1;
+      foreach (history::all($id, date('Y-m-d H:i:s', $t0 - 86400), date('Y-m-d H:i:s', $t1)) as $p) if (is_numeric($p->getValue())) $hs[$id][] = [strtotime($p->getDatetime()), (float)$p->getValue()];
+    }
+    $at = function ($id, $t) use ($hs, &$ix) { // dernier point avant $t (le temps ne fait qu'avancer)
+      if (!$id || !isset($hs[$id])) return null;
+      while ($ix[$id] + 1 < count($hs[$id]) && $hs[$id][$ix[$id] + 1][0] <= $t) $ix[$id]++;
+      return $ix[$id] < 0 ? null : $hs[$id][$ix[$id]];
+    };
     mt_srand(1414); // même aléa à chaque tour : seul le coefficient change le résultat
     $E = []; $on = []; $se = []; $vo = [];
     try { for ($t = $t0; $t < $t1; $t += 60 * $M::PAS) {
-      $C = self::contexte($t, $E, false, $coef);
+      $cap = false;
+      if ($gab) { $cap = []; foreach ($gab as $x) { $p = $at($x['id'], $t); $l = $at($x['lid'], $t);
+        // ponytail: l'historique archivé est moyenné par heure (un point toutes les 60 min) : 1 h de tolérance sur l'âge, un capteur muet est vu 1 h plus tard qu'en vrai
+        $cap[] = ['v' => $p ? $p[1] : null, 'age' => $p ? max(0, $t - $p[0] - 3600) : PHP_INT_MAX, 'lampe' => $l && $l[1] > 0] + $x; } }
+      $C = self::contexte($t, $E, $cap, $coef);
       [$E, $dec] = $M::pas($E, $C, fn() => mt_rand() / (mt_getrandmax() + 1));
       foreach ($dec as $x) {
         if (isset($x['v'])) { $jd = $E['jour']['d']; $n = (int)date('N', strtotime($jd)); $mn = $A::minutes($t, $jd); // journée 04:00 → 04:00 comme analyser : +1440 après minuit
@@ -1164,7 +1205,43 @@ class presencehabituelle extends eqLogic {
     foreach ($on as $nom => $a) $se[$nom][] = [$a, $t1];
     $P = []; foreach ($h['groupes'] ?? [] as $g) if (!empty($g['jr'])) $P[$g['nom']] = $A::bilan($se[$g['nom']] ?? [], self::joursDe($g['jr']));
     $V = []; foreach ($vo as $id => $x) $V[$id] = array_map(fn($l) => $A::quantile($l, .5), $x);
-    return [$P, $V];
+    return [$P, $V, $se]; // $se : sessions simulées par pièce (contrôle jour par jour de comparerLux)
+  }
+  /* Simulation rejouée avec et sans capteur de luminosité, même aléa : ce que le capteur change, pièce par pièce.
+     Chaque source est recalée à part (CAL_TOURS tours au plus, rien n'est gardé) : les réglages trouvés avec le soleil avantageraient le soleil.
+     Puis jour par jour : l'éclairage de l'après-midi simulé (pièces comparées, sauf celles allumées même de jour) suit-il le réel, plus long les jours gris ?
+     r = corrélation avec le réel une fois la saison retirée (tendance), e = écart médian (min), n = jours, sur les jours du recalage communs à ces pièces. */
+  public static function comparerLux() {
+    $A = 'presencehabituelle_analyse';
+    if (!array_filter(self::capteursLux(), fn($x) => $x['id'])) return ['note' => __('Aucun capteur de luminosité configuré', __FILE__)];
+    $R = self::reels('reel', self::CAL_MIN);
+    if (!$R) return ['note' => __('Pas encore assez de jours relevés', __FILE__)];
+    $coef = self::recalage() ? (self::calage()['coef'] ?? []) : []; $tol = self::tolerances(); $t = [];
+    $tours = []; $jr = null; $iv = []; $soirs = []; $S = [];
+    $sans = array_map(fn($x) => mb_strtolower(trim($x)), explode(',', (string)config::byKey('sans_jour', __CLASS__, '')));
+    $max = 3600 * (($h = (float)config::byKey('session_max', __CLASS__, 18)) > 0 ? max(1, $h) : 18); // comme analyser()
+    foreach (self::habitudes()['groupes'] ?? [] as $g) if (isset($R[$g['nom']]) && !in_array(mb_strtolower($g['nom']), $sans, true)) { // allumée même de jour : pas un allumage du soir
+      $S[$g['nom']] = 1; $jr = $jr === null ? ($g['jr'] ?? []) : array_values(array_intersect($jr, $g['jr'] ?? [])); // jours comptés pour toutes ces pièces (extinction manquée : exclu)
+      foreach ($g['lids'] ?? $g['ids'] ?? [] as $id) foreach ($A::longues($A::intervalles(self::evs($id), time()), $max, time())[0] as $x) $iv[] = $x;
+    }
+    sort($jr); $J = self::joursDe($jr ?? []); [$lat, $lon] = self::lieu();
+    $reel = $A::apresMidi($A::fusion($iv), $J, $lat, $lon);
+    foreach (['soleil' => false, 'capteur' => true] as $k => $lux) {
+      $c = array_intersect_key($coef, $R);
+      for ($i = 1; $i <= self::CAL_TOURS; $i++) {
+        [$P, , $se] = self::rejeu($c, $lux);
+        [$c2, $v] = presencehabituelle_moteur::ajuster($R, $P, $c, $tol);
+        if (!array_filter($v, fn($x) => !$x['ok'] && !$x['borne'])) break;
+        $c = $c2;
+      }
+      $tours[$k] = min($i, self::CAL_TOURS);
+      $sim = $A::apresMidi($A::fusion(array_merge([], ...array_values(array_intersect_key($se, $S)))), $J, $lat, $lon);
+      $e = array_map(fn($d) => abs($sim[$d] - $reel[$d]), array_keys(array_intersect_key($sim, $reel)));
+      $soirs[$k] = ['r' => $A::correlation($A::tendance(array_intersect_key($sim, $reel)), $A::tendance(array_intersect_key($reel, $sim))), 'e' => $e ? (int)round($A::quantile($e, .5)) : null, 'n' => count($e)]; // ponytail: une semaine grise entière tombe en partie dans la tendance ; fenêtre plus large si ça cache trop
+      foreach ($v as $nom => $x) $t[$nom][$k] = ['ok' => $x['ok'], 'eh' => $x['eh'], 'en' => $x['en'], 'h' => $P[$nom]['h'], 'n' => $P[$nom]['n']];
+    }
+    foreach ($t as $nom => $x) $t[$nom]['r'] = ['h' => $R[$nom]['h'], 'n' => $R[$nom]['n'], 'j' => $R[$nom]['j'] ?? null];
+    return ['table' => $t, 'tol' => $tol, 'tours' => $tours, 'soirs' => $soirs, 'jours' => count($reel)];
   }
   // Pièces allumées en même temps, au plus : la configuration, sinon ce que l'analyse a relevé (habitudes['presences']), sinon 3
   public static function presencesMax(array $h) {

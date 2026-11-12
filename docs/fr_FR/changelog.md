@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20
+- **Pénombre = la plus sombre du soleil et du capteur** : le capteur ne fait qu'avancer la pénombre les jours gris, le soleil garde la nuit (avant : le capteur remplaçait le soleil, et un capteur éclairé la nuit pouvait faire le jour). Un capteur trop sombre (à l'ombre l'après-midi) avance la pénombre tous les jours : baisser ses seuils. Un capteur muet sur une mesure de nuit n'est plus gardé une fois le jour levé.
+- Capteur de luminosité de **secours** : pris quand le premier n'a rien mesuré depuis 2 h (12 h sur une mesure de nuit) ; sans capteur frais, retour au soleil (avant : la dernière valeur d'un capteur muet servait indéfiniment). Seuils propres à chaque capteur (un capteur intérieur en demande de plus bas).
+- Pour chaque capteur, une **lampe** facultative qui l'éclaire : tant qu'elle est allumée, le capteur est laissé de côté.
+- Rapport de test : les deux capteurs, leurs seuils, l'âge de leur mesure et la source utilisée maintenant.
+- Onglet Calage : **Comparer avec et sans capteur** rejoue les mêmes jours avec le soleil seul, puis avec l'historique du capteur, et compare chacun au réel pièce par pièce, puis **jour par jour** : l'éclairage simulé de l'après-midi suit-il le réel (plus long les jours gris) ? Corrélation une fois la saison retirée, pièces allumées même de jour à part.
+
 ## 0.19
 - Bouton **Rapport de test** : un texte à coller sur le forum pour les essais (versions, sortes de commandes suivies et commandes d'action trouvées, calage), sans nom d'équipement ni heure. Rien n'est envoyé.
 - Textes de la page à jour : la simulation existe (à blanc par défaut), le nombre de pièces allumées en même temps est relevé dans vos habitudes (README).

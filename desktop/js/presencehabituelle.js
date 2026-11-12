@@ -1078,6 +1078,29 @@
       + '</tbody></table><p><small>{{Heures médianes. Les volets suivent déjà leurs tendances : affichés pour contrôle, sans réglage.}}</small></p>' : '<p>{{Aucun volet suivi.}}</p>')
   }
   function calCharger() { ajax('calage', {}, calage) }
+  $('#ph_cal_lux').on('click', function () {
+    var b = $(this); if (b.hasClass('disabled')) return
+    b.addClass('disabled'); $('#ph_cal_luxt').html('<i class="fas fa-spinner fa-spin"></i> {{Deux calages en mémoire, une ou deux minutes…}}')
+    ajax('comparer_lux', {}, function (r) {
+      b.removeClass('disabled')
+      if (r.note) return $('#ph_cal_luxt').html('<p>' + esc(r.note) + '</p>')
+      var pc = function (x) { return (x > 0 ? '+' : '') + Math.round(x * 100) + ' %' }, nb = function (x) { return String(Math.round(x * 10) / 10).replace('.', ',') }
+      var col = function (x, t) { return Math.abs(x) <= t ? 'success' : Math.abs(x) <= 2 * t ? 'warning' : 'danger' }
+      var n = Object.keys(r.table).sort(function (a, b) { return nomG(a).localeCompare(nomG(b)) }), ok = { soleil: 0, capteur: 0 }
+      var cel = function (s) { return '<td>' + nb(s.h) + ' <span class="label label-' + col(s.eh, r.tol[0]) + '">' + pc(s.eh) + '</span></td><td>' + nb(s.n) + ' <span class="label label-' + col(s.en, r.tol[1]) + '">' + pc(s.en) + '</span></td>' }
+      var h = '<table class="table table-condensed"><thead><tr><th rowspan="2">{{Pièce}}</th><th colspan="2">{{Réel}}</th><th colspan="2">{{Soleil seul}}</th><th colspan="2">{{Avec capteur}}</th></tr>'
+        + '<tr><th>{{h / jour}}</th><th>{{allumages}}</th><th>{{h / jour}}</th><th>{{allumages}}</th><th>{{h / jour}}</th><th>{{allumages}}</th></tr></thead><tbody>'
+      n.forEach(function (k) {
+        var x = r.table[k]; if (!x.soleil || !x.capteur) return
+        ok.soleil += x.soleil.ok ? 1 : 0; ok.capteur += x.capteur.ok ? 1 : 0
+        h += '<tr><td>' + esc(nomG(k)) + '</td><td>' + nb(x.r.h) + '</td><td>' + nb(x.r.n) + '</td>' + cel(x.soleil) + cel(x.capteur) + '</tr>'
+      })
+      var so = function (s) { return s && s.r !== null ? '<b>' + String(s.r).replace('.', ',') + '</b> ({{écart médian}} ' + s.e + ' min, ' + s.n + ' {{jours}})' : '–' }
+      $('#ph_cal_luxt').html('<p>{{Pièces dans les tolérances}} : {{soleil seul}} <b>' + ok.soleil + '</b>, {{avec capteur}} <b>' + ok.capteur + '</b> / ' + n.length + '.</p>'
+        + '<p title="{{Chaque jour, les minutes où une lampe au moins est allumée entre 13 h et le coucher du soleil, simulées puis réelles, saison retirée. Les jours gris, on allume plus tôt, donc plus : une simulation crédible le fait aussi. 1 = suit le réel jour par jour, 0 = sans rapport ; sous 0,3 d’écart entre les deux, rien n’est prouvé.}}">{{Éclairage de l’après-midi, jour par jour}} : {{soleil seul}} ' + so(r.soirs && r.soirs.soleil) + ', {{avec capteur}} ' + so(r.soirs && r.soirs.capteur) + '.</p>' + h
+        + '</tbody></table><p><small>{{Écarts au réel. Chaque source est recalée à part (tours}} : {{soleil}} ' + r.tours.soleil + ', {{capteur}} ' + r.tours.capteur + ' ; {{rien n’est gardé).}}</small></p>')
+    }, function () { b.removeClass('disabled'); $('#ph_cal_luxt').html('') })
+  })
   $('a[href="#ph_cal"]').on('shown.bs.tab', calCharger)
   $('#ph_cal_maj').on('click', calCharger)
   $('#ph_cal_relancer, #ph_cal_origine').on('click', function () {

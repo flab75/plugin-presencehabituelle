@@ -118,6 +118,10 @@ sendVarToJS('eqType', $plugin->getId());
 			</div>
 			<div id="ph_cal_table"></div>
 			<legend style="font-size:1.1em">{{Volets (jours de semaine)}}</legend><div id="ph_cal_volets"></div>
+			<legend style="font-size:1.1em">{{Capteur de luminosité}}</legend>
+			<p>{{Les mêmes jours rejoués et recalés deux fois, avec le même aléa : avec le soleil seul, puis avec le capteur de luminosité (et son secours) tel que son historique l'a mesuré. Rien n'est envoyé ni gardé.}}
+				<a class="btn btn-sm btn-default" id="ph_cal_lux"><i class="fas fa-sun"></i> {{Comparer avec et sans capteur}}</a></p>
+			<div id="ph_cal_luxt"></div>
 		</div>
 		<div role="tabpanel" class="tab-pane" id="ph_sim" style="padding-top:10px">
 			<p>{{Pendant une absence, Simulation On allume et éteint les lampes suivies, ferme et ouvre les volets, pièce par pièce : d'après ses tendances quand elle a assez de jours comptés, sinon d'après des horaires provisoires de son type de pièce (cuisine, salon, chambre…). Les lampes ne s'allument qu'à la pénombre, les règles du Guide sont suivies. Une période On est exclue de l'analyse, comme une absence.}}</p>

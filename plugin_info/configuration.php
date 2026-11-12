@@ -65,11 +65,21 @@ if (!isConnect('admin')) {
     </div>
     <div class="form-group">
       <label class="col-md-4 control-label">{{Capteur de luminosité}}
-        <sup><i class="fas fa-question-circle tooltips" title="{{Facultatif. Une commande info de luminosité extérieure (lux) : les lampes ne s'allument qu'à la pénombre, entre les deux seuils. Vide : le lever et le coucher du soleil (coordonnées de la configuration de Jeedom).}}"></i></sup>
+        <sup><i class="fas fa-question-circle tooltips" title="{{Facultatif. Une commande info de luminosité, de préférence extérieure (lux) : il avance la pénombre les jours gris (pénombre = la plus sombre du soleil et du capteur, entre les deux seuils). Muet depuis plus de 2 h (12 h sur une mesure de nuit, tant que le soleil n'est pas levé) : le secours, puis le soleil. Vide : le lever et le coucher du soleil (coordonnées de la configuration de Jeedom). Lampe : l'état (commande info) d'une lampe qui éclaire le capteur ; tant qu'elle est allumée, le capteur est laissé de côté (secours, puis soleil).}}"></i></sup>
       </label>
       <div class="col-md-2"><input class="configKey form-control" data-l1key="lux_cmd" placeholder="{{id de la commande (ou #id#)}}"></div>
       <div class="col-md-2"><input class="configKey form-control" data-l1key="lux_bas" placeholder="{{nuit sous 350 lux}}"></div>
       <div class="col-md-2"><input class="configKey form-control" data-l1key="lux_haut" placeholder="{{jour au-dessus de 1000 lux}}"></div>
+      <div class="col-md-2"><input class="configKey form-control" data-l1key="lux_lampe" placeholder="{{état de la lampe (id info), facultatif}}"></div>
+    </div>
+    <div class="form-group">
+      <label class="col-md-4 control-label">{{Capteur de luminosité de secours}}
+        <sup><i class="fas fa-question-circle tooltips" title="{{Facultatif. Un second capteur, pris quand le premier ne mesure plus (pile, panne) ou que sa lampe est allumée. Un capteur intérieur reçoit moins de lumière : seuils plus bas (par exemple 50 et 120 lux).}}"></i></sup>
+      </label>
+      <div class="col-md-2"><input class="configKey form-control" data-l1key="lux2_cmd" placeholder="{{id de la commande (ou #id#)}}"></div>
+      <div class="col-md-2"><input class="configKey form-control" data-l1key="lux2_bas" placeholder="{{nuit sous 350 lux (intérieur : 50)}}"></div>
+      <div class="col-md-2"><input class="configKey form-control" data-l1key="lux2_haut" placeholder="{{jour au-dessus de 1000 lux (intérieur : 120)}}"></div>
+      <div class="col-md-2"><input class="configKey form-control" data-l1key="lux2_lampe" placeholder="{{état de la lampe (id info), facultatif}}"></div>
     </div>
     <div class="form-group">
       <label class="col-md-4 control-label">{{Pièces allumées même de jour}}

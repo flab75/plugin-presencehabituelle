@@ -201,7 +201,31 @@ $ok($src['Salon']['src'] == ['S' => 'hist', 'W' => 'prov'] && $src['Cuisine']['s
 $ok($M::sources([['nom' => 'X', 'ids' => [5], 'jours' => 20, 'nS' => 9, 'lS' => $prof]], [], [], 10)['X']['src']['S'] == 'prov' && $M::sources([['nom' => 'X', 'ids' => [5], 'jours' => 20, 'nS' => 10, 'lS' => $prof]], [], [], 10)['X']['src']['S'] == 'hist', 'provisoire → historique au seuil');
 $ok(!$M::permis([['k' => 'exclue', 'j' => 'S', 'de' => '23:00', 'a' => '06:00']], 'S', 60) && $M::permis([['k' => 'exclue', 'j' => 'S', 'de' => '23:00', 'a' => '06:00']], 'W', 60) && !$M::permis($rg[1]['plages'], 'S', 19 * 60) && $M::permis($rg[1]['plages'], 'S', 20 * 60), 'plages permises');
 $sun = date_sun_info($t('2026-03-02 12:00'), 48.85, 2.35);
-$ok($M::penombre($t('2026-03-02 13:00'), $sun) == 0 && $M::penombre($t('2026-03-02 23:00'), $sun) == 1 && $M::penombre(0, [], 200) == 1 && $M::penombre(0, [], 1200) == 0, 'pénombre');
+$ok($M::penombre($t('2026-03-02 13:00'), $sun) == 0 && $M::penombre($t('2026-03-02 23:00'), $sun) == 1 && $M::penombre($t('2026-03-02 13:00'), $sun, 200) == 1 && $M::penombre($t('2026-03-02 13:00'), $sun, 1200) == 0, 'pénombre');
+$ok($M::penombre($t('2026-03-02 23:00'), $sun, 5000) == 1 && $M::penombre($t('2026-03-02 13:00'), $sun, 675) == .5, 'pénombre : le capteur avance la nuit (jour gris), ne fait jamais le jour la nuit');
+$c2 = $sun['sunset']; $jj = [['d' => '2026-03-02', 'a' => $t('2026-03-02'), 'b' => $t('2026-03-03')]];
+$sv = $A::apresMidi([[$t('2026-03-02 09:00'), $t('2026-03-02 13:20')], [$t('2026-03-02 14:00'), $t('2026-03-02 14:30')], [$c2 - 3600, $c2 + 7200]], $jj, 48.85, 2.35);
+$ok($sv == ['2026-03-02' => 20 + 30 + 60], 'après-midi : minutes allumées de 13 h au coucher : ' . json_encode($sv));
+$ok($A::tendance(['2026-01-03' => 30, '2026-01-01' => 10, '2026-01-02' => 20], 1) == ['2026-01-01' => -5, '2026-01-02' => 0, '2026-01-03' => 5], 'tendance : médiane glissante retirée');
+$ok($A::correlation([1, 2, 3, 4, 5], [2, 4, 6, 8, 10]) == 1.0 && $A::correlation([1, 2, 3, 4, 5], [5, 4, 3, 2, 1]) == -1.0 && $A::correlation([1, 2, 3, 4], [1, 2, 3, 4]) === null && $A::correlation([1, 1, 1, 1, 1], [1, 2, 3, 4, 5]) === null, 'corrélation');
+// capteurs de luminosité : capteur, secours, soleil ; lissage ; lampe qui fausse la mesure
+$cx = fn($v, $age = 60, $lampe = false, $bas = 350, $haut = 1000) => ['v' => $v, 'age' => $age, 'lampe' => $lampe, 'bas' => $bas, 'haut' => $haut];
+[$lr, $L] = $M::lumiere([$cx(500), $cx(30, 60, false, 50, 120)], []);
+$ok($lr == [500.0, 350, 1000, 1] && $L == [500.0, 30.0], 'capteur frais : capteur, secours lissé à côté');
+[$lr, $L] = $M::lumiere([$cx(100), $cx(30, 60, false, 50, 120)], $L);
+$ok(abs($lr[0] - (.88 * 500 + .12 * 100)) < 1e-9 && $lr[3] == 1, 'lissage du capteur');
+[$lr, $L2] = $M::lumiere([$cx(500, 8000), $cx(30, 60, false, 50, 120)], $L);
+$ok($lr[3] == 2 && $lr[1] == 50 && $lr[2] == 120 && !isset($L2[0]), 'capteur muet plus de 2 h : secours avec ses seuils');
+[$lr] = $M::lumiere([$cx(0, 5 * 3600), $cx(80, 60, false, 50, 120)], []);
+$ok($lr[3] == 1 && $lr[0] == 0.0, 'capteur muet sur une mesure de nuit : gardé (n\'envoie qu\'aux changements)');
+[$lr] = $M::lumiere([$cx(0, 5 * 3600), $cx(null)], [], false);
+$ok($lr[3] == 0, 'muet sur une mesure de nuit alors que le soleil dit jour : écarté (gelé, pas la nuit le matin)');
+[$lr, $L2] = $M::lumiere([$cx(null), $cx(80, 60, true, 50, 120)], $L);
+$ok($lr[3] == 0 && $L2[1] == $L[1], 'lampe allumée près du secours : soleil, lissage gardé pour l\'extinction');
+[$lr] = $M::lumiere([$cx(null), $cx(80, 60, true)], []);
+$ok($lr[0] === null && $lr[3] == 0, 'lampe allumée sans mesure d\'avant, pas de capteur : soleil');
+[$lr] = $M::lumiere([$cx(null, PHP_INT_MAX), $cx(80, 60)], []);
+$ok($lr[3] == 2, 'secours seul configuré : secours (n° 2)');
 $pvo = $M::planVolets([['id' => 9, 'nom' => 'V', 'jours' => 0]], [], 'S', 'S', 400, 1100, $r, 10);
 $ok($pvo[9]['o'] >= 430 && $pvo[9]['o'] <= 460 && $pvo[9]['f'] >= 1120 && $pvo[9]['f'] <= 1150 && $M::planVolets([['id' => 9, 'nom' => 'V', 'jours' => 20, 'soir' => ['S' => ['n' => 5, 'q25' => 1200, 'q75' => 1200, 'ferme' => 5]]]], [], 'S', 'S', 400, 1100, $r, 10)[9]['f'] === null, 'volets du jour : ' . json_encode($pvo));
 // une semaine de passages : jamais hors des plages, au plus « max » pièces allumées, volet fermé le soir et rouvert le matin, l'arrêt éteint tout
@@ -384,7 +408,7 @@ $ok(($marques['envoyer'] ?? 0) == 1, 'envoi aux équipements : 1 ligne attendue 
 $cl = file_get_contents(__DIR__ . '/../core/class/presencehabituelle.class.php');
 // bascule de l'envoi réel, état enregistré avant d'agir (ces fonctions écrivent la configuration : lues ici, pas exécutées)
 $ok(preg_match('/function effacer\(\) \{[^}]*config::remove\(\'calage\', __CLASS__\);/', $cl) === 1, 'Tout effacer vide aussi le calage (profil réel par pièce)');
-$ok(preg_match('/^\s*\$haut = \(float\)config::byKey\(\'lux_haut\'/m', $cl) === 1, 'seuil haut de luminosité lu (pas avalé par un commentaire)');
+$ok(preg_match('/^\s*\$haut = is_numeric\(\$x = str_replace\(\',\', \'\.\', trim\(\(string\)config::byKey\(\$p \. \'_haut\'/m', $cl) === 1 && preg_match('/^\s*\[\[\$lux, \$bas, \$haut\], \$E\[\'lux\'\]\] = \$M::lumiere/m', $cl) === 1, 'capteurs de luminosité lus (pas avalés par un commentaire)');
 $ok(strpos($cl, 'public static function preConfig_reel($v)') !== false && strpos($cl, 'if ($avant) self::arretMoteur(); else config::remove(\'moteur\', __CLASS__);') !== false, 'envoi réel décoché : extinction ; coché : nouveau départ');
 $ok(preg_match('/config::save\(\'moteur\'[^\n]*\n\s*self::agir\(\$dec, \$reel\);/', $cl) && preg_match('/config::remove\(\'moteur\'[^\n]*\n\s*self::agir\(presencehabituelle_moteur::arret/', $cl), 'état enregistré avant d\'envoyer');
 $ok(preg_match('/public static function envoyer\(array \$d\) \{\s*if \(self::blanc\(\)\) return /', $cl) && strpos($cl, "function blanc() { return (string)config::byKey('reel', __CLASS__, '0') !== '1'; }") !== false, 'à blanc par défaut, et rien n\'est envoyé à blanc');

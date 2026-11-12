@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20
+- **Dusk = the darker of sun and sensor**: the sensor can only bring dusk forward on grey days, the sun keeps the night (before: the sensor replaced the sun, and a sensor lit at night could make it day). A sensor that is too dark (shaded in the afternoon) brings dusk forward every day: lower its thresholds. A sensor silent on a night reading is no longer kept once the sun is up.
+- **Backup** light sensor: used when the first one has measured nothing for 2 hours (12 hours on a night measure); with no fresh sensor, back to the sun (before: the last value of a silent sensor was used forever). Thresholds of their own for each sensor (an indoor sensor needs lower ones).
+- For each sensor, an optional **lamp** that lights it: while it is on, the sensor is set aside.
+- Test report: both sensors, their thresholds, the age of their measure and the source used now.
+- Calibration tab: **Compare with and without sensor** replays the same days with the sun alone, then with the sensor history, and compares each with reality room by room, then **day by day**: does the simulated afternoon lighting follow reality (longer on grey days)? Correlation with the season removed, rooms lit even by day left out.
+
 ## 0.19
 - **Rapport de test** button: a text to paste on the forum for testing (versions, kinds of followed commands and action commands found, calibration), with no device name and no time. Nothing is sent.
 - Page texts updated: the simulation exists (dry run by default), the number of rooms lit at the same time is learnt from your habits (README).

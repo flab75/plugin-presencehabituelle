@@ -24,21 +24,35 @@
 		"Noms des pièces (ou groupes) sans fenêtre, séparés par des virgules : la pénombre n'y compte pas.": "Names of rooms (or groups) without a window, separated by commas: dusk does not count there.",
 		"minutes": "minutes",
 		"nuit sous 350 lux": "night below 350 lux",
+		"nuit sous 350 lux (intérieur : 50)": "night below 350 lux (indoor: 50)",
+		"jour au-dessus de 1000 lux (intérieur : 120)": "day above 1000 lux (indoor: 120)",
 		"À blanc même sans Simulation On": "Dry run even without Simulation On",
 		"Pour essayer à la maison : la simulation à blanc tourne en permanence et remplit le journal, sans rien envoyer. Ignoré si « Envoyer vraiment » est coché.": "To try it at home: the dry-run simulation runs all the time and fills the log, without sending anything. Ignored if \"Really send\" is ticked.",
 		"Envoyer vraiment aux équipements": "Really send to the devices",
-		"Facultatif. Une commande info de luminosité extérieure (lux) : les lampes ne s'allument qu'à la pénombre, entre les deux seuils. Vide : le lever et le coucher du soleil (coordonnées de la configuration de Jeedom).": "Optional. An outdoor light info command (lux): lamps only switch on in the dusk, between the two thresholds. Empty: sunrise and sunset (coordinates of the Jeedom configuration).",
+		"Facultatif. Une commande info de luminosité, de préférence extérieure (lux) : il avance la pénombre les jours gris (pénombre = la plus sombre du soleil et du capteur, entre les deux seuils). Muet depuis plus de 2 h (12 h sur une mesure de nuit, tant que le soleil n'est pas levé) : le secours, puis le soleil. Vide : le lever et le coucher du soleil (coordonnées de la configuration de Jeedom). Lampe : l'état (commande info) d'une lampe qui éclaire le capteur ; tant qu'elle est allumée, le capteur est laissé de côté (secours, puis soleil).": "Optional. A light sensor info command, preferably outdoor (lux): it brings dusk forward on grey days (dusk = the darker of sun and sensor, between the two thresholds). Silent for more than 2 hours (12 hours on a night measure, while the sun is not up): the backup, then the sun. Empty: sunrise and sunset (coordinates from the Jeedom configuration). Lamp: the state (info command) of a lamp that lights the sensor; while it is on, the sensor is set aside (backup, then sun).",
 		"Pièces allumées même de jour": "Rooms lit even by day",
 		"Cave, WC": "Cellar, WC",
 		"Pièce changée par quelqu'un : laissée": "Room changed by someone: left alone for",
 		"Simulation": "Simulation",
 		"Capteur de luminosité": "Light sensor",
+		"Capteur de luminosité de secours": "Backup light sensor",
+		"état de la lampe (id info), facultatif": "lamp state (info id), optional",
+		"Facultatif. Un second capteur, pris quand le premier ne mesure plus (pile, panne) ou que sa lampe est allumée. Un capteur intérieur reçoit moins de lumière : seuils plus bas (par exemple 50 et 120 lux).": "Optional. A second sensor, used when the first one no longer measures (battery, failure) or its lamp is on. An indoor sensor gets less light: lower thresholds (for example 50 and 120 lux).",
 		"Pièces allumées en même temps, au plus": "Rooms lit at the same time, at most",
 		"Non coché (défaut) : la simulation est « à blanc », elle décide et note tout au journal de l'onglet Simulation, mais n'allume, n'éteint, n'ouvre ni ne ferme rien. Cochez-la seulement après avoir lu quelques journées à blanc. Décochée pendant une simulation On : les lampes qu'elle a allumées sont éteintes, puis elle continue à blanc ; cochée : elle repart de zéro.": "Unticked (default): the simulation is a \"dry run\", it decides and logs everything in the Simulation tab, but switches nothing on or off and opens or closes nothing. Tick it only after reading a few dry-run days. Unticked during a Simulation On: the lamps it switched on are switched off, then it goes on as a dry run; ticked: it starts again from scratch.",
 		"Envoi réel seulement. Si une lampe suivie est allumée ou éteinte par quelqu'un d'autre pendant la simulation (visiteur, voisin qui arrose), la pièce n'est plus touchée pendant ce temps. Vide ou 0 : 60.": "Real sending only. If a followed lamp is switched on or off by someone else during the simulation (visitor, neighbour watering), the room is left alone for that time. Empty or 0: 60.",
 		"id de la commande (ou #id#)": "command id (or #id#)",
 		"Vide ou 0 : relevé dans vos historiques (le nombre de pièces allumées ensemble, dépassé un jour sur dix au plus), 3 tant qu'il n'est pas relevé. Voir l'onglet Calage.": "Empty or 0: measured from your history (rooms lit together, exceeded at most one day in ten), 3 until measured. See the Calibration tab.",
-		"auto": "auto"
+		"auto": "auto",
+		"Recalage": "Recalibration",
+		"Recalage automatique": "Automatic recalibration",
+		"Tolérances": "Tolerances",
+		"Coché : chaque nuit, la simulation est rejouée en mémoire sur les 28 derniers jours réels et comparée pièce par pièce (heures allumées, allumages) ; deux réglages par pièce (fréquence, durée) sont corrigés jusqu'à ce qu'elle soit calée. Ensuite, seul un contrôle léger tourne chaque nuit. Décoché : rien ne tourne, la simulation suit les tendances telles quelles. Détail : onglet Calage.": "Ticked: every night, the simulation is replayed in memory over the last 28 real days and compared room by room (hours on, switch-ons); two settings per room (frequency, duration) are corrected until it is calibrated. Then only a light check runs each night. Unticked: nothing runs, the simulation follows the trends as they are. Details: Calibration tab.",
+		"Écart accepté entre la simulation et le réel : heures allumées par jour (défaut 15 %), allumages par jour (défaut 25 %), heure des volets (défaut 20 min, affichée seulement).": "Accepted gap between the simulation and reality: hours on per day (default 15 %), switch-ons per day (default 25 %), shutter time (default 20 min, displayed only).",
+		"%, %, minutes": "%, %, minutes",
+		"heures : 15": "hours: 15",
+		"allumages : 25": "switch-ons: 25",
+		"volets : 20": "shutters: 20"
 	},
 	"plugins/presencehabituelle/core/class/presencehabituelle.class.php": {
 		"Période illisible (attendu AAAA-MM-JJ HH:MM → AAAA-MM-JJ HH:MM)": "Unreadable period (expected YYYY-MM-DD HH:MM → YYYY-MM-DD HH:MM)",
@@ -77,7 +91,9 @@
 		"Simulation Off": "Simulation Off",
 		"pas de commande pour éteindre": "no command to switch off",
 		"pas de commande pour ouvrir": "no command to open",
-		"déjà fermé": "already closed"
+		"déjà fermé": "already closed",
+		"Aucun capteur de luminosité configuré": "No light sensor configured",
+		"Pas encore assez de jours relevés": "Not enough days recorded yet"
 	},
 	"plugins/presencehabituelle/core/ajax/presencehabituelle.ajax.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",
@@ -480,7 +496,23 @@
 		"plus suivie": "no longer followed",
 		"renvoyé (perdu)": "sent again (lost)",
 		"hors du plan": "out of the plan",
-		"envoi réel": "real sending"
+		"envoi réel": "real sending",
+		"Réel": "Real",
+		"Soleil seul": "Sun alone",
+		"Avec capteur": "With sensor",
+		"h / jour": "h / day",
+		"Pièces dans les tolérances": "Rooms within tolerances",
+		"soleil seul": "sun alone",
+		"avec capteur": "with sensor",
+		"Deux calages en mémoire, une ou deux minutes…": "Two calibrations in memory, a minute or two…",
+		"Écarts au réel. Chaque source est recalée à part (tours": "Gaps to reality. Each source is recalibrated separately (rounds",
+		"soleil": "sun",
+		"capteur": "sensor",
+		"rien n’est gardé).": "nothing is kept).",
+		"écart médian": "median gap",
+		"jours": "days",
+		"Éclairage de l’après-midi, jour par jour": "Afternoon lighting, day by day",
+		"Chaque jour, les minutes où une lampe au moins est allumée entre 13 h et le coucher du soleil, simulées puis réelles, saison retirée. Les jours gris, on allume plus tôt, donc plus : une simulation crédible le fait aussi. 1 = suit le réel jour par jour, 0 = sans rapport ; sous 0,3 d’écart entre les deux, rien n’est prouvé.": "Each day, the minutes with at least one lamp on between 1 pm and sunset, simulated then real, season removed. On grey days lights go on earlier, hence longer: a credible simulation does so too. 1 = follows reality day by day, 0 = unrelated; below a 0.3 difference between the two, nothing is proven."
 	},
 	"plugins/presencehabituelle/desktop/php/presencehabituelle.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",
@@ -562,6 +594,9 @@
 		"Tout est calculé sur cette box : le plugin n'envoie rien à personne, et seuls les administrateurs voient les tendances (elles font partie des sauvegardes de Jeedom, comme le reste de la base). La simulation est à blanc par défaut : elle n'allume ni ne ferme rien tant que « Envoyer vraiment aux équipements » n'est pas cochée dans la configuration.": "Everything is computed on this box: the plugin sends nothing to anyone, and only administrators see the trends (they are part of Jeedom's backups, like the rest of the database). The simulation is a dry run by default: it switches on or closes nothing until \"Envoyer vraiment aux équipements\" (really send to devices) is ticked in the configuration.",
 		"Le plugin ne sait rien de votre maison : il lit vos équipements et leurs historiques, puis vous pose quatre questions. Vos réponses servent à l'analyse et à la simulation.": "The plugin knows nothing about your house: it reads your devices and their history, then asks you four questions. Your answers are used by the analysis and the simulation.",
 		"Rapport de test": "Test report",
-		"Texte à coller sur le forum pour les essais : versions, sortes de commandes suivies, commandes d'action trouvées, calage. Ni nom d'équipement ni heure ; relisez-le avant de le coller.": "Text to paste on the forum for testing: versions, kinds of followed commands, action commands found, calibration. No device name and no time; read it before pasting."
+		"Texte à coller sur le forum pour les essais : versions, sortes de commandes suivies, commandes d'action trouvées, calage. Ni nom d'équipement ni heure ; relisez-le avant de le coller.": "Text to paste on the forum for testing: versions, kinds of followed commands, action commands found, calibration. No device name and no time; read it before pasting.",
+		"Capteur de luminosité": "Light sensor",
+		"Comparer avec et sans capteur": "Compare with and without sensor",
+		"Les mêmes jours rejoués et recalés deux fois, avec le même aléa : avec le soleil seul, puis avec le capteur de luminosité (et son secours) tel que son historique l'a mesuré. Rien n'est envoyé ni gardé.": "The same days replayed and recalibrated twice, with the same randomness: with the sun alone, then with the light sensor (and its backup) as its history measured it. Nothing is sent or kept."
 	}
 }
