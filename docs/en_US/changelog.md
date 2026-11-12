@@ -1,9 +1,32 @@
 # Changelog
 
+## 0.19
+- **Rapport de test** button: a text to paste on the forum for testing (versions, kinds of followed commands and action commands found, calibration), with no device name and no time. Nothing is sent.
+- Page texts updated: the simulation exists (dry run by default), the number of rooms lit at the same time is learnt from your habits (README).
+- Changelog 0.15 to 0.17.2 translated.
+
 ## 0.18
 - Switch-on durations: for a room switched on at least 20 times over the calibration days, the simulation draws a duration from the whole distribution recorded over those days (twenty values, long evenings included) instead of a draw between the quarter and three quarters, whose mean fell near the median: Kitchen and Living rooms were simulated 2 to 3 h/day too short. Beyond the first cron pass (every 5 min), waiting for the next pass no longer lengthens the switch-on, and a recorded duration is no longer extended at random at its end (the WC stayed on +40 %). Lamps forgotten before the calibration days no longer count. Fewer than 20 switch-ons: previous draw.
 - The calibration duration coefficient applies after the quick passage / presence split, which stays the real one.
 - On update, the duration coefficients learnt with the previous draw are reset to 1 (once) and the calibration restarts (its signature changes).
+
+## 0.17.2
+- Fixes from the 2nd adversarial review of 0.17: the share of switch-offs followed by a path now only counts night switch-offs (between sunset and sunrise), like the simulation which only makes paths in the dusk (it was underestimated by daytime switch-offs); a path back to the starting group is no longer a follow-up; the arrival room is checked before lighting the rooms crossed (no more corridor lit for nothing); the calibration no longer restarts when a group gains or loses a rare path (fewer than 5 seen).
+- When 0.17 then 0.17.2 are deployed, the calibration restarts once (its signature changes), then only when a room's paths appear or disappear.
+
+## 0.17.1
+- Fixes from the adversarial review of 0.17: a room switched off at the same pass is no longer switched back on at once by a path; a lit passage no longer takes a place among the rooms lit at the same time (the arrival room is no longer cut); share of switch-offs followed by a path counted over all paths; a group spread over two rooms no longer follows itself; room names made distinct before being linked to paths; time of a night path right (00:10 is no longer "around 12:00"); an arrival during an absence is no longer learnt.
+
+## 0.17
+- Passages: taken both ways, and a route can chain up to 3 of them, through rooms left dark. "Chains" (direct neighbour room only) become **paths**: a room switches off, a linked room switches on within 3 min; a room lit for less than 3 min on the way (lit passage) extends the path. Plan tab: most frequent paths, passages counted each way, evening switch-on order, rooms without a passage flagged.
+- Simulation: when a room switches off by itself, a recorded path is drawn (as often as in the habits): rooms crossed as lit passages, arrival room lit for a usual duration; never by day (except rooms lit even by day), outside the Guide rules, nor beyond the number of rooms lit at the same time. The calibration takes it into account: it restarts when a room gains or loses its paths, and its frequency setting also counts arrivals by path.
+
+## 0.16
+- Clock or sun: for each room, the analysis measures whether the evening switch-on follows sunset or the clock, and whether the morning switch-off follows sunrise (a share from 0, the clock, to 1, the sun; in between, a mix). It needs at least 10 days and a sun that has moved (not in June). The simulation shifts these times with the season by that share; the residents' bedtime and wake-up stay on the clock. The Calage tab names the rooms that follow the sun.
+
+## 0.15
+- Rooms lit at the same time: learnt from your history (over the last 28 counted days, each day's maximum held at least 3 minutes, without rooms with flash switch-ons, exceeded one day in ten at most) instead of a fixed 3. The configuration setting is still possible (empty = learnt). With 3, a house often lit in 5 or 6 rooms in the evening could not be calibrated: living rooms and kitchen took the 3 places, upstairs stayed below reality even × 3.
+- Calibration: rooms with flash switch-ons (nearly all under 3 min: motion detector) stay out of the calibration, with their original settings, and are named in the Calage tab. A lamp on a detector with switch-ons of a few minutes (WC) stays calibrated.
 
 ## 0.14.1
 - "Tout effacer" (erase all) now also erases the calibration, which kept each room's real hour-by-hour profile (it hinted at when the house is empty). Confirmation message completed.

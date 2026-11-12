@@ -63,6 +63,7 @@ try {
   if (init('action') == 'historiques_manquants') ajax::success(['liste' => $P::aHistoriser(), 'avant' => count($P::historiserAvant())]);
   if (init('action') == 'historiser') { $ids = json_decode((string)init('ids'), true); ajax::success($P::historiser(is_array($ids) ? $ids : [])); }
   if (init('action') == 'remettre') ajax::success($P::remettre());
+  if (init('action') == 'rapport') ajax::success($P::rapport());
   if (init('action') == 'simulation') ajax::success($P::etatSimulation());
   if (init('action') == 'mode') { $P::simulation((int)init('on') == 1); ajax::success($P::etatSimulation()); }
   if (init('action') == 'journee') ajax::success($P::journee());

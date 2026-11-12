@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19
+- Bouton **Rapport de test** : un texte à coller sur le forum pour les essais (versions, sortes de commandes suivies et commandes d'action trouvées, calage), sans nom d'équipement ni heure. Rien n'est envoyé.
+- Textes de la page à jour : la simulation existe (à blanc par défaut), le nombre de pièces allumées en même temps est relevé dans vos habitudes (README).
+
 ## 0.18
 - Durées d'allumage : pour une pièce allumée au moins 20 fois sur les jours du calage, la simulation tire une durée dans toute la distribution relevée sur ces jours (vingt valeurs, longues soirées comprises) au lieu d'un tirage entre le quart et les trois quarts, dont la moyenne tombait près de la médiane : Cuisine et Salons étaient simulés 2 à 3 h/jour trop courts. Au-delà du premier passage du cron (toutes les 5 min), l'attente du passage suivant ne rallonge plus l'allumage, et une durée relevée n'est plus prolongée au hasard en fin de course (le WC restait allumé +40 %). Les lampes oubliées avant les jours du calage ne comptent plus (Entrée RDC : 47 min simulées par allumage, 16 min réelles). Moins de 20 allumages : tirage d'avant.
 - Le coefficient de durée du calage s'applique après le tri passage éclair / présence, qui reste celui du réel.

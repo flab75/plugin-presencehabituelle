@@ -960,6 +960,12 @@
     Object.keys(e || {}).forEach(function (id) { var c = cand(id); if (c) { c.hist = e[id].hist; c.lisse = e[id].lisse } })
     HISTO = null; liste(); guide(); histo() // HISTO vidé : pas d'ancien bouton « Activer » en attendant la réponse
   }
+  /* ---- Rapport de test (forum) : affiché, sélectionné pour être copié ---- */
+  $('#ph_rapport').on('click', function () {
+    var t = $('#ph_rapport_txt')
+    if (t.is(':visible')) return t.hide()
+    ajax('rapport', {}, function (r) { t.val(r).show().trigger('focus').trigger('select') })
+  })
   /* ---- Widget : l'équipement du plugin ---- */
   var WID = null
   $('#ph_widget_ouvrir').on('click', function () {

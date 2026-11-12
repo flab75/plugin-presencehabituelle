@@ -7,17 +7,19 @@ sendVarToJS('eqType', $plugin->getId());
 ?>
 <div id="ph_page" style="padding:10px">
 	<div class="alert alert-info">
-		<i class="fas fa-user-shield"></i> {{Tout est calculé sur cette box : le plugin n'envoie rien à personne, et seuls les administrateurs voient les tendances (elles font partie des sauvegardes de Jeedom, comme le reste de la base). Pour l'instant, le plugin tire de vos historiques les tendances, les exceptions et ce qui n'arrive jamais : il n'allume ni ne ferme encore rien.}}
+		<i class="fas fa-user-shield"></i> {{Tout est calculé sur cette box : le plugin n'envoie rien à personne, et seuls les administrateurs voient les tendances (elles font partie des sauvegardes de Jeedom, comme le reste de la base). La simulation est à blanc par défaut : elle n'allume ni ne ferme rien tant que « Envoyer vraiment aux équipements » n'est pas cochée dans la configuration.}}
 	</div>
 	<div class="form-inline" style="margin-bottom:8px">
 		<a class="btn btn-sm btn-default" href="index.php?v=d&p=plugin&id=presencehabituelle" title="{{Reprise de l'historique, conservation, week-end…}}"><i class="fas fa-wrench"></i> {{Configuration}}</a>
 		<a class="btn btn-sm btn-default" id="ph_widget_ouvrir" title="{{Le widget du plugin : où l'afficher}}"><i class="fas fa-th-large"></i> {{Widget}}</a>
+		<a class="btn btn-sm btn-default" id="ph_rapport" title="{{Texte à coller sur le forum pour les essais : versions, sortes de commandes suivies, commandes d'action trouvées, calage. Ni nom d'équipement ni heure ; relisez-le avant de le coller.}}"><i class="fas fa-clipboard"></i> {{Rapport de test}}</a>
 		<span id="ph_widget" style="display:none;margin-left:8px">{{Objet}} <select class="form-control input-sm" id="ph_wobjet"></select>
 			<label class="checkbox-inline"><input type="checkbox" id="ph_wvisible"> {{Visible}}</label>
 			<label class="checkbox-inline" title="{{Les pièces allumées d'habitude à cette heure laissent deviner quand la maison est vide : tout utilisateur qui voit le widget (comptes limités, applis, API) les verrait.}}"><input type="checkbox" id="ph_wpieces"> {{Montrer les pièces allumées d'habitude}}</label>
 			<a class="btn btn-sm btn-success" id="ph_wenregistrer"><i class="fas fa-check-circle"></i> {{Enregistrer}}</a>
 			<a class="btn btn-sm btn-default" id="ph_wavance"><i class="fas fa-cogs"></i> {{Configuration avancée}}</a></span>
 	</div>
+	<textarea id="ph_rapport_txt" class="form-control" rows="14" readonly style="display:none;font-family:monospace;font-size:12px;margin-bottom:8px"></textarea>
 	<ul class="nav nav-tabs" role="tablist">
 		<li role="presentation" class="active"><a href="#ph_guide" role="tab" data-toggle="tab"><i class="fas fa-route"></i> {{Guide}}</a></li>
 		<li role="presentation"><a href="#ph_suivi" role="tab" data-toggle="tab"><i class="fas fa-list-check"></i> {{Commandes suivies}}</a></li>
@@ -28,7 +30,7 @@ sendVarToJS('eqType', $plugin->getId());
 	</ul>
 	<div class="tab-content">
 		<div role="tabpanel" class="tab-pane active" id="ph_guide" style="padding-top:10px">
-			<p>{{Le plugin ne sait rien de votre maison : il lit vos équipements et leurs historiques, puis vous pose quatre questions. Vos réponses servent à la future simulation ; pour l'instant, rien n'est allumé ni fermé.}}</p>
+			<p>{{Le plugin ne sait rien de votre maison : il lit vos équipements et leurs historiques, puis vous pose quatre questions. Vos réponses servent à l'analyse et à la simulation.}}</p>
 			<div id="ph_gcontenu"></div>
 			<p style="margin-top:10px"><a class="btn btn-sm btn-success" id="ph_genregistrer"><i class="fas fa-check-circle"></i> {{Enregistrer}}</a> <a class="btn btn-sm btn-default" id="ph_graz" title="{{Efface les réponses, les règles et les détecteurs du Guide ; rien n’est enregistré tant que vous ne cliquez pas sur Enregistrer}}"><i class="fas fa-undo-alt"></i> {{Remettre le Guide à zéro}}</a> <small class="text-muted">{{Les réponses, les règles, le choix des commandes (onglet suivant) et le plan sont enregistrés ensemble.}}</small></p>
 		</div>

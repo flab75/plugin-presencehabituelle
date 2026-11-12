@@ -484,7 +484,6 @@
 	},
 	"plugins/presencehabituelle/desktop/php/presencehabituelle.php": {
 		"401 - Accès non autorisé": "401 - Unauthorized access",
-		"Tout est calculé sur cette box : le plugin n'envoie rien à personne, et seuls les administrateurs voient les tendances (elles font partie des sauvegardes de Jeedom, comme le reste de la base). Pour l'instant, le plugin tire de vos historiques les tendances, les exceptions et ce qui n'arrive jamais : il n'allume ni ne ferme encore rien.": "Everything is computed on this box: the plugin sends nothing to anyone, and only administrators can see the trends (they are part of the Jeedom backups, like the rest of the database). For now the plugin draws from your history the trends, the exceptions and what never happens: it does not switch on or close anything yet.",
 		"Commandes suivies": "Followed commands",
 		"Tendances": "Trends",
 		"Cochez les lumières et les volets à analyser. Les prises et les médias sont proposés décochés : une prise peut alimenter un frigo ou une box, ce n'est pas une présence. Les sondes ne servent pas : elles ne disent rien de vos gestes.": "Tick the lights and shutters to analyse. Plugs and media are offered unticked: a plug may power a fridge or a router, that is not presence. Sensors are not used: they say nothing about what you do.",
@@ -528,7 +527,6 @@
 		"Recharge dans la liste le choix d'avant le dernier enregistrement : rien n'est enregistré tant que vous ne cliquez pas sur Enregistrer": "Reloads into the list the choice from before the last save: nothing is saved until you click Save",
 		"Revenir au choix d'avant": "Back to the previous choice",
 		"Guide": "Guide",
-		"Le plugin ne sait rien de votre maison : il lit vos équipements et leurs historiques, puis vous pose quatre questions. Vos réponses servent à la future simulation ; pour l'instant, rien n'est allumé ni fermé.": "The plugin knows nothing about your house: it reads your devices and their history, then asks you four questions. Your answers are for the future simulation; for now, nothing is switched on or closed.",
 		"Les réponses, les règles, le choix des commandes (onglet suivant) et le plan sont enregistrés ensemble.": "The answers, the rules, the choice of commands (next tab) and the plan are saved together.",
 		"Étages du plus bas au plus haut": "Floors from lowest to highest",
 		"Un niveau plus haut (l’ordre va du plus bas au plus haut)": "One level higher (the order goes from lowest to highest)",
@@ -560,6 +558,10 @@
 		"Journée à blanc": "Dry-run day",
 		"Volets aujourd'hui": "Shutters today",
 		"Simulation On": "Simulation On",
-		"Simulation": "Simulation"
+		"Simulation": "Simulation",
+		"Tout est calculé sur cette box : le plugin n'envoie rien à personne, et seuls les administrateurs voient les tendances (elles font partie des sauvegardes de Jeedom, comme le reste de la base). La simulation est à blanc par défaut : elle n'allume ni ne ferme rien tant que « Envoyer vraiment aux équipements » n'est pas cochée dans la configuration.": "Everything is computed on this box: the plugin sends nothing to anyone, and only administrators see the trends (they are part of Jeedom's backups, like the rest of the database). The simulation is a dry run by default: it switches on or closes nothing until \"Envoyer vraiment aux équipements\" (really send to devices) is ticked in the configuration.",
+		"Le plugin ne sait rien de votre maison : il lit vos équipements et leurs historiques, puis vous pose quatre questions. Vos réponses servent à l'analyse et à la simulation.": "The plugin knows nothing about your house: it reads your devices and their history, then asks you four questions. Your answers are used by the analysis and the simulation.",
+		"Rapport de test": "Test report",
+		"Texte à coller sur le forum pour les essais : versions, sortes de commandes suivies, commandes d'action trouvées, calage. Ni nom d'équipement ni heure ; relisez-le avant de le coller.": "Text to paste on the forum for testing: versions, kinds of followed commands, action commands found, calibration. No device name and no time; read it before pasting."
 	}
 }

@@ -1020,6 +1020,48 @@ class presencehabituelle extends eqLogic {
     if (!$lie && !$nom) { $cl = array_values(array_filter($cur, fn($x) => $x[2])); $x = count($cl) == 1 ? $cl[0] : (count($cur) == 1 ? $cur[0] : null); return $x ? [$x[0], $x[1]] : null; }
     return null;
   }
+  /* Rapport de test à coller sur le forum (bouton « Rapport de test ») : versions, sortes de commandes suivies (plugin, type
+     générique, valeurs relevées, commandes d'action trouvées), état du calage. Ni nom d'équipement, ni heure, ni lieu précis :
+     rien qui dise quand la maison est vide (les noms de pièces du calage restent : l'utilisateur relit avant de coller). */
+  public static function rapport() {
+    $o = ['Présence habituelle ' . (json_decode((string)@file_get_contents(__DIR__ . '/../../plugin_info/info.json'), true)['pluginVersion'] ?? '?') . ' · Jeedom ' . jeedom::version() . ' · PHP ' . PHP_VERSION
+      . ' · Debian ' . trim((string)@file_get_contents('/etc/debian_version')) . ' · ' . jeedom::getHardwareName() . ' · UTC' . date('O')
+      . ' · latitude ≈ ' . round((float)str_replace(',', '.', (string)config::byKey('info::latitude', 'core', 0)) / 10) * 10 . '°'];
+    $v = [];
+    foreach (DB::Prepare('SELECT cmd_id, MIN(valeur) AS a, MAX(valeur) AS b, COUNT(DISTINCT valeur) AS n, COUNT(*) AS e, MIN(ts) AS d FROM ' . self::TABLE . ' GROUP BY cmd_id', [], DB::FETCH_TYPE_ALL) ?: [] as $l) $v[(int)$l['cmd_id']] = $l;
+    $k = []; $jours = 0;
+    foreach (self::suivi() as $id => $s) { // une ligne par sorte de commande, avec leur nombre
+      if (!is_object($c = cmd::byId($id)) || !is_object($c->getEqLogic())) { $cle = 'commande supprimée de Jeedom'; $k[$cle] = ($k[$cle] ?? 0) + 1; continue; }
+      $t = $s['t'] ?? '?'; $l = $v[(int)$id] ?? null;
+      if ($l) $jours = max($jours, (time() - (int)$l['d']) / 86400);
+      $act = array_map(function ($a) use ($id, $s) {
+        $x = self::action($id, $a, !empty($s['i']));
+        return $a . ' = ' . (!$x ? 'AUCUNE' : (($x[0]->getGeneric_type() ?: 'sans type') . ($x[1] ? ' curseur ' . $x[1]['slider'] : '')));
+      }, $t == 'volet' ? ['ouvrir', 'fermer'] : ['on', 'off']);
+      $cle = $t . ' · ' . $c->getEqLogic()->getEqType_name() . ' · ' . ($c->getGeneric_type() ?: 'sans type') . ' · ' . $c->getSubType() . ($c->getIsHistorized() ? ' historisée' : '') . (self::lisse($c) ? ' LISSÉE' : '')
+        . ' · valeurs ' . ($l ? round((float)$l['a'], 1) . ' à ' . round((float)$l['b'], 1) . ($l['n'] > 2 ? ' variables' : '') : 'aucune') . (!empty($s['i']) ? ' · sens inversé' : '') . ' · ' . implode(', ', $act);
+      $k[$cle] = ($k[$cle] ?? 0) + 1;
+    }
+    ksort($k);
+    $o[] = ''; $o[] = 'Commandes suivies (' . array_sum($k) . ', relevés sur ' . round($jours) . ' j) : type · plugin · type générique · sous-type · valeurs · actions trouvées';
+    foreach ($k as $cle => $n) $o[] = "  {$n} × {$cle}";
+    // fichier lu tel quel : le rapport ne lance pas d'analyse
+    $h = is_file(self::fichier()) ? (json_decode((string)file_get_contents(self::fichier()), true) ?: []) : []; $p = self::plan(); $lux = (int)trim((string)config::byKey('lux_cmd', __CLASS__, ''), '# ');
+    $o[] = ''; $o[] = 'Groupes (pièces) : ' . count($h['groupes'] ?? []) . ' · volets : ' . count($h['volets'] ?? []) . ' · détecteurs : ' . count(self::cfg('detecteurs'))
+      . ' · plan : ' . count($p['etages'] ?? []) . ' étage(s), ' . count($p['pieces'] ?? []) . ' pièce(s), ' . count($p['passages'] ?? []) . ' passage(s)';
+    $o[] = 'Capteur de luminosité : ' . ($lux && is_object($c = cmd::byId($lux)) && is_object($c->getEqLogic()) && $c->getType() == 'info' ? $c->getEqLogic()->getEqType_name() . ' ' . $c->getSubType() . ' = ' . $c->execCmd() : 'non (soleil seul)')
+      . ' · commande d\'absence : ' . ((int)config::byKey('exclure_cmd', __CLASS__, 0) ? 'oui' : 'non') . ' · pièces en même temps : ' . self::presencesMax($h)
+      . ' · envoi réel : ' . (self::blanc() ? 'non (à blanc)' : 'OUI') . ' · recalage : ' . (self::recalage() ? 'oui' : 'non');
+    $c = self::calage(); $ok = count(array_filter($c['table'], fn($x) => !empty($x['ok'])));
+    $o[] = ''; $o[] = 'Calage : ' . $c['etat'] . ', ' . $c['tours'] . ' tour(s), ' . $ok . ' / ' . count($c['table']) . ' pièces dans les tolérances' . (!empty($c['hors']) ? ' · hors calage (éclair) : ' . count($c['hors']) : '');
+    $pc = fn($x) => sprintf('%+d %%', round($x * 100));
+    $seul = []; foreach ($h['groupes'] ?? [] as $g) if (!empty($g['id'])) $seul[$g['nom']] = 'lampe seule ' . (count($seul) + 1); // groupe d'une lampe = nom de l'équipement : masqué
+    foreach ($c['table'] as $nom => $x) $o[] = '  ' . (!empty($x['ok']) ? 'OK ' : (!empty($x['borne']) ? 'au mieux ' : 'HORS ')) . ($seul[$nom] ?? str_replace("\1", '', $nom)) . ' : heures ' . $pc($x['eh'] ?? 0) . ', allumages ' . $pc($x['en'] ?? 0)
+      . ', réglages ×' . round($x['c']['cf'] ?? 1, 2) . ' / ×' . round($x['c']['cd'] ?? 1, 2);
+    $e = array_slice(array_values(array_filter(explode("\n", (string)@file_get_contents(log::getPathToLog(__CLASS__))), fn($l) => stripos($l, '[ERROR]') !== false)), -5);
+    $o[] = ''; $o[] = 'Erreurs du log (5 dernières) : ' . ($e ? '' : 'aucune'); foreach ($e as $l) $o[] = '  ' . preg_replace(['/^.*?\[ERROR\]\s*:?\s*/', '/(\[[^\]]*\]){2,3}/', '/#\d+#/', '/\b\d{1,2}[:h]\d{2}(:\d{2})?\b/'], ['', '[…]', '#…#', '…'], $l); // sans horodatage, noms ni ids
+    return implode("\n", $o);
+  }
   public static function journalFichier() { return __DIR__ . '/../../data/simulation.log.json'; }
   // Journal du moteur, 7 jours ; $l null = lecture
   public static function journal(?array $l = null) {

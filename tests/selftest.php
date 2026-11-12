@@ -388,6 +388,8 @@ $ok(preg_match('/^\s*\$haut = \(float\)config::byKey\(\'lux_haut\'/m', $cl) === 
 $ok(strpos($cl, 'public static function preConfig_reel($v)') !== false && strpos($cl, 'if ($avant) self::arretMoteur(); else config::remove(\'moteur\', __CLASS__);') !== false, 'envoi réel décoché : extinction ; coché : nouveau départ');
 $ok(preg_match('/config::save\(\'moteur\'[^\n]*\n\s*self::agir\(\$dec, \$reel\);/', $cl) && preg_match('/config::remove\(\'moteur\'[^\n]*\n\s*self::agir\(presencehabituelle_moteur::arret/', $cl), 'état enregistré avant d\'envoyer');
 $ok(preg_match('/public static function envoyer\(array \$d\) \{\s*if \(self::blanc\(\)\) return /', $cl) && strpos($cl, "function blanc() { return (string)config::byKey('reel', __CLASS__, '0') !== '1'; }") !== false, 'à blanc par défaut, et rien n\'est envoyé à blanc');
+// rapport de test (forum) : ni nom d'équipement ni de commande, ni heure
+$ok(preg_match('/function rapport\(\) \{(.*?)\n  \}\n/s', $cl, $rp) && !preg_match('/getName\(|getHumanName|cmdToHumanReadable|self::nom\(|date\(\'[HG]|date\("[HG]|->format\(/', $rp[1]), 'rapport de test sans nom ni heure');
 foreach (['core/ajax/presencehabituelle.ajax.php', 'desktop/php/presencehabituelle.php', 'plugin_info/configuration.php'] as $f)
   $ok(preg_match("/if \\(!isConnect\\('admin'\\)\\)/", file_get_contents(__DIR__ . '/../' . $f)), "accès administrateur seulement : $f");
 foreach (['data', 'tests', 'plugin_info'] as $d) $ok(preg_match('/Require all denied/', (string)@file_get_contents(__DIR__ . "/../$d/.htaccess")), "$d/.htaccess refuse l'accès (Apache 2.4)");
@@ -396,5 +398,8 @@ echo 'aucune modification des objets de la box OK (sauf widget du plugin : ' . (
 if (is_file(__DIR__ . '/../../../core/php/core.inc.php')) { // sur la box : analyse réelle, rien n'est écrit sauf data/habitudes.json et les valeurs du widget du plugin
   require_once __DIR__ . '/../core/class/presencehabituelle.class.php';
   $r = presencehabituelle::analyser();
+  $rp = presencehabituelle::rapport(); $fuite = [];
+  foreach (array_keys(presencehabituelle::suivi()) as $id) if (is_object($c = cmd::byId($id)) && is_object($eq = $c->getEqLogic()) && mb_strlen($eq->getName() . ' ' . $c->getName()) >= 8 && strpos($rp, $eq->getName() . ' ' . $c->getName()) !== false) $fuite[] = $id;
+  $ok(strpos($rp, 'Commandes suivies') !== false && !preg_match('/\b\d{1,2}[:h]\d{2}\b|#\d+#/', $rp) && !$fuite, 'rapport de test sans heure, id ni nom de lampe' . ($fuite ? ' (fuite : ' . count($fuite) . ')' : ''));
   echo 'analyse OK : ' . count($r['groupes']) . ' groupes, ' . count($r['volets']) . " volets\n";
 }

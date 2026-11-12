@@ -11,7 +11,7 @@ note tout au journal, sans rien envoyer aux équipements, tant que vous n'avez p
 - **Guide** en quatre questions : quelles commandes sont des lampes ou des volets, où elles sont, quelles règles suivre (jamais simulée, plages permises ou interdites), ce qui manque encore. Détecteurs de présence de toute marque.
 - **Tendances** par lampe ou par pièce, en semaine et le week-end : horaires, durées, scènes (lampes allumées ensemble), exceptions ; pour les volets, heures d'ouverture et de fermeture. Les absences et les périodes de simulation sont exclues.
 - **Plan de la maison** (facultatif) : un plan par étage, pièces, passages et escaliers, zones à exclure ; reprise des positions d'un design Jeedom.
-- **Simulation** pièce par pièce, d'après ses tendances ou des horaires provisoires de son type de pièce : seulement à la pénombre (capteur de luminosité ou soleil), au plus 3 pièces à la fois, volets, pièce laissée tranquille si quelqu'un y touche. Commandes **Simulation On** / **Off** pour un scénario d'alarme ou d'absence.
+- **Simulation** pièce par pièce, d'après ses tendances ou des horaires provisoires de son type de pièce : seulement à la pénombre (capteur de luminosité ou soleil), pas plus de pièces allumées en même temps que dans vos habitudes, volets, pièce laissée tranquille si quelqu'un y touche. Commandes **Simulation On** / **Off** pour un scénario d'alarme ou d'absence.
 - **Calage** (facultatif) : la simulation rejouée en mémoire sur les 28 derniers jours, comparée au réel pièce par pièce et corrigée jusqu'à entrer dans les tolérances ; un contrôle chaque nuit signale les **habitudes changées**.
 - **Widget** : état de la simulation, commandes On / Off, Recalculer.
 
