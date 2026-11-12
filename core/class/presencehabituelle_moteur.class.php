@@ -6,7 +6,7 @@
 class presencehabituelle_moteur {
   const PAS = 5;  // min entre deux passages du cron
   const EXCEPTION = 1 / 30; // ponytail: un jour sur 30 environ, une pièce allumée peut aller au bout de sa durée tirée, même à une heure jamais allumée (oubli, soirée tardive) ; réglage si besoin
-  const GAP = 20; // min : fenêtre de prolongation à la fin d'une durée tirée
+  const GAP = 20; // min : fenêtre de prolongation à la fin d'une durée tirée (durées provisoires seulement : relevées, la distribution a déjà ses longues sessions)
 
   // Type de pièce d'après les noms (groupe, pièce Jeedom des lampes) ; le premier trouvé dans cet ordre
   const MOTS = ['sdb' => '/salle d.?eau|salle de bains?|\bsdb\b|\bwc\b|toilette|bathroom/iu', 'cuisine' => '/cuisine|kitchen/iu',
@@ -55,6 +55,7 @@ class presencehabituelle_moteur {
       $hd = ($du['n'] ?? 0) >= 4; // ponytail: moins de 4 durées relevées, celles du type de pièce
       $s['d'] = $hd ? [max(1, $du['q25']), max(1, $du['q75'])] : $pr['d'];
       $s['pas'] = $hd ? (int)($du['passages'] ?? 0) : $pr['pas'];
+      $s['qs'] = $hd && count($du['qs'] ?? []) > 1 ? $du['qs'] : []; // durées relevées (20 vingtièmes) : tirées telles quelles, passages compris
       $s['scenes'] = [];
       $parNom = count($g['lampes'] ?? []) == count($g['lids'] ?? []) ? array_combine($g['lampes'] ?? [], $g['lids'] ?? []) : []; // tendances d'avant la 0.13 : sans lids, pas de scènes
       foreach ($g['scenes'] ?? [] as $sc => $pc) { // « A + B » → ids encore simulées
@@ -89,6 +90,7 @@ class presencehabituelle_moteur {
       $cf = (float)($c['cf'] ?? 1); $cd = (float)($c['cd'] ?? 1);
       $sources[$nom]['cf'] = $cf; // l'allumage seulement : un profil gonflé empêcherait aussi d'éteindre (WC allumé 16 h, places de présence prises)
       $sources[$nom]['d'] = [$sources[$nom]['d'][0] * $cd, $sources[$nom]['d'][1] * $cd];
+      $sources[$nom]['cd'] = $cd; // appliqué aux durées relevées (qs) après le tri éclair / présence, qui reste celui du réel
     }
     return $sources;
   }
@@ -162,7 +164,15 @@ class presencehabituelle_moteur {
     if ($h >= 4 && $h < 12 && ($o = $s['soleil']['matin'] ?? null) && isset($J['lm']) && ($d = (int)round($o['b'] * ($J['lm'] - $o['c']))) && $mb - $d >= 240 && $mb - $d < 720) $v = $g($at($mb - $d), $d);
     return $v;
   }
+  const PASSAGE = 3; // min : durée tirée plus courte = passage éclair (comme presencehabituelle_analyse::PASSAGE)
   private static function duree(array $s, callable $r) { // minutes
+    if ($q = $s['qs'] ?? []) { // durées relevées : tirage dans la distribution entière (longues soirées et visites de 3 min comprises)
+      $x = $q[min(count($q) - 1, (int)($r() * count($q)))]; // une des 20 durées, au hasard
+      if ($x < self::PASSAGE) return 0; // passage éclair : éteint au passage suivant
+      // La lampe s'éteint au premier passage du cron après la fin (toutes les PAS min) : sans correction, chaque durée gagnerait
+      // PAS / 2 en moyenne (WC : 6 min relevées, 8 simulées). Fin avancée d'une part tirée de PAS : arrondi au passage juste en moyenne.
+      return max(1, $x * ($s['cd'] ?? 1) - self::PAS * $r());
+    }
     if ($r() * 100 < $s['pas']) return 0; // passage éclair : éteint au passage suivant (5 min)
     return max(self::PAS, $s['d'][0] + $r() * ($s['d'][1] - $s['d'][0]));
   }
@@ -191,7 +201,7 @@ class presencehabituelle_moteur {
       $p = min(1, $v / 100 * $pk * $J['f']);
       $d = ['g' => 1, 'nom' => $nom, 'src' => $s['src'][$k], 'p' => round($p, 3)];
       if ($e['on']) {
-        $fin = !$ok ? 'plage' : (!empty($e['ec']) ? 'eclair' : ($v <= 0 && empty($J['ex']) ? 'jamais' : ($t >= $e['fin'] && $r() >= 1 - pow(1 - $p, self::GAP / 60) ? 'fin' : null))); // heure où la pièce n'a jamais été allumée : éteinte, même au milieu d'une longue durée tirée (une cuisine allumée toute la journée ne file pas jusqu'à 3 h), sauf un jour d'exception
+        $fin = !$ok ? 'plage' : (!empty($e['ec']) ? 'eclair' : ($v <= 0 && empty($J['ex']) ? 'jamais' : ($t >= $e['fin'] && (!empty($s['qs']) || $r() >= 1 - pow(1 - $p, self::GAP / 60)) ? 'fin' : null))); // heure où la pièce n'a jamais été allumée : éteinte, même au milieu d'une longue durée tirée (une cuisine allumée toute la journée ne file pas jusqu'à 3 h), sauf un jour d'exception
         if ($t >= $e['fin'] && !$fin) $e['fin'] = $t + 60 * self::duree($s, $r); // prolongée
         if ($fin == 'fin' || $fin == 'jamais') $partis[] = $nom; // partie d'elle-même (pas une règle du Guide)
         if ($fin) { $dec[] = $d + ['ids' => $e['l'], 'action' => 'off', 'motif' => $fin]; $on -= empty($e['ec']) ? 1 : 0; $e = ['on' => 0, 'fin' => 0, 'l' => [], 'pause' => $t + 60 * (10 + 30 * $r()), 'vis' => 0, 'off' => $t, 'lo' => $e['l']]; }

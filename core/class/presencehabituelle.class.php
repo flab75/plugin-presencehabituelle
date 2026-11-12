@@ -665,6 +665,8 @@ class presencehabituelle extends eqLogic {
       $j = $A::jours($debut, $fin, $exG); $se = $A::sessions($parNom); $p = $A::profil($se, $j);
       $jr = array_slice(array_values(array_filter($j, fn($x) => $x['a'] >= $fin - self::CAL_SPAN * 86400)), -self::CAL_JOURS); // recalage : derniers jours comptés
       $du = $A::durees($se, $j);
+      unset($du['qs']); if ($q = $A::durees($se, $jr)['qs'] ?? null) $du['qs'] = $q; // durées tirées : celles des jours du recalage (comparées au même réel, sans les oublis anciens) ; moins de 20 sessions : tirage q25-q75 d'avant
+      // ponytail: une pièce qui oscille autour de 20 sessions sur 28 jours change la signature, donc relance le calage ; seuil à hystérésis si ça arrive
       if (!self::eclair(['durees' => $du])) $seG[] = $se; // pièces allumées en même temps (sans les pièces éclair), sur les jours du recalage
       foreach ($jr as $x) $jrT[$x['d']] = $x;
       $res['groupes'][] = ['nom' => $nom, 'id' => $seule, 'piece' => $pi, 'ids' => $ids, 'lampes' => array_values($noms), 'lids' => array_keys($noms), 'jours' => count($j), 'nS' => $p['nS'], 'nW' => $p['nW'],
@@ -1079,6 +1081,14 @@ class presencehabituelle extends eqLogic {
   const CAL_JOURS = 28; const CAL_SPAN = 45; const CAL_MIN = 10; const CAL_TOURS = 5; const CAL_ALERTE = 3; const CAL_MAX = 20; // tours au total : au-delà, calée « au mieux »
   public static function recalage() { return (string)config::byKey('recalage', __CLASS__, '0') === '1'; }
   public static function calage() { return self::cfg('calage') + ['etat' => self::recalage() ? 'cours' : 'off', 'coef' => [], 'tours' => 0, 'depuis' => 0, 'table' => [], 'volets' => [], 'ref' => [], 'alertes' => []]; }
+  // 0.18 (à la mise à jour) : les durées sont tirées dans toute la distribution relevée ; les coefficients de durée appris avec
+  // l'ancien tirage (q25-q75, trop court) la rallongeraient jusqu'à 3 fois. Remis à 1 une fois (cf gardé), le recalage repart de là.
+  public static function migrer018() {
+    $c = self::cfg('calage');
+    if (!$c || !empty($c['qs'])) return;
+    foreach ($c['coef'] ?? [] as $n => $x) $c['coef'][$n]['cd'] = 1;
+    $c['qs'] = 1; self::calageSauver($c);
+  }
   private static function calageSauver(array $c) { config::save('calage', json_encode($c, JSON_INVALID_UTF8_SUBSTITUTE), __CLASS__); }
   public static function tolerances() {
     $v = fn($k, $d) => is_numeric($x = str_replace(',', '.', trim((string)config::byKey($k, __CLASS__, '')))) && $x > 0 ? (float)$x : $d;
@@ -1138,7 +1148,7 @@ class presencehabituelle extends eqLogic {
   // Ce qui rend les coefficients caducs : lampes, source (tendances / provisoire), durées mesurées ou du type, plages du Guide
   private static function signature() {
     // ponytail: le maximum appris entre dans la signature ; s'il oscille d'une nuit à l'autre, le calage repart (borne : le fixer en configuration)
-    return md5(json_encode([array_map(fn($s) => [$s['ids'], $s['src'], $s['d'] == presencehabituelle_moteur::PROV[$s['type']]['d'], $s['plages'], !empty($s['suites']) && array_sum(array_column($s['suites'], 1)) >= 5], self::sources0()), self::presencesMax(self::habitudes()), self::detectes()]));
+    return md5(json_encode([array_map(fn($s) => [$s['ids'], $s['src'], $s['d'] == presencehabituelle_moteur::PROV[$s['type']]['d'], $s['plages'], !empty($s['suites']) && array_sum(array_column($s['suites'], 1)) >= 5, !empty($s['qs'])], self::sources0()), self::presencesMax(self::habitudes()), self::detectes()]));
   }
   // Chaque nuit (cronDaily, après analyser) ou au bouton : jusqu'à CAL_TOURS tours pendant un calage, sinon le contrôle léger
   public static function recaler() {

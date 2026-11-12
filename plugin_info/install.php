@@ -8,6 +8,7 @@ function presencehabituelle_install() {
 
 function presencehabituelle_update() {
   presencehabituelle::demarrer();
+  presencehabituelle::migrer018();
 }
 
 // Appelée aussi à la simple désactivation (plugin::setIsEnable) : on arrête l'écoute, les relevés restent.

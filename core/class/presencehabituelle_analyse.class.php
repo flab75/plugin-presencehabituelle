@@ -267,7 +267,10 @@ class presencehabituelle_analyse {
     $d = []; $pas = 0;
     foreach ($sessions as [$a, $b, $x]) if ($x && isset($ok[date('Y-m-d', $a)])) $d[date('Y-m-d H:i:s', $a)] = ($b - $a) / 60; // à la seconde : deux allumages dans la même minute restent deux
     foreach ($d as $v) if ($v * 60 < self::PASSAGE) $pas++;
-    return self::stats($d, 1) + ($d ? ['passages' => self::pc($pas, count($d))] : []);
+    // qs : la distribution entière, 20 durées au milieu de chaque vingtième (2,5 %, 7,5 %… 97,5 %), que le moteur tire telles quelles.
+    // Entre q25 et q75 seulement, la moyenne tombait près de la médiane, bien sous la réelle des pièces aux longues soirées (Cuisine, Salons) ;
+    // milieux plutôt que bornes : une lampe oubliée une nuit (le maximum) ne gonfle pas toute la queue
+    return self::stats($d, 1) + ($d ? ['passages' => self::pc($pas, count($d))] : []) + (count($d) >= 20 ? ['qs' => array_map(fn($i) => round(self::quantile($d, ($i + .5) / 20), 1), range(0, 19))] : []); // moins de 20 sessions : un oubli étalé sur plusieurs vingtièmes ferait 15 % d'allumages de plusieurs heures
   }
 
   // Scènes : combinaisons de lampes allumées ensemble au début des sessions exactes → [« A + B » => %]

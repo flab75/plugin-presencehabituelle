@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.18
+- Durées d'allumage : pour une pièce allumée au moins 20 fois sur les jours du calage, la simulation tire une durée dans toute la distribution relevée sur ces jours (vingt valeurs, longues soirées comprises) au lieu d'un tirage entre le quart et les trois quarts, dont la moyenne tombait près de la médiane : Cuisine et Salons étaient simulés 2 à 3 h/jour trop courts. Au-delà du premier passage du cron (toutes les 5 min), l'attente du passage suivant ne rallonge plus l'allumage, et une durée relevée n'est plus prolongée au hasard en fin de course (le WC restait allumé +40 %). Les lampes oubliées avant les jours du calage ne comptent plus (Entrée RDC : 47 min simulées par allumage, 16 min réelles). Moins de 20 allumages : tirage d'avant.
+- Le coefficient de durée du calage s'applique après le tri passage éclair / présence, qui reste celui du réel.
+- À la mise à jour, les coefficients de durée appris avec l'ancien tirage sont remis à 1 (une fois) et le calage repart (sa signature change).
+
 ## 0.17.2
 - Corrections de la 2e revue adverse de la 0.17 : la part des départs suivis d'un trajet ne compte plus que les extinctions de nuit (entre coucher et lever du soleil), comme la simulation qui ne fait de trajet que dans la pénombre (elle était sous-estimée par les extinctions de jour) ; un trajet qui revient dans le groupe de départ n'est plus une suite ; la pièce d'arrivée est vérifiée avant d'allumer les pièces traversées (plus de couloir allumé pour rien) ; le calage ne repart plus quand un groupe gagne ou perd un trajet rare (moins de 5 vus).
 - Au déploiement de la 0.17 puis de la 0.17.2, le calage repart une fois (sa signature change), puis seulement quand les trajets d'une pièce apparaissent ou disparaissent.

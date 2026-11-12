@@ -311,6 +311,22 @@ $ok($M::profilSoleil($src, 'S', 17 * 60 + 30, ['cm' => 18 * 60]) === 80 && $M::p
   && $M::profilSoleil(['soleil' => []] + $src, 'S', 17 * 60 + 30, ['cm' => 18 * 60]) === 0, 'profilSoleil : avance, retarde, garde la fin');
 $sc = $M::caler(['X' => ['profil' => ['S' => [0, 40], 'W' => [10, 0]], 'd' => [10, 20]]], ['X' => ['cf' => 2, 'cd' => .5], 'Y' => ['cf' => 3]]);
 $ok($sc['X']['profil']['S'] == [0, 40] && $sc['X']['cf'] == 2 && $sc['X']['d'] == [5, 10] && !isset($sc['Y']), 'caler');
+// Durées relevées (0.18) : tirées dans toute la distribution ; la lampe s'éteint au 1er passage du cron après la fin tirée,
+// la moyenne des durées obtenues doit rester celle du relevé (WC : visites de 3 à 7 min, 6 min simulées)
+$qs = $A::durees(array_map(fn($i) => [$t('2026-03-02 08:00') + $i * 3600, $t('2026-03-02 08:00') + $i * 3600 + 60 * [3, 3.3, 3.5, 7, 12][$i % 5], true], range(0, 19)), [['d' => '2026-03-02', 'a' => $t('2026-03-02'), 'b' => $t('2026-03-03')], ['d' => '2026-03-03', 'a' => $t('2026-03-03'), 'b' => $t('2026-03-04')]])['qs'];
+$ok(count($qs) == 20 && $qs[0] == 3 && $qs[19] == 12, 'durees : vingtièmes ' . json_encode($qs));
+$sq = $M::sources([['nom' => 'WC', 'ids' => [5], 'jours' => 20, 'nS' => 14, 'nW' => 6, 'lS' => array_fill(0, 24, 50), 'lW' => array_fill(0, 24, 50), 'durees' => ['n' => 20, 'q25' => 3.3, 'q75' => 7, 'passages' => 0, 'qs' => $qs]]], [], [], 10)['WC'];
+$ok(!isset($A::durees(array_slice(array_map(fn($i) => [$t('2026-03-02 08:00') + $i * 3600, $t('2026-03-02 08:00') + $i * 3600 + 300, true], range(0, 19)), 1), [['d' => '2026-03-02', 'a' => $t('2026-03-02'), 'b' => $t('2026-03-03')]])['qs']), 'durees : pas de vingtièmes sous 20 sessions');
+$du = new ReflectionMethod($M, 'duree'); // duree() est privée : la réflexion la lit depuis PHP 8.1
+$sim = function ($s) use ($du, $M) { // moyenne des durées obtenues (éteinte au passage suivant) et nombre de passages éclair
+  mt_srand(7); $tot = 0; $z = 0; $N = 4000;
+  for ($i = 0; $i < $N; $i++) { $x = $du->invoke(null, $s, fn() => mt_rand() / (mt_getrandmax() + 1)); $z += $x == 0; $tot += $M::PAS * max(1, ceil($x / $M::PAS)); }
+  mt_srand(); return [$tot / $N, $z];
+};
+[$moy] = $sim($sq); // relevé : 5,8 min ; plancher d'un passage (5 min) pour les visites de 3 min
+$ok($moy > 5.5 && $moy < 7, 'duree : moyenne simulée ' . round($moy, 2) . ' min pour 5,8 relevées');
+[$m2] = $sim($M::caler(['WC' => $sq], ['WC' => ['cd' => 2]])['WC']); [, $z5] = $sim($M::caler(['WC' => $sq], ['WC' => ['cd' => .5]])['WC']);
+$ok($m2 > 10.5 && $m2 < 13 && $z5 == 0, 'caler : cd allonge la durée (' . round($m2, 2) . ' min) sans changer le tri éclair (' . $z5 . ' éclairs à cd 0,5)');
 [$cf, $v] = $M::ajuster(['A' => ['h' => 4, 'n' => 2], 'B' => ['h' => 2, 'n' => 1], 'C' => ['h' => 1, 'n' => 1]], ['A' => ['h' => 1, 'n' => .5], 'B' => ['h' => 2.1, 'n' => 1.1], 'C' => ['h' => 1, 'n' => 1]], ['C' => ['cf' => 3, 'cd' => 1]], [.15, .25]);
 $ok(!$v['A']['ok'] && $cf['A'] == ['cf' => 2.0, 'cd' => 1.0] && $v['B']['ok'] && $cf['B'] == ['cf' => 1, 'cd' => 1] && $v['C']['ok'], 'ajuster : ' . json_encode([$cf, $v]));
 [$cf, $v] = $M::ajuster(['A' => ['h' => 9, 'n' => 9]], ['A' => ['h' => 1, 'n' => 1]], ['A' => ['cf' => 3, 'cd' => 3]], [.15, .25]);

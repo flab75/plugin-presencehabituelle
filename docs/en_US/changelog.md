@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.18
+- Switch-on durations: for a room switched on at least 20 times over the calibration days, the simulation draws a duration from the whole distribution recorded over those days (twenty values, long evenings included) instead of a draw between the quarter and three quarters, whose mean fell near the median: Kitchen and Living rooms were simulated 2 to 3 h/day too short. Beyond the first cron pass (every 5 min), waiting for the next pass no longer lengthens the switch-on, and a recorded duration is no longer extended at random at its end (the WC stayed on +40 %). Lamps forgotten before the calibration days no longer count. Fewer than 20 switch-ons: previous draw.
+- The calibration duration coefficient applies after the quick passage / presence split, which stays the real one.
+- On update, the duration coefficients learnt with the previous draw are reset to 1 (once) and the calibration restarts (its signature changes).
+
 ## 0.14.1
 - "Tout effacer" (erase all) now also erases the calibration, which kept each room's real hour-by-hour profile (it hinted at when the house is empty). Confirmation message completed.
 
