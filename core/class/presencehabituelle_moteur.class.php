@@ -95,6 +95,16 @@ class presencehabituelle_moteur {
     return $sources;
   }
   const BORNE = 3; // coefficients entre 1/3 et 3
+  /* Meilleur tour de chaque pièce pendant les tours d'une nuit : écart rapporté aux tolérances (0 dans les tolérances).
+     $v = {nom: {ok, eh, en}} d'ajuster(), $lignes = {nom: ligne du tableau du calage, coefficients du tour dans 'c'}.
+     À égalité, le tour le plus ancien reste. Sert à finir un calage sur le meilleur tour, pas sur le dernier (qui peut tomber au creux d'une oscillation). */
+  public static function meilleur(array $best, array $v, array $lignes, array $tol) {
+    foreach ($v as $nom => $x) {
+      $s = $x['ok'] ? 0 : round(max(abs($x['eh']) / $tol[0], abs($x['en']) / $tol[1]), 3);
+      if (isset($lignes[$nom]) && (!isset($best[$nom]) || $s < $best[$nom]['s'])) $best[$nom] = ['s' => $s, 'l' => $lignes[$nom]];
+    }
+    return $best;
+  }
   /* Un tour de recalage. $R / $P = {nom: bilan()} réel / rejoué ; $tol = [heures, allumages] en fraction (0,15 = ±15 %).
      → [coefficients, {nom: {ok, borne, eh, en}}] ; eh / en = écart relatif des heures et des allumages par jour.
      ponytail: pas amorti (racine du rapport) ; écart sous 6 min par jour toujours accepté (pièce presque jamais allumée) */

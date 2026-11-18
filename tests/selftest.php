@@ -361,6 +361,11 @@ $ok($cf['A']['cf'] == 3 && !$v['A']['borne'], 'ajuster : jamais allumée dans le
 $ok(round($cf['A']['cf'], 3) == .333 && !$v['A']['borne'], 'ajuster : jamais allumée en vrai');
 [, $v] = $M::ajuster(['A' => ['h' => 2, 'n' => 1]], ['A' => ['h' => 4, 'n' => 1.1]], [], [INF, .25]);
 $ok($v['A']['ok'], 'ajuster : contrôle sur les allumages seulement');
+// meilleur tour : B garde le 1er tour (−10 % / +10 %, dans les tolérances), A le 2e (moins loin), C le 1er à égalité
+$tol = [.15, .25]; $L = fn($k) => ['A' => ['c' => ['cf' => $k, 'cd' => 1]], 'B' => ['c' => ['cf' => $k, 'cd' => 1]], 'C' => ['c' => ['cf' => $k, 'cd' => 1]]];
+$b = $M::meilleur([], ['A' => ['ok' => false, 'eh' => .6, 'en' => 0], 'B' => ['ok' => true, 'eh' => -.1, 'en' => .1], 'C' => ['ok' => false, 'eh' => .3, 'en' => 0]], $L(1), $tol);
+$b = $M::meilleur($b, ['A' => ['ok' => false, 'eh' => .1, 'en' => -.3], 'B' => ['ok' => false, 'eh' => .5, 'en' => 0], 'C' => ['ok' => false, 'eh' => 0, 'en' => .5]], $L(2), $tol);
+$ok($b['A']['l']['c']['cf'] == 2 && $b['A']['s'] == 1.2 && $b['B']['l']['c']['cf'] == 1 && $b['B']['s'] == 0 && $b['C']['l']['c']['cf'] == 1, 'meilleur : ' . json_encode($b));
 [, $v] = $M::ajuster(['A' => ['h' => 4, 'n' => 4]], ['A' => ['h' => 1, 'n' => 1]], ['A' => ['cf' => 3, 'cd' => 1]], [.15, .25]);
 $ok($v['A']['borne'], 'ajuster : cf à sa limite, allumages trop rares');
 echo "moteur OK\n";

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.21
+- Calage : une pièce encore hors tolérances à la fin du calage (20 tours, ou coefficient en butée) garde les réglages de son **meilleur** tour de la dernière nuit, et non ceux du dernier tour, qui pouvait tomber au creux d'une oscillation (ex. allumages trop rares et trop longs juste au 20e tour).
+
 ## 0.20
 - **Pénombre = la plus sombre du soleil et du capteur** : le capteur ne fait qu'avancer la pénombre les jours gris, le soleil garde la nuit (avant : le capteur remplaçait le soleil, et un capteur éclairé la nuit pouvait faire le jour). Un capteur trop sombre (à l'ombre l'après-midi) avance la pénombre tous les jours : baisser ses seuils. Un capteur muet sur une mesure de nuit n'est plus gardé une fois le jour levé.
 - Capteur de luminosité de **secours** : pris quand le premier n'a rien mesuré depuis 2 h (12 h sur une mesure de nuit) ; sans capteur frais, retour au soleil (avant : la dernière valeur d'un capteur muet servait indéfiniment). Seuils propres à chaque capteur (un capteur intérieur en demande de plus bas).

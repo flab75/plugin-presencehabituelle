@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.21
+- Calibration: a room still out of tolerance when calibration ends (20 rounds, or coefficient at its limit) keeps the settings of its **best** round of the last night, not those of the last round, which could fall at the bottom of an oscillation (e.g. lights too rare and too long right at round 20).
+
 ## 0.20
 - **Dusk = the darker of sun and sensor**: the sensor can only bring dusk forward on grey days, the sun keeps the night (before: the sensor replaced the sun, and a sensor lit at night could make it day). A sensor that is too dark (shaded in the afternoon) brings dusk forward every day: lower its thresholds. A sensor silent on a night reading is no longer kept once the sun is up.
 - **Backup** light sensor: used when the first one has measured nothing for 2 hours (12 hours on a night measure); with no fresh sensor, back to the sun (before: the last value of a silent sensor was used forever). Thresholds of their own for each sensor (an indoor sensor needs lower ones).

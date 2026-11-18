@@ -1296,13 +1296,18 @@ class presencehabituelle extends eqLogic {
     unset($c['note']);
     $c['coef'] = array_intersect_key($c['coef'], $R); // pièce passée hors calage (éclair) : réglages d'origine
     $c['hors'] = self::detectes();
+    $best = []; // ponytail: meilleur tour cherché parmi ceux de cette nuit seulement (les jours réels changent d'une nuit à l'autre : un tour d'une autre nuit ne se compare pas)
     for ($i = 0; $i < self::CAL_TOURS; $i++) {
       [$P, $V] = self::rejeu($c['coef']);
       [$coef, $v] = $M::ajuster($R, $P, $c['coef'], $tol);
       $c['tours']++;
       $c['table'] = []; foreach ($v as $nom => $x) $c['table'][$nom] = $x + ['r' => $R[$nom], 'p' => $P[$nom], 'c' => ($c['coef'][$nom] ?? []) + ['cf' => 1, 'cd' => 1]];
       $c['volets'] = []; foreach (self::habitudes()['volets'] ?? [] as $x) $c['volets'][$x['id']] = ['nom' => $x['nom'], 'rf' => $x['soir']['S']['med'] ?? null, 'ro' => $x['matin']['S']['med'] ?? null, 'pf' => $V[$x['id']]['f'] ?? null, 'po' => $V[$x['id']]['o'] ?? null];
+      $best = $M::meilleur($best, $v, $c['table'], $tol);
       if (!array_filter($v, fn($x) => !$x['ok'] && !$x['borne']) || $c['tours'] >= self::CAL_MAX) { // tout dans les tolérances, au bout de ce qu'un coefficient peut faire, ou trop de tours
+        // pièce hors tolérances : les coefficients de son meilleur tour de la nuit (le dernier peut être au creux d'une oscillation)
+        // ponytail: pièce par pièce, comme si elles étaient indépendantes (elles ne le sont qu'à peu près : pièces allumées en même temps, trajets) ; le contrôle de nuit vérifie ensuite
+        foreach ($c['table'] as $nom => $x) if (!$x['ok'] && isset($best[$nom])) { $c['table'][$nom] = $best[$nom]['l']; $c['coef'][$nom] = $best[$nom]['l']['c']; }
         foreach ($c['table'] as $nom => $x) if (!$x['ok']) $c['table'][$nom]['borne'] = true; // au mieux
         $c['etat'] = 'calee'; $c['depuis'] = time(); $c['alertes'] = []; $c['controle'] = []; $c['sig'] = self::signature();
         $c['ref'] = array_map(fn($r) => ['h' => $r['h'], 'n' => $r['n']], $R);
